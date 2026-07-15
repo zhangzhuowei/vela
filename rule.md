@@ -961,3 +961,12 @@ useWorkflowStore.getState().addLog('error', '❌ 步骤失败: ...')
 8. **草稿 Frontmatter** — 使用 YAML frontmatter 管理草稿元数据（状态、版本号）
 9. **数字无补零** — 章节号等数字不补零（`ch1` 而非 `ch001`），依赖数值排序
 10. **字体本地化** — 所有字体内置到 `public/fonts/`，不依赖外部 CDN
+
+
+---
+
+## 十三、开发环境与验证（踩坑记录）
+
+> 本节内容已抽取为独立的 Kiro steering 文件：**`.kiro/steering/dev-environment.md`**（`inclusion: always`，会自动加载）。
+> 涵盖：Windows/PowerShell 环境限制、终端极不稳定的应对（重定向到 .log + `DONE_EXIT_0` 判定、`cmd /c "pnpm ..."`、卡死恢复顺序）、tsc + vite build 验证流程、控制台中文乱码、数据库 `migrateSchema()` 加列、共享类型加字段用可选、prompt-builder 注入槽、向量维度动态化、零依赖二进制导出、批量静默等。
+> 改代码 / 跑构建前请先阅读该文件。

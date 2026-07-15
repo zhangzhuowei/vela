@@ -28,6 +28,10 @@ export default function NovelConfigEditor() {
   // 各区块的独立生成状态
   const [generatingField, setGeneratingField] = useState<GeneratableField | null>(null)
 
+  // 文风指纹：粘贴样章 + 学习状态
+  const [styleSample, setStyleSample] = useState('')
+  const [learningStyle, setLearningStyle] = useState(false)
+
   // 直接从 Store 读取配置 — 单一数据源，无需 local state 镜像
   const config = currentProject?.novelConfig ?? null
 
@@ -91,6 +95,39 @@ export default function NovelConfigEditor() {
       addLog('error', `生成失败：${e}`)
     } finally {
       setGeneratingField(null)
+    }
+  }
+
+  /** 学习文风指纹：fromSample=true 用粘贴的样章，false 用本项目已写章节 */
+  const handleLearnStyle = async (fromSample: boolean) => {
+    if (!defaultModelId) {
+      addLog('error', '⚠️ 请先在设置中配置 AI 模型')
+      return
+    }
+    if (learningStyle) return
+    if (fromSample && !styleSample.trim()) {
+      addLog('error', '⚠️ 请先在下方粘贴一段你的样章文本')
+      return
+    }
+
+    setLearningStyle(true)
+    try {
+      const { AnalyzeWritingStyleCommand } = await import('../../services/workflows/commands/analyze-style.command')
+      const cmd = new AnalyzeWritingStyleCommand(fromSample ? styleSample : undefined)
+      const result = await cmd.execute({
+        step: { id: '', commandId: '', name: '', params: {} },
+        context: { data: {}, cancelled: false },
+        callbacks: {
+          log: (msg: string) => useWorkflowStore.getState().addLog('info', msg),
+          setProgress: () => { },
+          appendText: () => { },
+        },
+      })
+      if (result && fromSample) setStyleSample('')
+    } catch (e) {
+      addLog('error', `文风学习失败：${e}`)
+    } finally {
+      setLearningStyle(false)
     }
   }
 
@@ -275,6 +312,45 @@ export default function NovelConfigEditor() {
               placeholder="尚未配置。点击右上角「AI 生成」或手动填写…"
               rows={6}
             />
+          </Section>
+
+          {/* 文风指纹 */}
+          <Section
+            title="文风指纹（学习你的文笔）"
+            desc="粘贴一段你自己写的、最能代表你文风的正文，AI 会提炼成「文风指纹」，写稿时自动注入让 AI 更贴近你本人。与上方「文风配置」（写作意图）互不覆盖。"
+          >
+            <Textarea
+              value={config.styleReference || ''}
+              onChange={(e) => update('styleReference', e.target.value)}
+              placeholder="暂无文风指纹。可在下方粘贴样章后点「从样章学习」，或直接手动填写…"
+              rows={5}
+            />
+            <div className="mt-3">
+              <label className="text-xs mb-1 block font-medium text-[var(--color-text-muted)]">
+                粘贴你的样章文本（约 1000–5000 字最有代表性）
+              </label>
+              <Textarea
+                value={styleSample}
+                onChange={(e) => setStyleSample(e.target.value)}
+                placeholder="把你满意的、最能体现你文风的一段正文粘贴到这里，然后点「从样章学习」…"
+                rows={5}
+              />
+            </div>
+            <div className="flex items-center gap-2 mt-3">
+              <Button variant="ai" size="sm" onClick={() => handleLearnStyle(true)} disabled={learningStyle}>
+                {learningStyle ? <Loader2 size={11} className="animate-spin" /> : <Sparkles size={11} />}
+                {learningStyle ? '学习中...' : '从样章学习'}
+              </Button>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => handleLearnStyle(false)}
+                disabled={learningStyle}
+                title="不使用上方粘贴文本，改为分析本项目已写好的最近 5 章正文"
+              >
+                从已写章节学习
+              </Button>
+            </div>
           </Section>
 
           {/* 参考作品 */}

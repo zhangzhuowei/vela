@@ -1,7 +1,7 @@
 import { create } from 'zustand'
 
 /** 左侧活动栏的视图类型 */
-export type SidebarView = 'home' | 'project' | 'knowledge' | 'characters' | 'settings'
+export type SidebarView = 'home' | 'project' | 'knowledge' | 'characters' | 'foreshadowing' | 'settings'
 
 /** 下方工具窗口 Tab */
 export type BottomTab = 'tasks' | 'log' | 'models'
@@ -42,6 +42,8 @@ interface LayoutState {
   chapterCreationOpen: boolean
   /** 章节创建对话框的预填参数 */
   chapterCreationPrefill: ChapterCreationPrefill
+  /** 批量生成对话框是否打开 */
+  batchGenerateOpen: boolean
 
   // ===== Actions =====
   toggleSidebar: () => void
@@ -69,6 +71,8 @@ interface LayoutState {
   closeImportNovel: () => void
   openChapterCreation: (prefill?: ChapterCreationPrefill) => void
   closeChapterCreation: () => void
+  openBatchGenerate: () => void
+  closeBatchGenerate: () => void
 }
 
 export const useLayoutStore = create<LayoutState>()((set) => ({
@@ -92,6 +96,7 @@ export const useLayoutStore = create<LayoutState>()((set) => ({
   importNovelOpen: false,
   chapterCreationOpen: false,
   chapterCreationPrefill: null,
+  batchGenerateOpen: false,
 
   // Actions
   toggleSidebar: () => set((s) => ({ sidebarOpen: !s.sidebarOpen })),
@@ -128,4 +133,6 @@ export const useLayoutStore = create<LayoutState>()((set) => ({
   closeImportNovel: () => set({ importNovelOpen: false }),
   openChapterCreation: (prefill = null) => set({ chapterCreationOpen: true, chapterCreationPrefill: prefill }),
   closeChapterCreation: () => set({ chapterCreationOpen: false, chapterCreationPrefill: null }),
+  openBatchGenerate: () => set({ batchGenerateOpen: true }),
+  closeBatchGenerate: () => set({ batchGenerateOpen: false }),
 }))

@@ -10,6 +10,9 @@ import { RevisionRepository } from '../repositories/revision-repository'
 import { ReviewRepository } from '../repositories/review-repository'
 import { PostProcessRepository } from '../repositories/post-process-repository'
 
+import { ForeshadowingRepository, ForeshadowingData } from '../repositories/foreshadowing-repository'
+import { ChapterImageRepository } from '../repositories/chapter-image-repository'
+
 // 沿用的旧表
 import { LLMHistoryRepository } from '../repositories/llm-repository'
 import { SummaryRepository } from '../repositories/summary-repository'
@@ -112,6 +115,49 @@ export function registerDatabaseController() {
   ipcMain.handle('db:character-update-state', async (_event, name: string, state: CharacterStateData) => {
     try {
       CharacterRepository.updateState(name, state)
+      return { success: true }
+    } catch (err) {
+      return { success: false, error: String(err) }
+    }
+  })
+
+  ipcMain.handle('db:character-update-speech', async (_event, name: string, speechStyle: string) => {
+    try {
+      CharacterRepository.updateSpeechStyle(name, speechStyle)
+      return { success: true }
+    } catch (err) {
+      return { success: false, error: String(err) }
+    }
+  })
+
+  ipcMain.handle('db:character-update-portrait', async (_event, name: string, portraitPath: string) => {
+    try {
+      CharacterRepository.updatePortrait(name, portraitPath)
+      return { success: true }
+    } catch (err) {
+      return { success: false, error: String(err) }
+    }
+  })
+
+  // ============================================================
+  // 章节配图 chapter_images（题图 / 场景插图）
+  // ============================================================
+  ipcMain.handle('db:chapter-image-list', async (_event, chapterNumber: number) => {
+    return ChapterImageRepository.listByChapter(chapterNumber)
+  })
+
+  ipcMain.handle('db:chapter-image-add', async (_event, payload: { chapterNumber: number; kind: 'header' | 'scene'; path: string; prompt: string }) => {
+    try {
+      const id = ChapterImageRepository.add(payload.chapterNumber, payload.kind, payload.path, payload.prompt)
+      return { success: true, id }
+    } catch (err) {
+      return { success: false, error: String(err) }
+    }
+  })
+
+  ipcMain.handle('db:chapter-image-delete', async (_event, id: number) => {
+    try {
+      ChapterImageRepository.remove(id)
       return { success: true }
     } catch (err) {
       return { success: false, error: String(err) }
@@ -312,6 +358,58 @@ ipcMain.handle('db:revision-create', async (_event, params: {
 
   ipcMain.handle('db:post-process-is-all-passed', async (_event, sourceType: string, sourceId: string) => {
     return PostProcessRepository.isAllCriticalPassed(sourceType, sourceId)
+  })
+
+  // ============================================================
+  // 10. foreshadowings — 伏笔/线索台账
+  // ============================================================
+  ipcMain.handle('db:foreshadow-get-all', async () => {
+    return ForeshadowingRepository.getAll()
+  })
+
+  ipcMain.handle('db:foreshadow-get-open', async () => {
+    return ForeshadowingRepository.getOpen()
+  })
+
+  ipcMain.handle('db:foreshadow-create', async (_event, data: {
+    content: string
+    plantedChapter: number
+    expectedChapter?: number | null
+    notes?: string
+  }) => {
+    try {
+      const id = ForeshadowingRepository.create(data)
+      return { success: true, id }
+    } catch (err) {
+      return { success: false, error: String(err) }
+    }
+  })
+
+  ipcMain.handle('db:foreshadow-mark-paid', async (_event, id: number, paidChapter: number) => {
+    try {
+      ForeshadowingRepository.markPaid(id, paidChapter)
+      return { success: true }
+    } catch (err) {
+      return { success: false, error: String(err) }
+    }
+  })
+
+  ipcMain.handle('db:foreshadow-update', async (_event, data: ForeshadowingData) => {
+    try {
+      ForeshadowingRepository.update(data)
+      return { success: true }
+    } catch (err) {
+      return { success: false, error: String(err) }
+    }
+  })
+
+  ipcMain.handle('db:foreshadow-delete', async (_event, id: number) => {
+    try {
+      ForeshadowingRepository.remove(id)
+      return { success: true }
+    } catch (err) {
+      return { success: false, error: String(err) }
+    }
   })
 
   // ============================================================

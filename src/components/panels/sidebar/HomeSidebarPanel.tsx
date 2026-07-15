@@ -2,7 +2,7 @@
  * HomeSidebarPanel — 主页侧边栏：项目管理入口 + 最近项目列表
  */
 
-import { FolderOpen } from 'lucide-react'
+import { FolderOpen, Download } from 'lucide-react'
 import { useProjectStore } from '../../../stores/project-store'
 import { useLayoutStore } from '../../../stores/layout-store'
 import { ipc } from '../../../services/ipc-client'
@@ -59,6 +59,15 @@ export default function HomeSidebarPanel() {
         >
           打开项目
         </Button>
+        {currentProject && (
+          <Button
+            variant="outline"
+            className="w-full"
+            onClick={() => useLayoutStore.getState().openExport()}
+          >
+            <Download size={13} /> 导出项目（MD / TXT / EPUB）
+          </Button>
+        )}
       </div>
 
       {/* 最近项目列表 */}

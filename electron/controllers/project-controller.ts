@@ -121,6 +121,7 @@ export function registerProjectController() {
           protagonistProfile: updatedCoreData.charactersArch, // 旧字段映射
           globalGuidance: updatedCoreData.globalGuidance,
           writingStyle: updatedCoreData.writingStyle,
+          styleReference: updatedCoreData.styleReference,
           referenceWorks: updatedCoreData.referenceWorks,
         },
         characterStates: updatedCoreData.characterStates,
@@ -154,6 +155,7 @@ export function registerProjectController() {
           goldenFinger: data.novelConfig.goldenFinger,
           globalGuidance: data.novelConfig.globalGuidance,
           writingStyle: data.novelConfig.writingStyle ?? '',
+          styleReference: data.novelConfig.styleReference ?? '',
           referenceWorks: data.novelConfig.referenceWorks ?? '',
         })
       }
@@ -193,6 +195,7 @@ export function registerProjectController() {
           goldenFinger: data.novelConfig.goldenFinger,
           globalGuidance: data.novelConfig.globalGuidance,
           writingStyle: data.novelConfig.writingStyle ?? '',
+          styleReference: data.novelConfig.styleReference ?? '',
           referenceWorks: data.novelConfig.referenceWorks ?? '',
         })
       }

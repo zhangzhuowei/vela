@@ -10,7 +10,7 @@ import type { ChapterInfo } from '../chapter-workflow'
 
 export class GenerateDraftCommand extends BaseWorkflowCommand {
 
-  constructor(private chapterInfo: ChapterInfo) {
+  constructor(private chapterInfo: ChapterInfo, private modelId?: string, private silent = false) {
     super()
   }
 
@@ -51,6 +51,7 @@ export class GenerateDraftCommand extends BaseWorkflowCommand {
       .withArchitecture(architecture)
       .withGlobalGuidance(mergedGuidance)
       .withWritingStyle(project.novelConfig.writingStyle || '')
+      .withStyleReference(project.novelConfig.styleReference || '')
       .withNovelConfig(project.novelConfig)
       .withWordNumber(project.novelConfig.wordsPerChapter)
 
@@ -85,6 +86,10 @@ export class GenerateDraftCommand extends BaseWorkflowCommand {
         filteredContext = '（知识库检索不可用）'
       }
 
+      const foreshadowText = await this.buildForeshadowingContext(this.chapterInfo.chapterNumber)
+      const antiRepText = await this.buildAntiRepetitionContext(this.chapterInfo.chapterNumber)
+      const voiceText = await this.buildCharacterVoiceContext(this.chapterInfo.characters)
+
       promptBuilder
         // ---- 缓存命中区续（要点时间线按序追加，前缀对齐）----
         .withGlobalSummary(chapterTimeline)
@@ -94,6 +99,9 @@ export class GenerateDraftCommand extends BaseWorkflowCommand {
         .withChapterInfo(this.chapterInfo)
         .withFutureBlueprints(futureBlueprintsStr)
         .withFilteredContext(filteredContext)
+        .withForeshadowing(foreshadowText)
+        .withAntiRepetition(antiRepText)
+        .withCharacterVoices(voiceText)
         .withShortSummary('')
         .withUserGuidance(this.chapterInfo.userGuidance?.trim() || '（无微操指导）')
     }
@@ -108,7 +116,7 @@ export class GenerateDraftCommand extends BaseWorkflowCommand {
 
     callbacks.log('调用 AI 生成章节草稿...')
 
-    const draftText = await this.callLLMWithBuilder(promptBuilder, callbacks)
+    const draftText = await this.callLLMWithBuilder(promptBuilder, callbacks, undefined, undefined, this.modelId)
     const cleanDraftText = this.stripThinkingTags(draftText)
 
     // 落于数据库
@@ -137,19 +145,70 @@ export class GenerateDraftCommand extends BaseWorkflowCommand {
       await useDraftStore.getState().loadAllDrafts()
     } catch { /* 忽略 */ }
 
-    try {
-      const { useEditorStore } = await import('../../../stores/editor-store')
-      useEditorStore.getState().openFile({
-        id: pseudoPath,
-        name: `第${this.chapterInfo.chapterNumber}章 ${this.chapterInfo.title} v${nextVersion}`,
-        type: 'chapter',
-        filePath: pseudoPath,
-        content: cleanDraftText,
-      })
-    } catch { /* 忽略 */ }
+    if (!this.silent) {
+      try {
+        const { useEditorStore } = await import('../../../stores/editor-store')
+        useEditorStore.getState().openFile({
+          id: pseudoPath,
+          name: `第${this.chapterInfo.chapterNumber}章 ${this.chapterInfo.title} v${nextVersion}`,
+          type: 'chapter',
+          filePath: pseudoPath,
+          content: cleanDraftText,
+        })
+      } catch { /* 忽略 */ }
+    }
 
     callbacks.log(`✅ 草稿已自动入库保存为版本 v${nextVersion}（${draftText.length} 字）`)
     return draftText
+  }
+
+  /** 加载未回收伏笔，格式化为写稿上下文（到期伏笔会标注提醒本章回收） */
+  private async buildForeshadowingContext(currentChapter: number): Promise<string> {
+    try {
+      const { formatOpenForeshadowings } = await import('../workflow-utils')
+      const open = await ipc.invoke('db:foreshadow-get-open')
+      return formatOpenForeshadowings(open, currentChapter)
+    } catch {
+      return '（暂无未回收伏笔）'
+    }
+  }
+
+  /**
+   * 跨章反雷同：提炼最近 N 章的开场句与断章句，供本章规避雷同的起笔/转场/断章。
+   */
+  private async buildAntiRepetitionContext(currentChapter: number, windowSize = 3): Promise<string> {
+    const lines: string[] = []
+    for (let i = currentChapter - 1; i >= Math.max(1, currentChapter - windowSize); i--) {
+      try {
+        const meta = await ipc.invoke('db:draft-get-finalized', i)
+        if (!meta) continue
+        const full = await ipc.invoke('db:draft-get-full', meta.id)
+        const content = full?.content?.trim()
+        if (!content) continue
+        const opening = content.slice(0, 55).replace(/\s+/g, ' ')
+        const closing = content.slice(-45).replace(/\s+/g, ' ')
+        lines.push(`- 第${i}章 开场：「${opening}…」｜断章：「…${closing}」`)
+      } catch { /* 忽略单章读取失败 */ }
+    }
+    if (lines.length === 0) return '（暂无往期章节可参考）'
+    return lines.reverse().join('\n') // 由早到近
+  }
+
+  /** 出场角色说话风格：从角色卡取本章出场角色中已填写口癖的，注入以保对白辨识度 */
+  private async buildCharacterVoiceContext(names: string[]): Promise<string> {
+    if (!names || names.length === 0) return '（未指定出场角色）'
+    try {
+      const allChars = await ipc.invoke('db:character-get-all')
+      const nameSet = new Set(names.map((n) => n.trim()).filter(Boolean))
+      const lines = allChars
+        .filter((c) => nameSet.has(c.name) && (c.speechStyle || '').trim())
+        .map((c) => `- ${c.name}：${(c.speechStyle || '').trim()}`)
+      return lines.length > 0
+        ? lines.join('\n')
+        : '（出场角色暂无说话风格档案，请自行赋予各角色有辨识度、彼此区分的对白）'
+    } catch {
+      return '（角色说话风格读取失败）'
+    }
   }
 
   // --- 抽取自原文件的辅助方法 ---
@@ -195,6 +254,7 @@ export class GenerateDraftCommand extends BaseWorkflowCommand {
             `身体：${cs.physicalState || '正常'} | ` +
             `心理：${cs.mentalState || '正常'} | ` +
             `道具：${cs.keyItems || '无'} | ` +
+            `已知：${cs.knownInfo || '—'} | ` +
             `最近：第${cs.updatedAtChapter || 0}章 ${cs.recentEvents || ''}`
           )
         }

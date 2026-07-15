@@ -12,6 +12,7 @@ import KnowledgePanel from './KnowledgePanel'
 import HomeSidebarPanel from './sidebar/HomeSidebarPanel'
 import ProjectTree from './sidebar/ProjectTree'
 import CharactersView from './sidebar/CharactersView'
+import ForeshadowingView from './sidebar/ForeshadowingView'
 import {
   registerMenuSetter, unregisterMenuSetter,
   type SidebarMenuState,
@@ -34,6 +35,7 @@ export default function Sidebar() {
     project:    '项目结构',
     knowledge:  '知识库',
     characters: '角色管理',
+    foreshadowing: '伏笔台账',
   }
 
   return (
@@ -52,6 +54,7 @@ export default function Sidebar() {
         {sidebarView === 'project'    && <ProjectTree />}
         {sidebarView === 'knowledge'  && <KnowledgePanel />}
         {sidebarView === 'characters' && <CharactersView />}
+        {sidebarView === 'foreshadowing' && <ForeshadowingView />}
       </div>
 
       {/* 动态右键菜单 */}

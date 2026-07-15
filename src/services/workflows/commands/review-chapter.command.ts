@@ -11,6 +11,10 @@ export interface ReviewChapterParams {
   chapterNumber: number
   /** 审稿维度侧重点（可选） */
   reviewFocus?: string
+  /** 静默模式：为 true 时不打开审稿报告 Tab（供自动审校闭环批量调用） */
+  silent?: boolean
+  /** 指定本次调用使用的模型（按任务派模型）；为空走默认模型 */
+  modelId?: string
 }
 
 export class ReviewChapterCommand extends BaseWorkflowCommand<string> {
@@ -50,12 +54,15 @@ export class ReviewChapterCommand extends BaseWorkflowCommand<string> {
     const template = getPromptTemplate('consistency_check')
     if (!template) throw new Error('未找到审稿模板')
 
+    const foreshadowText = await this.buildForeshadowingContext(this.params.chapterNumber)
+
     const promptBuilder = new ReviewPromptBuilder(template)
       .withChapterContent(draft)
       .withCharacterStates(characterState)
       .withGlobalSummary(contextSummary)
       .withWorldBuilding(worldBuilding)
       .withReviewFocus(this.params.reviewFocus || '')
+      .withForeshadowing(foreshadowText)
 
     callbacks.log('调用 AI 审查员对本章进行多维度扫描...')
 
@@ -63,7 +70,9 @@ export class ReviewChapterCommand extends BaseWorkflowCommand<string> {
     const reviewResultRaw = await this.callLLMWithBuilder(
       promptBuilder,
       callbacks,
-      { responseFormat: { type: 'json_object' } }
+      { responseFormat: { type: 'json_object' } },
+      undefined,
+      this.params.modelId
     )
 
     const reviewResultClean = this.stripThinkingTags(reviewResultRaw)
@@ -93,18 +102,20 @@ export class ReviewChapterCommand extends BaseWorkflowCommand<string> {
     // EditorArea 渲染 ReviewReport 的条件：activeTab.content 存在
     const reportContent = JSON.stringify(parsedResult, null, 2)
 
-    const { useEditorStore } = await import('../../../stores/editor-store')
-    const pseudoReviewPath = `vela://draft/ch${this.params.chapterNumber}/v${baseVersion}/review${revIndex}`
-    useEditorStore.getState().openFile({
-      id: `review-${this.params.draftPath}-${revIndex}`,
-      name: `审稿报告：第${this.params.chapterNumber}章`,
-      type: 'review-report',
-      content: reportContent,
-      filePath: this.params.draftPath,
-      reportPath: pseudoReviewPath,
-      reviewReport: reportContent,
-      chapterNumber: this.params.chapterNumber,
-    })
+    if (!this.params.silent) {
+      const { useEditorStore } = await import('../../../stores/editor-store')
+      const pseudoReviewPath = `vela://draft/ch${this.params.chapterNumber}/v${baseVersion}/review${revIndex}`
+      useEditorStore.getState().openFile({
+        id: `review-${this.params.draftPath}-${revIndex}`,
+        name: `审稿报告：第${this.params.chapterNumber}章`,
+        type: 'review-report',
+        content: reportContent,
+        filePath: this.params.draftPath,
+        reportPath: pseudoReviewPath,
+        reviewReport: reportContent,
+        chapterNumber: this.params.chapterNumber,
+      })
+    }
 
     callbacks.log(`✅ 审查完成，已生成审稿报告 r${revIndex}`)
     return reviewResultClean
@@ -117,7 +128,7 @@ export class ReviewChapterCommand extends BaseWorkflowCommand<string> {
       for (const card of allChars) {
         if (card.name && card.currentState) {
           const cs = card.currentState
-          states.push(`${card.name}（${card.role || '未知'}）: ${cs.powerLevel || ''}, ${cs.location || ''}, ${cs.physicalState || ''}, ${cs.mentalState || ''}, 最近：${cs.recentEvents || ''}`)
+          states.push(`${card.name}（${card.role || '未知'}）: ${cs.powerLevel || ''}, ${cs.location || ''}, ${cs.physicalState || ''}, ${cs.mentalState || ''}, 已知：${cs.knownInfo || '—'}, 最近：${cs.recentEvents || ''}`)
         }
       }
       return states.length > 0 ? states.join('\n') : '（暂无）'
@@ -127,5 +138,16 @@ export class ReviewChapterCommand extends BaseWorkflowCommand<string> {
   private async readWorldBuilding(): Promise<string> {
     const core = await ipc.invoke('db:project-core-get')
     return core?.worldbuilding || '（暂无）'
+  }
+
+  /** 加载未回收伏笔，供审稿核对"伏笔完整性"（带注入上限） */
+  private async buildForeshadowingContext(currentChapter: number): Promise<string> {
+    try {
+      const { formatOpenForeshadowings } = await import('../workflow-utils')
+      const open = await ipc.invoke('db:foreshadow-get-open')
+      return formatOpenForeshadowings(open, currentChapter)
+    } catch {
+      return '（暂无未回收伏笔）'
+    }
   }
 }

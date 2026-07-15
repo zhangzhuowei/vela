@@ -12,9 +12,18 @@ export interface RefineFromReviewParams {
   reviewFileName?: string
   chapterNumber: number
   userRefinePrompt?: string
+  /** 静默模式：为 true 时不打开 diff Tab（供自动审校闭环批量调用） */
+  silent?: boolean
+  /** 指定本次调用使用的模型（按任务派模型）；为空走默认模型 */
+  modelId?: string
 }
 
 export class RefineFromReviewCommand extends BaseWorkflowCommand<string> {
+  /** 最近一次执行生成的修订稿 id（供自动闭环读取以合并版本） */
+  lastRevisionId?: number
+  /** 最近一次执行生成的清洗后修订正文（供自动闭环读取） */
+  lastRefinedContent?: string
+
   constructor(private params: RefineFromReviewParams) {
     super()
   }
@@ -38,7 +47,7 @@ export class RefineFromReviewCommand extends BaseWorkflowCommand<string> {
       .withGlobalGuidance(project.novelConfig.globalGuidance || '')
       .withUserRefinePrompt(userPromptBlock)
 
-    const refined = await this.callLLMWithBuilder(promptBuilder, callbacks)
+    const refined = await this.callLLMWithBuilder(promptBuilder, callbacks, undefined, undefined, this.params.modelId)
     const cleanRefined = this.stripThinkingTags(refined)
 
     const { parseDraftMeta } = await import('../chapter-workflow')
@@ -62,18 +71,24 @@ export class RefineFromReviewCommand extends BaseWorkflowCommand<string> {
       userPrompt: this.params.userRefinePrompt,
     }) as { success: boolean; id: number }
 
-    const { useEditorStore } = await import('../../../stores/editor-store')
-    useEditorStore.getState().openFile({
-      id: `diff-${this.params.draftPath}-${createRes.id}`,
-      name: `审稿修复：第${this.params.chapterNumber}章`,
-      type: 'diff',
-      filePath: this.params.draftPath,
-      originalContent: this.params.draftContent,
-      content: cleanRefined,
-      revisionPath: String(createRes.id),
-      chapterNumber: this.params.chapterNumber,
-      chapterDir: `vela://draft/ch${this.params.chapterNumber}`,
-    })
+    // 暴露给自动审校闭环：修订 id + 清洗后正文
+    this.lastRevisionId = createRes.id
+    this.lastRefinedContent = cleanRefined
+
+    if (!this.params.silent) {
+      const { useEditorStore } = await import('../../../stores/editor-store')
+      useEditorStore.getState().openFile({
+        id: `diff-${this.params.draftPath}-${createRes.id}`,
+        name: `审稿修复：第${this.params.chapterNumber}章`,
+        type: 'diff',
+        filePath: this.params.draftPath,
+        originalContent: this.params.draftContent,
+        content: cleanRefined,
+        revisionPath: String(createRes.id),
+        chapterNumber: this.params.chapterNumber,
+        chapterDir: `vela://draft/ch${this.params.chapterNumber}`,
+      })
+    }
 
     callbacks.log(`✅ 审稿修复完成（${cleanRefined.length} 字），已生成修订稿版本 r${revIndex}`)
     return refined

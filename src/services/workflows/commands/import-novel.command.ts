@@ -12,6 +12,7 @@ import { useProjectStore } from '../../../stores/project-store'
 import { getPromptTemplate } from '../../prompt-templates'
 import { ImportPromptBuilder } from '../../prompts/prompt-builder'
 import { ipc } from '../../ipc-client'
+import { mergePreservedCharacterAssets } from '../workflow-utils'
 import type { CharacterData } from '../../../../electron/repositories/character-repository'
 
 /** 拆分后的章节数据（从 context.data 中传递） */
@@ -246,7 +247,9 @@ export class InferGlobalSettingsCommand extends BaseWorkflowCommand<void> {
         createdCount++
       }
       if (cardsToSave.length > 0) {
-        await ipc.invoke('db:character-save-all', cardsToSave)
+        // 并回库中已有的口癖/人设图，避免重新推演覆盖已生成/已推断的数据
+        const merged = await mergePreservedCharacterAssets(cardsToSave)
+        await ipc.invoke('db:character-save-all', merged)
       }
       callbacks.log(`✅ 已生成 ${createdCount} 张角色卡`)
     }

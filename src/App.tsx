@@ -19,6 +19,7 @@ import BottomPanel from './components/panels/BottomPanel'
 import NewProjectDialog from './components/dialogs/NewProjectDialog'
 import ImportNovelDialog from './components/dialogs/ImportNovelDialog'
 import ChapterCreationDialog from './components/dialogs/ChapterCreationDialog'
+import BatchGenerateDialog from './components/dialogs/BatchGenerateDialog'
 import ExportDialog from './components/dialogs/ExportDialog'
 import SettingsModal from './components/settings/SettingsModal'
 import { ErrorBoundary } from './components/ErrorBoundary'
@@ -45,6 +46,8 @@ export default function App() {
   const chapterCreationOpen = useLayoutStore(s => s.chapterCreationOpen)
   const chapterCreationPrefill = useLayoutStore(s => s.chapterCreationPrefill)
   const closeChapterCreation = useLayoutStore(s => s.closeChapterCreation)
+  const batchGenerateOpen = useLayoutStore(s => s.batchGenerateOpen)
+  const closeBatchGenerate = useLayoutStore(s => s.closeBatchGenerate)
   const initLLM = useLLMStore((s) => s.init)
   const loadRecentProjects = useProjectStore((s) => s.loadRecentProjects)
 
@@ -192,6 +195,10 @@ export default function App() {
         isOpen={chapterCreationOpen}
         prefill={chapterCreationPrefill}
         onClose={closeChapterCreation}
+      />
+      <BatchGenerateDialog
+        isOpen={batchGenerateOpen}
+        onClose={closeBatchGenerate}
       />
       <ExportDialog
         isOpen={exportOpen}

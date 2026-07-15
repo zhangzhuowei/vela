@@ -258,6 +258,18 @@ export const useWorkflowStore = create<WorkflowState>()((set, get) => ({
       get().addLog('info', `▶ [${definition.title}] 执行步骤: ${stepDef.name}`)
 
       // 创建步骤回调
+      // 流式文本节流：累积 chunk，最多每 120ms 刷一次 store，避免推理模型（R1 等）
+      // 逐 token 触发 Zustand set + 全量重渲染，导致主线程卡顿、UI 点不动。
+      let streamAccumulated = ''
+      let streamPending = ''
+      let streamFlushTimer: ReturnType<typeof setTimeout> | null = null
+      const flushStream = () => {
+        streamFlushTimer = null
+        if (!streamPending) return
+        streamAccumulated += streamPending
+        streamPending = ''
+        updateStepById(set, run.id, i, { result: streamAccumulated })
+      }
       const callbacks: StepCallbacks = {
         log: (message) => {
           appendStepLogById(set, run.id, i, message)
@@ -267,16 +279,16 @@ export const useWorkflowStore = create<WorkflowState>()((set, get) => ({
           updateStepById(set, run.id, i, { progress })
         },
         appendText: (text) => {
-          const activeRun = get().activeRuns.find(r => r.id === run.id)
-          if (activeRun) {
-            const step = activeRun.steps[i]
-            updateStepById(set, run.id, i, { result: (step.result || '') + text })
-          }
+          streamPending += text
+          if (!streamFlushTimer) streamFlushTimer = setTimeout(flushStream, 120)
         },
       }
 
       try {
         const result = await stepDef.executor(run.steps[i], context, callbacks)
+        // 步骤结束：冲刷残余流式文本
+        if (streamFlushTimer) { clearTimeout(streamFlushTimer); streamFlushTimer = null }
+        flushStream()
         updateStepById(set, run.id, i, {
           status: 'completed',
           completedAt: new Date().toISOString(),
@@ -298,6 +310,8 @@ export const useWorkflowStore = create<WorkflowState>()((set, get) => ({
           updateRunById(set, run.id, { status: 'running' })
         }
       } catch (error) {
+        if (streamFlushTimer) { clearTimeout(streamFlushTimer); streamFlushTimer = null }
+        flushStream()
         const errorMsg = error instanceof Error ? error.message : String(error)
         updateStepById(set, run.id, i, {
           status: 'failed',

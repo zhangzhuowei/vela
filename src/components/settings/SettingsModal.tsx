@@ -2,6 +2,7 @@ import { useState, useEffect, useRef } from 'react'
 import {
   X, Plus, Trash2, Check, Save, Globe, Cpu, Database,
   Type, Settings2, Zap, Eye, EyeOff, ChevronDown, MessageSquare,
+  Image as ImageIcon,
 } from 'lucide-react'
 import PromptSettings from './PromptSettings'
 import { useLLMStore } from '../../stores/llm-store'
@@ -25,7 +26,7 @@ import wechatImg from '/buyme/wechat.jpg?url'
 
 // ==================== 分类定义 ====================
 
-type SettingsSection = 'llm' | 'embedding' | 'proxy' | 'editor' | 'prompts' | 'about'
+type SettingsSection = 'llm' | 'embedding' | 'image' | 'proxy' | 'editor' | 'prompts' | 'about'
 
 interface SectionItem {
   id: SettingsSection
@@ -37,6 +38,7 @@ interface SectionItem {
 const SECTIONS: SectionItem[] = [
   { id: 'llm', label: 'AI 生成模型', icon: <Cpu size={16} />, description: '配置用于文章生成、改写、摘要的语言模型' },
   { id: 'embedding', label: '向量模型', icon: <Database size={16} />, description: '配置用于知识库检索的 Embedding 模型' },
+  { id: 'image', label: '文生图模型', icon: <ImageIcon size={16} />, description: '配置用于生成封面、角色人设图的文生图模型' },
   { id: 'proxy', label: '网络代理', icon: <Globe size={16} />, description: '配置 HTTP / SOCKS5 代理，用于访问受限 API' },
   { id: 'editor', label: '编辑器', icon: <Type size={16} />, description: '字体大小、自动保存等编辑器偏好设置' },
   { id: 'prompts', label: '提示词模板', icon: <MessageSquare size={16} />, description: '自定义 AI 创作各环节使用的提示词模板' },
@@ -130,6 +132,7 @@ export default function SettingsModal({ open, onClose }: SettingsModalProps) {
           <div className="flex-1 overflow-y-auto px-6 py-5">
             {section === 'llm' && <LLMSection purposes={['generation', 'refinement', 'summary']} purposeLabel="生成模型" />}
             {section === 'embedding' && <LLMSection purposes={['embedding']} purposeLabel="向量模型" />}
+            {section === 'image' && <LLMSection purposes={['image']} purposeLabel="文生图模型" />}
             {section === 'proxy' && <ProxySection />}
             {section === 'editor' && <EditorSection />}
             {section === 'prompts' && <PromptSettings />}
@@ -159,6 +162,8 @@ function LLMSection({
   const deleteModel = useLLMStore(s => s.deleteModel)
   const setDefaultModel = useLLMStore(s => s.setDefaultModel)
   const setDefaultEmbeddingModel = useLLMStore(s => s.setDefaultEmbeddingModel)
+  const defaultImageModelId = useLLMStore(s => s.defaultImageModelId)
+  const setDefaultImageModel = useLLMStore(s => s.setDefaultImageModel)
   const [editingModel, setEditingModel] = useState<ModelProfile | null>(null)
   const [saving, setSaving] = useState(false)
   useEffect(() => {
@@ -173,18 +178,34 @@ function LLMSection({
     m.purposes?.some((p) => purposes.includes(p as ModelProfile['purposes'][number]))
   )
 
+  // 当前分区类别：生成 / 向量 / 文生图（决定默认模型的读写目标）
+  const category: 'generation' | 'embedding' | 'image' =
+    purposes.includes('embedding') ? 'embedding' : purposes.includes('image') ? 'image' : 'generation'
+  const currentDefaultId = category === 'embedding'
+    ? defaultEmbeddingModelId
+    : category === 'image'
+      ? defaultImageModelId
+      : defaultModelId
+  const setDefaultForCategory = (id: string) => {
+    if (category === 'embedding') setDefaultEmbeddingModel(id)
+    else if (category === 'image') setDefaultImageModel(id)
+    else setDefaultModel(id)
+  }
+
   /** 创建新模型，使用预设中 openai 的默认属性 */
   const handleAdd = () => {
-    const isEmbedding = purposes.includes('embedding')
     const openaiPreset = presets.find((p) => p.provider === 'openai') ?? presets[0]
+    const defaultModelName = category === 'embedding'
+      ? (openaiPreset?.embeddingModels[0] ?? 'text-embedding-3-small')
+      : category === 'image'
+        ? (openaiPreset?.imageModels?.[0] ?? 'gpt-image-1')
+        : (openaiPreset?.models[0]?.name ?? 'gpt-4o')
     setEditingModel({
       id: randomUUID(),
       name: '',
       provider: 'openai',
       protocol: (openaiPreset?.protocol ?? 'openai') as 'openai' | 'gemini',
-      modelName: isEmbedding
-        ? (openaiPreset?.embeddingModels[0] ?? 'text-embedding-3-small')
-        : (openaiPreset?.models[0]?.name ?? 'gpt-4o'),
+      modelName: defaultModelName,
       apiKey: '',
       baseUrl: openaiPreset?.baseUrl ?? 'https://api.openai.com',
       temperature: 0.7,
@@ -192,8 +213,6 @@ function LLMSection({
       purposes: [...purposes],
     })
   }
-
-  const isEmbeddingSection = purposes.includes('embedding')
 
   /** 保存模型；若是该分类第一个则自动设为默认 */
   const handleSave = async () => {
@@ -203,11 +222,7 @@ function LLMSection({
     // 新增模型后，如果该分类还没有默认则自动设为默认
     const countBefore = filtered.length
     if (countBefore === 0) {
-      if (isEmbeddingSection) {
-        setDefaultEmbeddingModel(editingModel.id)
-      } else {
-        setDefaultModel(editingModel.id)
-      }
+      setDefaultForCategory(editingModel.id)
     }
     setEditingModel(null)
     setSaving(false)
@@ -262,12 +277,8 @@ function LLMSection({
                 <ModelCard
                   key={model.id}
                   model={model}
-                  isDefault={isEmbeddingSection
-                    ? defaultEmbeddingModelId === model.id
-                    : defaultModelId === model.id}
-                  onSetDefault={() => isEmbeddingSection
-                    ? setDefaultEmbeddingModel(model.id)
-                    : setDefaultModel(model.id)}
+                  isDefault={currentDefaultId === model.id}
+                  onSetDefault={() => setDefaultForCategory(model.id)}
                   onEdit={() => setEditingModel({ ...model })}
                   onDelete={() => deleteModel(model.id)}
                 />
@@ -376,17 +387,20 @@ function ModelForm({
   const [customModelName, setCustomModelName] = useState(false)
 
   const [testing, setTesting] = useState(false)
-  const [testResult, setTestResult] = useState<{ success: boolean, error?: string } | null>(null)
+  const [testResult, setTestResult] = useState<{ success: boolean, error?: string, dimension?: number } | null>(null)
   const testConnection = useLLMStore(s => s.testConnection)
 
   const isEmbedding = model.purposes?.includes('embedding')
+  const isImage = model.purposes?.includes('image')
   // 将预设数组转换为以 provider 为键的 Map 方便查找
   const presetMap = new Map(presets.map((p) => [p.provider, p]))
   const preset = presetMap.get(model.provider)
-  // 生成模型列表为 ModelPreset[]，embedding 模型为 string列表转换过来的 ModelPreset
+  // 生成模型列表为 ModelPreset[]，embedding / image 模型为 string 列表转换过来的 ModelPreset
   const presetModels: import('../../shared/provider-presets').ModelPreset[] = isEmbedding
     ? (preset?.embeddingModels ?? []).map((name) => ({ name, maxTokens: 0 }))
-    : (preset?.models ?? [])
+    : isImage
+      ? (preset?.imageModels ?? []).map((name) => ({ name, maxTokens: 0 }))
+      : (preset?.models ?? [])
 
   /** 更新单个字段 */
   const up = <K extends keyof ModelProfile>(key: K, val: ModelProfile[K]) =>
@@ -398,10 +412,12 @@ function ModelForm({
    */
   const handleProviderChange = (provider: ModelProfile['provider']) => {
     const p = presetMap.get(provider)
-    const firstModel = isEmbedding ? null : (p?.models[0] ?? null)
+    const firstModel = (isEmbedding || isImage) ? null : (p?.models[0] ?? null)
     const defaultModelName = isEmbedding
       ? (p?.embeddingModels[0] ?? '')
-      : (firstModel?.name ?? '')
+      : isImage
+        ? (p?.imageModels?.[0] ?? '')
+        : (firstModel?.name ?? '')
     setCustomModelName(false)
     onChange({
       ...model,
@@ -536,7 +552,7 @@ function ModelForm({
             <Input
               value={model.modelName}
               onChange={(e) => up('modelName', e.target.value)}
-              placeholder={isEmbedding ? 'text-embedding-3-small' : 'gpt-4o'}
+              placeholder={isImage ? 'Kwai-Kolors/Kolors' : isEmbedding ? 'text-embedding-3-small' : 'gpt-4o'}
               autoFocus={customModelName}
             />
           </div>
@@ -580,7 +596,7 @@ function ModelForm({
       </div>
 
       {/* 温度 / Token（仅生成模型） */}
-      {!isEmbedding && (
+      {!isEmbedding && !isImage && (
         <div className="grid grid-cols-2 gap-3">
           <div>
             <Label>温度 (Temperature)</Label>
@@ -610,14 +626,16 @@ function ModelForm({
       )}
 
       <div className="flex items-center gap-2 pt-1">
-        <Button
-          variant="outline"
-          onClick={handleTest}
-          disabled={testing || !model.baseUrl || (!model.apiKey && model.provider !== 'ollama')}
-        >
-          <Zap size={13} />
-          {testing ? '测试中...' : '测试连接'}
-        </Button>
+        {!isImage && (
+          <Button
+            variant="outline"
+            onClick={handleTest}
+            disabled={testing || !model.baseUrl || (!model.apiKey && model.provider !== 'ollama')}
+          >
+            <Zap size={13} />
+            {testing ? '测试中...' : '测试连接'}
+          </Button>
+        )}
         <Button
           className="flex-1"
           onClick={onSave}
@@ -630,7 +648,9 @@ function ModelForm({
       </div>
       {testResult && (
         <div className={`text-xs p-2 rounded ${testResult.success ? 'bg-green-500/10 text-green-500 border border-green-500/20' : 'bg-red-500/10 text-red-500 border border-red-500/20'} break-all`}>
-          {testResult.success ? '✅ 连接成功！' : `❌ 连接失败: ${testResult.error}`}
+          {testResult.success
+            ? `✅ 连接成功！${testResult.dimension ? ` 向量维度 ${testResult.dimension}` : ''}`
+            : `❌ 连接失败: ${testResult.error}`}
         </div>
       )}
     </div>

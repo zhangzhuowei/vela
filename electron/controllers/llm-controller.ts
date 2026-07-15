@@ -156,26 +156,45 @@ export function registerLLMController() {
     return config.defaultEmbeddingModelId ?? null
   })
 
+  ipcMain.handle('llm:set-default-image-model', async (_event, modelId: string | null) => {
+    try {
+      const config = readJsonFile<GlobalConfig>(GLOBAL_CONFIG_PATH, DEFAULT_GLOBAL_CONFIG)
+      config.defaultImageModelId = modelId
+      writeJsonFile(GLOBAL_CONFIG_PATH, config)
+      return { success: true }
+    } catch (error) {
+      return { success: false, error: String(error) }
+    }
+  })
+
+  ipcMain.handle('llm:get-default-image-model', async () => {
+    const config = readJsonFile<GlobalConfig>(GLOBAL_CONFIG_PATH, DEFAULT_GLOBAL_CONFIG)
+    return config.defaultImageModelId ?? null
+  })
+
   ipcMain.handle('llm:test-connection', async (_event, model: ModelProfile) => {
     try {
       applyProxyConfig()
-      
-      const messages = [{ role: 'user', content: 'Say "hello" and nothing else.' }]
-      const provider = LLMFactory.getProvider(model)
-      
-      let result = { success: true, error: undefined as undefined | string }
+
+      // Embedding 模型：调用嵌入接口，并返回实际输出维度（便于用户确认配置）
       if (model.purposes?.includes('embedding')) {
         const { generateEmbeddings } = await import('../embedding')
-        await generateEmbeddings(['hello'], model.protocol, model)
-      } else {
-        const res = await provider.generate(model, messages, {
-          temperature: 0.7,
-          maxTokens: 10,
-        })
-        result = { success: res.success, error: res.error }
+        const vectors = await generateEmbeddings(['hello'], model.protocol, model)
+        const dimension = vectors?.[0]?.length
+        if (!dimension) {
+          return { success: false, error: 'Embedding 接口返回为空，未获取到向量' }
+        }
+        return { success: true, dimension }
       }
-      
-      return { success: result.success, error: result.error }
+
+      // 生成模型：发一条极短的聊天请求探活
+      const messages = [{ role: 'user', content: 'Say "hello" and nothing else.' }]
+      const provider = LLMFactory.getProvider(model)
+      const res = await provider.generate(model, messages, {
+        temperature: 0.7,
+        maxTokens: 10,
+      })
+      return { success: res.success, error: res.error }
     } catch (error) {
       return { success: false, error: String(error) }
     }

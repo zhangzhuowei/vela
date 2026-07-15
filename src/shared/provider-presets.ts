@@ -23,6 +23,8 @@ export interface ProviderPreset {
   models: ModelPreset[]
   /** 支持的向量模型列表（embedding 模型不需要 maxTokens） */
   embeddingModels: string[]
+  /** 支持的文生图模型列表（可选；缺省视为空） */
+  imageModels?: string[]
 }
 
 /** 内置默认预设（首次启动时写入持久化文件） */
@@ -39,6 +41,7 @@ export const BUILTIN_PRESETS: ProviderPreset[] = [
       { name: 'gpt-3.5-turbo', maxTokens: 4096 }
     ],
     embeddingModels: ['text-embedding-3-small', 'text-embedding-3-large', 'text-embedding-ada-002'],
+    imageModels: ['gpt-image-1', 'dall-e-3'],
   },
   {
     provider: 'deepseek',
@@ -67,6 +70,7 @@ export const BUILTIN_PRESETS: ProviderPreset[] = [
       { name: 'glm-5', maxTokens: 65536 },
     ],
     embeddingModels: ['embedding-3'],
+    imageModels: ['cogview-4', 'cogview-3-flash'],
   },
   {
     provider: 'gemini',

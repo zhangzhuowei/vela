@@ -27,6 +27,8 @@ export function initProjectDatabase(projectPath: string): void {
 
   // 创建表结构
   createTables(projectDb)
+  // 增量列迁移（对旧项目库补齐新列）
+  migrateSchema(projectDb)
   console.log(`[Vela DB] 项目数据库已打开: ${dbPath}`)
 }
 
@@ -41,6 +43,28 @@ export function closeProjectDatabase(): void {
 /** 获取当前数据库实例 */
 export function getProjectDb(): BetterSqlite3.Database | null {
   return projectDb
+}
+
+/**
+ * 增量列迁移：对已存在的旧项目库补齐后加的列。
+ * SQLite 的 CREATE TABLE IF NOT EXISTS 不会给已存在的表加列，故用 ALTER 补。
+ */
+function migrateSchema(db: BetterSqlite3.Database) {
+  const addColumnIfMissing = (table: string, column: string, ddl: string) => {
+    try {
+      const cols = db.prepare(`PRAGMA table_info(${table})`).all() as Array<{ name: string }>
+      if (!cols.some((c) => c.name === column)) {
+        db.exec(`ALTER TABLE ${table} ADD COLUMN ${ddl}`)
+        console.log(`[Vela DB] 迁移：为 ${table} 补列 ${column}`)
+      }
+    } catch (e) {
+      console.warn(`[Vela DB] 迁移 ${table}.${column} 失败:`, e)
+    }
+  }
+  addColumnIfMissing('characters', 'speech_style', `speech_style TEXT DEFAULT ''`)
+  addColumnIfMissing('characters', 'cs_known_info', `cs_known_info TEXT DEFAULT ''`)
+  addColumnIfMissing('characters', 'portrait_path', `portrait_path TEXT DEFAULT ''`)
+  addColumnIfMissing('project_core', 'style_reference', `style_reference TEXT DEFAULT ''`)
 }
 
 /** 创建完整表结构（9 张核心表 + 2 张沿用表） */
@@ -110,16 +134,32 @@ function createTables(db: BetterSqlite3.Database) {
       relationships TEXT DEFAULT '',              -- 关系链
       arc TEXT DEFAULT '',                        -- 弧光
       notes TEXT DEFAULT '',                      -- 备忘录
+      speech_style TEXT DEFAULT '',               -- 说话风格/口癖（对白一致性）
+      portrait_path TEXT DEFAULT '',              -- 人设图本地路径（文生图生成）
       cs_location TEXT DEFAULT '',                -- 当前位置
       cs_power_level TEXT DEFAULT '',             -- 修为境界
       cs_physical_state TEXT DEFAULT '',          -- 身体状态
       cs_mental_state TEXT DEFAULT '',            -- 心理状态
       cs_key_items TEXT DEFAULT '',               -- 关键道具
       cs_recent_events TEXT DEFAULT '',           -- 最近事件
+      cs_known_info TEXT DEFAULT '',              -- 已知信息（信息差/防穿帮追踪，累积维护）
       cs_updated_at_chapter INTEGER DEFAULT 0,    -- 状态更新于第几章
       created_at TEXT DEFAULT (datetime('now')),
       updated_at TEXT DEFAULT (datetime('now'))
     );
+
+    -- ============================================================
+    -- 3b. chapter_images — 章节配图（题图 header / 场景插图 scene）
+    -- ============================================================
+    CREATE TABLE IF NOT EXISTS chapter_images (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      chapter_number INTEGER NOT NULL,            -- 归属章节
+      kind TEXT NOT NULL DEFAULT 'scene',         -- header（题图，每章一张） | scene（场景插图，可多张）
+      path TEXT NOT NULL DEFAULT '',              -- 本地图片路径（.vela/images/）
+      prompt TEXT DEFAULT '',                     -- 生成用提示词
+      created_at TEXT DEFAULT (datetime('now'))
+    );
+    CREATE INDEX IF NOT EXISTS idx_chapter_images_chapter ON chapter_images(chapter_number);
 
     -- ============================================================
     -- 4. contents — 文本内容池（正文与元数据分离）
@@ -238,6 +278,22 @@ function createTables(db: BetterSqlite3.Database) {
       character_states TEXT DEFAULT '',
       created_at TEXT DEFAULT (datetime('now'))
     );
+
+    -- ============================================================
+    -- 10. foreshadowings — 伏笔/线索台账（埋设→回收 追踪）
+    -- ============================================================
+    CREATE TABLE IF NOT EXISTS foreshadowings (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      content TEXT NOT NULL DEFAULT '',           -- 伏笔内容描述
+      planted_chapter INTEGER NOT NULL,           -- 埋设章节
+      expected_chapter INTEGER,                   -- 预期回收章节（可空）
+      status TEXT DEFAULT 'open',                 -- open/paid/abandoned
+      paid_chapter INTEGER,                       -- 实际回收章节（可空）
+      notes TEXT DEFAULT '',
+      created_at TEXT DEFAULT (datetime('now')),
+      updated_at TEXT DEFAULT (datetime('now'))
+    );
+    CREATE INDEX IF NOT EXISTS idx_foreshadow_status ON foreshadowings(status);
 
     -- 索引
     CREATE INDEX IF NOT EXISTS idx_llm_calls_time ON llm_calls(created_at);

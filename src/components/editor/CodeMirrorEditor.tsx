@@ -26,10 +26,10 @@ export type CodeMirrorEditorProps = {
 }
 
 const AI_ACTIONS = [
-  { key: 'refine', label: '润色', color: 'text-blue-400', prompt: '润色这部分，使其更具文学感和感染力。' },
-  { key: 'expand', label: '扩写', color: 'text-amber-400', prompt: '扩写这部分，增加更多细节描写和环境烘托。' },
-  { key: 'continue', label: '续写', color: 'text-purple-400', prompt: '根据上下文，合理续写接下来的情节。' },
-  { key: 'dialogue', label: '对话', color: 'text-emerald-400', prompt: '将这部分改写为更生动传神的对话形式。' },
+  { key: 'refine', label: '润色', color: 'text-blue-400', prompt: '在保持原意、篇幅相近的前提下润色这段文字，提升文学性、节奏与画面感。不要扩大篇幅，不要添加原文没有的情节或设定。' },
+  { key: 'expand', label: '扩写', color: 'text-amber-400', prompt: '扩写这段文字：补充视觉、听觉、触觉、嗅觉等感官细节，环境氛围烘托，以及人物的神态与细微动作，让画面更立体可感。只把已有的这一刻写得更细致，不要推进新剧情、不要改变已经发生的事实。' },
+  { key: 'continue', label: '续写', color: 'text-purple-400', prompt: '承接上文的语气、人称与节奏，合理续写接下来的一小段情节，结尾自然留出继续的余地。' },
+  { key: 'dialogue', label: '对话', color: 'text-emerald-400', prompt: '将这段改写为更生动传神的对话形式：贴合各角色的身份与说话风格，用对话配合神态、动作推进，减少平铺直叙的旁白。' },
 ]
 
 export default function CodeMirrorEditor({
@@ -68,6 +68,7 @@ export default function CodeMirrorEditor({
   const [bubblePos, setBubblePos] = useState({ top: 0, left: 0 })
   const [aiResult, setAiResult] = useState<string | null>(null)
   const [activeAIAction, setActiveAIAction] = useState<string | null>(null)
+  const [activeActionKey, setActiveActionKey] = useState<string | null>(null)
   const [loadingDots, setLoadingDots] = useState('.')
   const [selectionRange, setSelectionRange] = useState<{ from: number, to: number } | null>(null)
 
@@ -249,18 +250,50 @@ export default function CodeMirrorEditor({
     try {
       if (!selectionRange || !editorRef.current?.view) return
       const view = editorRef.current.view
-      const selectedText = view.state.sliceDoc(selectionRange.from, selectionRange.to)
+      const docText = view.state.doc.toString()
+      const { from, to } = selectionRange
+      const selectedText = view.state.sliceDoc(from, to)
+      // 取选区前后文，供 AI 衔接语气/时态/既定事实（不重复输出）
+      const before = docText.slice(Math.max(0, from - 600), from)
+      const after = docText.slice(to, Math.min(docText.length, to + 400))
+
+      // 文风上下文：若打开的是小说项目，注入「文风要求」与「文风指纹」以贴合作者风格
+      let styleGuidance = ''
+      try {
+        const { useProjectStore } = await import('../../stores/project-store')
+        const cfg = useProjectStore.getState().currentProject?.novelConfig
+        const parts: string[] = []
+        if (cfg?.writingStyle?.trim()) parts.push(`【文风要求】\n${cfg.writingStyle.trim().slice(0, 500)}`)
+        if (cfg?.styleReference?.trim()) parts.push(`【作者文风指纹】\n${cfg.styleReference.trim().slice(0, 800)}`)
+        if (parts.length) styleGuidance = parts.join('\n\n')
+      } catch { /* 非小说项目或无项目，忽略 */ }
 
       const { useLLMStore } = await import('../../stores/llm-store')
 
       // 初始化流式内容
       setActiveAIAction(AI_ACTIONS.find(a => a.key === _actionKey)?.label || 'AI')
+      setActiveActionKey(_actionKey)
       setAiResult('')
+
+      const systemPrompt = [
+        '你是一位顶尖的中文小说编辑。只处理【待处理文本】，并只返回处理后的正文本身，不要任何解释、标题或前后缀。',
+        '硬性要求：',
+        '- 纯文本输出，禁止使用任何 Markdown 符号；对话使用中文双引号；段落之间保留一个空行。',
+        '- 与上下文保持一致的人称、时态、语气与既定事实，不得与上下文冲突。',
+        '- 反 AI 腔：禁止段尾升华总结句；"仿佛/犹如/宛如"合计不超过 2 次；不堆砌空洞排比与情绪解说，多用具体的动作、细节与对话。',
+        styleGuidance ? `请贴合以下文风：\n${styleGuidance}` : '',
+      ].filter(Boolean).join('\n')
+
+      const userContent =
+        `要求：${prompt}\n\n` +
+        `【上文（仅供衔接参考，不要重复输出）】\n${before || '（无）'}\n\n` +
+        `【待处理文本（只处理并返回这一部分）】\n${selectedText}\n\n` +
+        `【下文（仅供衔接参考，不要重复输出）】\n${after || '（无）'}`
 
       await useLLMStore.getState().generateStream(
         [
-          { role: 'system', content: '你是一个专业的小说编辑，请根据要求对文本进行处理，只返回处理后的文本，不要有任何解释。' },
-          { role: 'user', content: `要求：${prompt}\n\n文本：\n${selectedText}` },
+          { role: 'system', content: systemPrompt },
+          { role: 'user', content: userContent },
         ],
         {
           onChunk: (chunk) => {
@@ -280,16 +313,27 @@ export default function CodeMirrorEditor({
   const handleAcceptAI = () => {
     if (selectionRange && aiResult && editorRef.current?.view) {
       const view = editorRef.current.view
-      view.dispatch({
-        changes: { from: selectionRange.from, to: selectionRange.to, insert: aiResult }
-      })
+      if (activeActionKey === 'continue') {
+        // 续写：保留原选区，在其后追加生成内容（不替换锚点）
+        view.dispatch({
+          changes: { from: selectionRange.to, to: selectionRange.to, insert: '\n\n' + aiResult },
+          selection: { anchor: selectionRange.to + 2 + aiResult.length },
+        })
+      } else {
+        // 润色/扩写/对话：替换选区
+        view.dispatch({
+          changes: { from: selectionRange.from, to: selectionRange.to, insert: aiResult }
+        })
+      }
     }
     setAiResult(null)
+    setActiveActionKey(null)
     setBubbleOpen(false)
   }
 
   const handleRejectAI = () => {
     setAiResult(null)
+    setActiveActionKey(null)
     setBubbleOpen(false)
   }
 

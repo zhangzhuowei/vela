@@ -144,9 +144,39 @@ export class ChapterPromptBuilder extends BasePromptBuilder {
     return this;
   }
 
+  /** 去AI味清洗强度（轻/中/重） */
+  withIntensity(intensity: string) {
+    this.variables.intensity = intensity;
+    return this;
+  }
+
   /** 用户指定的知识库检索关键词（追加到向量搜索 query） */
   withKnowledgeQueryHint(hint: string) {
     this.variables.knowledge_query_hint = hint;
+    return this;
+  }
+
+  /** 未回收伏笔清单（注入写稿 Prompt） */
+  withForeshadowing(text: string) {
+    this.variables.foreshadowing = text;
+    return this;
+  }
+
+  /** 近期章节开场/断章速览（用于跨章反雷同） */
+  withAntiRepetition(text: string) {
+    this.variables.anti_repetition = text;
+    return this;
+  }
+
+  /** 出场角色说话风格/口癖（用于对白一致性） */
+  withCharacterVoices(text: string) {
+    this.variables.character_voices = text;
+    return this;
+  }
+
+  /** 作者文风指纹（从样章提炼，用于文笔向作者靠拢） */
+  withStyleReference(text: string) {
+    this.variables.style_reference = text;
     return this;
   }
 }
@@ -180,6 +210,12 @@ export class ReviewPromptBuilder extends BasePromptBuilder {
     this.variables.review_focus = focus;
     return this;
   }
+
+  /** 已知未回收伏笔清单（供审稿核对伏笔完整性） */
+  withForeshadowing(text: string) {
+    this.variables.foreshadowing = text;
+    return this;
+  }
 }
 
 /**
@@ -203,6 +239,14 @@ export class PostProcessPromptBuilder extends BasePromptBuilder {
 
   withExistingCardsJson(json: string | object) {
     this.variables.existing_cards_json = typeof json === 'string'
+      ? json
+      : JSON.stringify(json, null, 2);
+    return this;
+  }
+
+  /** 当前未回收伏笔清单 JSON（供伏笔抽取识别回收） */
+  withOpenForeshadowings(json: string | object) {
+    this.variables.open_foreshadowings = typeof json === 'string'
       ? json
       : JSON.stringify(json, null, 2);
     return this;

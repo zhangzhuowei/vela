@@ -18,16 +18,108 @@ export abstract class BaseWorkflowCommand<TResult = string> {
   /** 抽象执行入口 */
   abstract execute(params: CommandExecuteParams): Promise<TResult>
 
-  /** 获取 LLM 大模型连接代理（支持取消） */
+  /** 单次 LLM 调用的重试上限（不含首次） */
+  protected maxLLMRetries = 2
+
+  /**
+   * 调用 LLM（带瞬时错误自动重试）。
+   * - 对 503/429/超时/服务器繁忙/网络抖动等可恢复错误做指数退避重试；
+   * - 对用户取消、鉴权错误（401/403）、其他不可恢复错误立即抛出。
+   * 签名与行为对外保持不变，所有子命令自动获益。
+   */
   protected async callLLM(
-    prompt: string, 
-    systemPrompt: string, 
+    prompt: string,
+    systemPrompt: string,
     callbacks: StepCallbacks,
     options?: { responseFormat?: { type: string }; thinking?: boolean },
-    context?: WorkflowContext
+    context?: WorkflowContext,
+    primaryModelId?: string
+  ): Promise<string> {
+    const chain = this.buildModelChain(primaryModelId)
+    let lastErr: unknown
+
+    for (let ci = 0; ci < chain.length; ci++) {
+      const modelId = chain[ci]
+      if (ci > 0) callbacks.log(`↩️ 上一模型持续失败，改用备用模型：${this.modelLabel(modelId)}`)
+
+      for (let attempt = 0; attempt <= this.maxLLMRetries; attempt++) {
+        if (context?.cancelled) throw new Error('工作流已取消')
+        try {
+          return await this.invokeLLMStreamOnce(prompt, systemPrompt, callbacks, options, context, modelId)
+        } catch (e) {
+          lastErr = e
+          const msg = e instanceof Error ? e.message : String(e)
+          // 用户取消 → 立即中止整个链
+          if (msg.includes('取消')) throw e
+          const retriable = this.isRetriableError(msg)
+          const auth = this.isAuthError(msg)
+          // 不可恢复且非鉴权错误（如 400/解析错误）→ 换模型也无意义，直接抛
+          if (!retriable && !auth) throw e
+          // 可恢复错误且还有重试机会 → 退避后重试同一模型
+          if (retriable && attempt < this.maxLLMRetries) {
+            const waitMs = 1500 * (attempt + 1)
+            callbacks.log(`⚠️ LLM 调用失败：${msg}；${Math.round(waitMs / 1000)}s 后重试 (${attempt + 1}/${this.maxLLMRetries})...`)
+            await new Promise((r) => setTimeout(r, waitMs))
+            continue
+          }
+          // 重试用尽（或鉴权错误）→ 跳出，尝试链中下一个备用模型
+          break
+        }
+      }
+    }
+    throw lastErr instanceof Error ? lastErr : new Error(String(lastErr))
+  }
+
+  /**
+   * 构造模型尝试链：主模型在前（primary 指定则用它，否则用默认模型——
+   * 用 undefined 让 generateStream 走默认，保持原行为）；其余已配置生成模型作为备用，
+   * 备用中优先不同 base_url（不同服务商），以规避"同一家服务商同时繁忙/故障"。
+   */
+  private buildModelChain(primary?: string): Array<string | undefined> {
+    const llmStore = useLLMStore.getState()
+    // 主模型槽：指定了 primary 就用它，否则 undefined（=走默认模型）
+    const chain: Array<string | undefined> = [primary]
+    const models = llmStore.models
+    if (models.length <= 1) return chain
+    // 用于"排除自身 + 优选不同服务商"的基准：primary 或默认模型
+    const primaryId = primary ?? llmStore.defaultModelId ?? undefined
+    const primaryBase = primaryId ? models.find((m) => m.id === primaryId)?.baseUrl ?? '' : ''
+    const others = models.filter((m) => m.id !== primaryId)
+    const diffProvider = others.filter((m) => m.baseUrl !== primaryBase)
+    const sameProvider = others.filter((m) => m.baseUrl === primaryBase)
+    for (const m of [...diffProvider, ...sameProvider]) chain.push(m.id)
+    return chain
+  }
+
+  /** 模型可读名（用于日志） */
+  private modelLabel(modelId?: string): string {
+    if (!modelId) return '默认模型'
+    const m = useLLMStore.getState().models.find((x) => x.id === modelId)
+    return m ? m.name : modelId
+  }
+
+  /** 可重试的瞬时错误：限流 / 服务器繁忙 / 超时 / 网络抖动 / 空响应 */
+  protected isRetriableError(msg: string): boolean {
+    return /\b(429|500|502|503|504)\b/.test(msg)
+      || /too busy|busy now|timeout|timed out|rate.?limit|overload|ECONN|ETIMEDOUT|socket hang up|network|服务器繁忙|请求过于频繁|流式生成失败/i.test(msg)
+  }
+
+  /** 鉴权 / 权限错误：不应重试 */
+  protected isAuthError(msg: string): boolean {
+    return /\b(401|403)\b/.test(msg) || /unauthorized|invalid api key|forbidden|无效的?\s*api|鉴权失败/i.test(msg)
+  }
+
+  /** 获取 LLM 大模型连接代理（支持取消）— 单次调用，不含重试。modelId 为空时走默认模型 */
+  private async invokeLLMStreamOnce(
+    prompt: string,
+    systemPrompt: string,
+    callbacks: StepCallbacks,
+    options?: { responseFormat?: { type: string }; thinking?: boolean },
+    context?: WorkflowContext,
+    modelId?: string
   ): Promise<string> {
     const llmStore = useLLMStore.getState()
-    if (!llmStore.defaultModelId) throw new Error('未配置默认 AI 模型')
+    if (!modelId && !llmStore.defaultModelId) throw new Error('未配置默认 AI 模型')
 
     callbacks.setProgress(10)
 
@@ -84,7 +176,7 @@ export abstract class BaseWorkflowCommand<TResult = string> {
             reject(new Error(err || '流式生成失败'))
           }
         },
-        undefined,
+        modelId,
         options
       ).then(reqId => {
         streamRequestId = reqId
@@ -109,9 +201,10 @@ export abstract class BaseWorkflowCommand<TResult = string> {
     builder: BasePromptBuilder,
     callbacks: StepCallbacks,
     options?: { responseFormat?: { type: string }; thinking?: boolean },
-    context?: WorkflowContext
+    context?: WorkflowContext,
+    primaryModelId?: string
   ): Promise<string> {
-    return this.callLLM(builder.build(), builder.getSystemRole(), callbacks, options, context)
+    return this.callLLM(builder.build(), builder.getSystemRole(), callbacks, options, context, primaryModelId)
   }
 
   /**

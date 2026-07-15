@@ -1,11 +1,12 @@
 import { useState, useRef, useEffect, useCallback } from 'react'
-import { Sparkles, Search, BadgeCheck, Save, FileStack, FileText, Wrench } from 'lucide-react'
+import { Sparkles, Search, BadgeCheck, Save, FileStack, FileText, Wrench, RefreshCw, Wand2, Image as ImageIcon } from 'lucide-react'
 
 import { useProjectStore } from '../../stores/project-store'
 import { useEditorStore } from '../../stores/editor-store'
 import { useWorkflowStore } from '../../stores/workflow-store'
 import CodeMirrorEditor from './CodeMirrorEditor'
 import ThreeWayMerge from './ThreeWayMerge'
+import ChapterImagesPanel from './ChapterImagesPanel'
 import { Button } from '../ui/Button'
 import { toast } from '../ui/Toast'
 import { confirm } from '../ui/Confirm'
@@ -91,7 +92,7 @@ export default function DraftEditor({ filePath, content }: Props) {
   const isChapterBusy = !!activeChapterRun
 
   const [saving, setSaving] = useState(false)
-  const [confirmAction, setConfirmAction] = useState<'refine' | 'review' | null>(null)
+  const [confirmAction, setConfirmAction] = useState<'refine' | 'review' | 'deaify' | null>(null)
   const [userRefinePrompt, setUserRefinePrompt] = useState('')
   // 审稿维度多选
   const REVIEW_DIMS = [
@@ -103,7 +104,15 @@ export default function DraftEditor({ filePath, content }: Props) {
   const [reviewDims, setReviewDims] = useState<Record<string, boolean>>(
     Object.fromEntries(REVIEW_DIMS.map(d => [d.key, true]))
   )
+  // 去AI味强度（单选）
+  const DEAIFY_LEVELS: Array<{ key: '轻' | '中' | '重'; desc: string }> = [
+    { key: '轻', desc: '只清最明显的套路句，改动克制' },
+    { key: '中', desc: '系统性清理所有 AI 腔（默认）' },
+    { key: '重', desc: '更大胆地重组句式与节奏' },
+  ]
+  const [deaifyIntensity, setDeaifyIntensity] = useState<'轻' | '中' | '重'>('中')
   const [charCount, setCharCount] = useState(0)
+  const [showImages, setShowImages] = useState(false)
   const isDirty = useEditorStore(s => s.tabs.find(t => t.filePath === filePath)?.dirty ?? false)
   const currentBodyRef = useRef(content)
 
@@ -170,6 +179,55 @@ export default function DraftEditor({ filePath, content }: Props) {
       }), false)
     } catch (e) {
       toast.error(`审稿启动失败：${e}`)
+    }
+  }
+
+  /** 自动审校闭环（审稿→修复→复审，最多 N 轮） */
+  const doAutoReview = async () => {
+    if (!currentProject || !meta || isChapterBusy) return
+    const ok = await confirm(
+      `将对第 ${meta.chapterNumber} 章自动执行「审稿 → 修复 → 复审」闭环：\n\n· 最多 3 轮，仅在存在严重矛盾（error）时触发重写\n· 每轮修复会生成新的草稿版本（历史保留，可回溯）\n· 不会自动定稿，跑完后请在草稿列表查看最新版本`,
+      { title: '自动审校闭环', confirmText: '开始' }
+    )
+    if (!ok) return
+    try {
+      const { useWorkflowStore } = await import('../../stores/workflow-store')
+      const { createAutoReviewLoopWorkflow } = await import('../../services/workflows/chapter-workflow')
+
+      const body = await readDraftBody(filePath)
+
+      useWorkflowStore.getState().startWorkflow(createAutoReviewLoopWorkflow({
+        chapterNumber: meta.chapterNumber,
+        chapterTitle: meta.chapterTitle ?? '未知标题',
+        draftPath: filePath,
+        draftContent: body,
+        maxRounds: 3,
+        gate: 'error',
+        reviewFocus: REVIEW_DIMS.filter(d => reviewDims[d.key]).map(d => d.label).join('、') || undefined,
+      }), false)
+    } catch (e) {
+      toast.error(`自动审校启动失败：${e}`)
+    }
+  }
+
+  /** 去 AI 味润色（强度由确认弹窗中的 deaifyIntensity 决定） */
+  const doDeaify = async () => {
+    if (!currentProject || !meta || isChapterBusy) return
+    try {
+      const { useWorkflowStore } = await import('../../stores/workflow-store')
+      const { createDeaifyWorkflow } = await import('../../services/workflows/chapter-workflow')
+
+      const body = await readDraftBody(filePath)
+
+      useWorkflowStore.getState().startWorkflow(createDeaifyWorkflow({
+        chapterNumber: meta.chapterNumber,
+        chapterTitle: meta.chapterTitle ?? '未知标题',
+        draftPath: filePath,
+        draftContent: body,
+        intensity: deaifyIntensity,
+      }), false)
+    } catch (e) {
+      toast.error(`去AI味启动失败：${e}`)
     }
   }
 
@@ -410,6 +468,41 @@ export default function DraftEditor({ filePath, content }: Props) {
               AI 审稿
             </Button>
 
+            {/* 自动审校闭环 */}
+            <Button
+              variant="ai"
+              size="sm"
+              onClick={doAutoReview}
+              disabled={isChapterBusy}
+              title="自动审校 — 审稿→修复→复审自动闭环（最多3轮），仅严重矛盾触发重写，生成新草稿版本"
+            >
+              <RefreshCw size={12} />
+              自动审校
+            </Button>
+
+            {/* 去 AI 味 */}
+            <Button
+              variant="ai"
+              size="sm"
+              onClick={() => setConfirmAction('deaify')}
+              disabled={isChapterBusy}
+              title="去AI味 — 清除段尾升华/比喻滥用/万能过渡/播音腔对话等 AI 腔，保持情节与篇幅，生成修订稿供合并"
+            >
+              <Wand2 size={12} />
+              去AI味
+            </Button>
+
+            {/* 配图（题图 / 场景插图） */}
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => setShowImages(v => !v)}
+              title="本章配图 — 生成章节题图 / 场景插图（文生图）"
+            >
+              <ImageIcon size={12} />
+              配图
+            </Button>
+
             {/* 定稿 */}
             <Button
               variant="success"
@@ -435,6 +528,16 @@ export default function DraftEditor({ filePath, content }: Props) {
             <span className="text-xs" style={{ color: 'var(--color-text-muted)' }}>
               {status === 'finalized' ? '已定稿（只读）' : '已归档（只读）'}
             </span>
+            {/* 配图（只读态仍可为章节配图） */}
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => setShowImages(v => !v)}
+              title="本章配图 — 生成章节题图 / 场景插图（文生图）"
+            >
+              <ImageIcon size={11} />
+              配图
+            </Button>
             {/* 已定稿 → 有失败项时显示修复定稿按钮 */}
             {status === 'finalized' && meta && hasProcessFailure && (
               <Button
@@ -451,6 +554,15 @@ export default function DraftEditor({ filePath, content }: Props) {
           </div>
         )}
       </div>
+
+      {/* 本章配图面板（题图 / 场景插图，按需展开） */}
+      {showImages && meta && currentProject && (
+        <ChapterImagesPanel
+          chapterNumber={meta.chapterNumber}
+          chapterTitle={meta.chapterTitle}
+          projectPath={currentProject.path}
+        />
+      )}
 
       {/* 后处理状态面板（仅定稿草稿显示） */}
       {status === 'finalized' && meta && (
@@ -488,7 +600,7 @@ export default function DraftEditor({ filePath, content }: Props) {
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
               <Sparkles size={15} className="text-[var(--color-accent)]" />
-              {confirmAction === 'refine' ? 'AI 修稿确认' : 'AI 审稿确认'}
+              {confirmAction === 'refine' ? 'AI 修稿确认' : confirmAction === 'review' ? 'AI 审稿确认' : '去 AI 味确认'}
             </DialogTitle>
             <DialogDescription>
               对象：{meta ? `${meta.chapterTitle} v${meta.version}` : '当前草稿'}
@@ -501,7 +613,7 @@ export default function DraftEditor({ filePath, content }: Props) {
                 <div>1. 全文基础润色、词汇优化，增强画面与表现力。</div>
                 <div>2. 可在下方指定的额外修稿要求。</div>
               </>
-            ) : (
+            ) : confirmAction === 'review' ? (
               <>
                 <div>将调用 AI 对本章草稿进行一致性检查，并生成审稿报告。</div>
                 <div className="mt-3">
@@ -532,6 +644,41 @@ export default function DraftEditor({ filePath, content }: Props) {
                         {d.label}
                       </label>
                     ))}
+                  </div>
+                </div>
+              </>
+            ) : (
+              <>
+                <div>将对本章草稿做「去 AI 味」清洗（只改表达层，保持情节/人设/篇幅）。</div>
+                <div className="mt-3">
+                  <div className="text-xs font-medium mb-2" style={{ color: 'var(--color-text)' }}>清洗强度：</div>
+                  <div className="flex flex-wrap gap-2">
+                    {DEAIFY_LEVELS.map(lv => (
+                      <label
+                        key={lv.key}
+                        className="flex items-center gap-1.5 cursor-pointer select-none px-2 py-1 rounded-md text-xs"
+                        style={{
+                          border: `1px solid ${deaifyIntensity === lv.key ? 'var(--color-accent)' : 'var(--color-border)'}`,
+                          backgroundColor: deaifyIntensity === lv.key ? 'rgba(var(--color-accent-rgb),0.1)' : 'transparent',
+                          color: deaifyIntensity === lv.key ? 'var(--color-accent)' : 'var(--color-text-muted)',
+                        }}
+                        title={lv.desc}
+                        onClick={() => setDeaifyIntensity(lv.key)}
+                      >
+                        <div
+                          className="w-3 h-3 rounded-full flex items-center justify-center flex-shrink-0"
+                          style={{ border: `1.5px solid ${deaifyIntensity === lv.key ? 'var(--color-accent)' : 'var(--color-border)'}` }}
+                        >
+                          {deaifyIntensity === lv.key && (
+                            <div className="w-1.5 h-1.5 rounded-full" style={{ backgroundColor: 'var(--color-accent)' }} />
+                          )}
+                        </div>
+                        {lv.key}
+                      </label>
+                    ))}
+                  </div>
+                  <div className="text-[0.7rem] mt-1.5" style={{ color: 'var(--color-text-muted)' }}>
+                    {DEAIFY_LEVELS.find(l => l.key === deaifyIntensity)?.desc}
                   </div>
                 </div>
               </>
@@ -570,6 +717,7 @@ export default function DraftEditor({ filePath, content }: Props) {
                 setConfirmAction(null)
                 if (act === 'refine') doRefine()
                 else if (act === 'review') doReview()
+                else if (act === 'deaify') doDeaify()
               }}
             >
               确认执行

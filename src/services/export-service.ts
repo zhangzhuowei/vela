@@ -11,13 +11,15 @@ import { useProjectStore } from '../stores/project-store'
 import { useWorkflowStore } from '../stores/workflow-store'
 
 
-export type ExportFormat = 'merged-md' | 'split-md' | 'txt'
+export type ExportFormat = 'merged-md' | 'split-md' | 'txt' | 'epub'
 
 interface ExportOptions {
   format: ExportFormat
   outputDir: string
   includeOutline?: boolean
   includeCharacters?: boolean
+  /** EPUB 作者（仅 epub 使用；为空则记为「佚名」） */
+  author?: string
 }
 
 /** 导出全书 */
@@ -30,7 +32,7 @@ export async function exportNovel(options: ExportOptions): Promise<{ success: bo
 
   try {
     // 遍历所有章节蓝图，取定稿内容
-    const chapterContents: Array<{ name: string; content: string }> = []
+    const chapterContents: Array<{ name: string; title: string; chapterNumber: number; content: string }> = []
     const blueprints = (await ipc.invoke('db:blueprint-get-all')) as unknown as Array<Record<string, unknown>>
     const sortedBps = blueprints ? blueprints.sort((a, b) => (a.chapterNumber as number) - (b.chapterNumber as number)) : []
 
@@ -41,6 +43,8 @@ export async function exportNovel(options: ExportOptions): Promise<{ success: bo
         if (full && (full as { content?: string }).content) {
           chapterContents.push({
             name: `chapter_${bp.chapterNumber}.md`,
+            title: (bp.title as string) || `第${bp.chapterNumber}章`,
+            chapterNumber: bp.chapterNumber as number,
             content: (full as { content: string }).content,
           })
         }
@@ -116,6 +120,39 @@ export async function exportNovel(options: ExportOptions): Promise<{ success: bo
         await ipc.invoke('fs:write-file', outputPath, content)
         break
       }
+
+      case 'epub': {
+        // 组装章节（标题 = 「第N章 蓝图标题」）
+        const chapters: Array<{ title: string; content: string }> = []
+
+        // 可选：把故事简介作为首章
+        if (options.includeOutline) {
+          const core = await ipc.invoke('db:project-core-get')
+          if (core?.synopsis?.trim()) {
+            chapters.push({ title: '内容简介', content: core.synopsis.trim() })
+          }
+        }
+
+        for (const ch of chapterContents) {
+          chapters.push({
+            title: `第${ch.chapterNumber}章 ${ch.title}`.trim(),
+            content: ch.content,
+          })
+        }
+
+        outputPath = `${options.outputDir}/${project.name}.epub`
+        const res = await ipc.invoke('export:epub', {
+          title: project.name,
+          author: options.author?.trim() || '佚名',
+          language: 'zh-CN',
+          outputPath,
+          chapters,
+        })
+        if (!res.success) {
+          return { success: false, error: res.error || 'EPUB 生成失败' }
+        }
+        break
+      }
     }
 
     addLog('info', `✅ 导出完成: ${outputPath}`)
@@ -131,6 +168,7 @@ function formatLabel(format: ExportFormat): string {
     'merged-md': '合并 Markdown',
     'split-md': '分章 Markdown',
     'txt': '纯文本 TXT',
+    'epub': 'EPUB 电子书',
   }
   return labels[format]
 }

@@ -306,3 +306,141 @@ export function createRepairFinalizeWorkflow(chapterNumber: number): WorkflowDef
     onComplete: { mode: 'open', message: `✅ 第${chapterNumber}章后处理修复完成` },
   }
 }
+
+export interface AutoReviewLoopWorkflowParams {
+  chapterNumber: number
+  chapterTitle: string
+  draftPath: string
+  draftContent: string
+  /** 最多循环轮数，默认 3 */
+  maxRounds?: number
+  /** 门控：error（默认）| error+warning */
+  gate?: 'error' | 'error+warning'
+  /** 审稿维度侧重点（可选） */
+  reviewFocus?: string
+}
+
+/**
+ * 自动审校 → 重写 闭环工作流（设计文档 #1）
+ * 单 step 包裹 AutoReviewLoopCommand：审稿→修复→合并→复审，最多 N 轮。
+ * 非破坏性：每轮修复合并为新草稿版本，历史全留痕；不自动定稿。
+ */
+export function createAutoReviewLoopWorkflow(params: AutoReviewLoopWorkflowParams): WorkflowDefinition {
+  return {
+    type: 'chapter_creation',
+    title: `🔁 自动审校闭环 — 第${params.chapterNumber}章 · ${params.chapterTitle}`,
+    steps: [
+      {
+        name: '审校闭环',
+        description: `审稿→修复→复审，最多 ${params.maxRounds ?? 3} 轮`,
+        executor: async (step, context, callbacks) => {
+          const { AutoReviewLoopCommand } = await import('./commands/auto-review-loop.command')
+          const cmd = new AutoReviewLoopCommand({
+            chapterNumber: params.chapterNumber,
+            chapterTitle: params.chapterTitle,
+            draftPath: params.draftPath,
+            draftContent: params.draftContent,
+            maxRounds: params.maxRounds,
+            gate: params.gate,
+            reviewFocus: params.reviewFocus,
+          })
+          return cmd.execute({ step, context, callbacks })
+        },
+      },
+    ],
+    onComplete: { mode: 'open', message: `✅ 第${params.chapterNumber}章审校闭环结束` },
+  }
+}
+
+export interface DeaifyWorkflowParams {
+  chapterNumber: number
+  chapterTitle: string
+  draftPath: string
+  draftContent: string
+  /** 清洗强度：轻/中/重，默认 中 */
+  intensity?: '轻' | '中' | '重'
+}
+
+/**
+ * 去 AI 味润色工作流（设计文档 #2 Tier 1）
+ * 单 step 包裹 DeaifyCommand：对当前草稿做去 AI 味清洗，产出修订稿并打开 diff 供合并。
+ */
+export function createDeaifyWorkflow(params: DeaifyWorkflowParams): WorkflowDefinition {
+  return {
+    type: 'chapter_creation',
+    title: `✨ 去AI味 — 第${params.chapterNumber}章 · ${params.chapterTitle}`,
+    steps: [
+      {
+        name: '去AI味',
+        description: '清除段尾升华/比喻滥用/万能过渡等 AI 腔，保持情节与篇幅',
+        executor: async (step, context, callbacks) => {
+          const { DeaifyCommand } = await import('./commands/deaify.command')
+          const cmd = new DeaifyCommand({
+            chapterNumber: params.chapterNumber,
+            draftPath: params.draftPath,
+            draftContent: params.draftContent,
+            intensity: params.intensity,
+          })
+          return cmd.execute({ step, context, callbacks })
+        },
+      },
+    ],
+    onComplete: { mode: 'open', message: `✅ 第${params.chapterNumber}章去AI味完成，请在 diff 视图确认合并` },
+  }
+}
+
+export interface BatchGenerateWorkflowParams {
+  startChapter: number
+  endChapter: number
+  autoReview: boolean
+  reviewMaxRounds: number
+  reviewGate: 'error' | 'error+warning'
+  reviewFocus?: string
+  deaify: boolean
+  deaifyIntensity: '轻' | '中' | '重'
+  onReviewFail: 'stop' | 'continue'
+  resume: boolean
+  /** 按任务派模型（为空走默认模型）：写稿/审校/去AI味 */
+  models?: { write?: string; review?: string; deaify?: string }
+}
+
+/**
+ * 批量无人值守生成工作流（设计文档 #3）
+ * 每章一个 step：写稿 →（可选）审校闭环 →（可选）去AI味 → 定稿。
+ * 复用 workflow 引擎的顺序执行、进度、取消（context.cancelled）、失败即停。
+ */
+export function createBatchGenerateWorkflow(params: BatchGenerateWorkflowParams): WorkflowDefinition {
+  const start = Math.max(1, params.startChapter)
+  const end = Math.max(start, params.endChapter)
+  const stepSuffix = `${params.autoReview ? '→审校闭环' : ''}${params.deaify ? '→去AI味' : ''}`
+
+  const steps: WorkflowDefinition['steps'] = []
+  for (let n = start; n <= end; n++) {
+    steps.push({
+      name: `第${n}章`,
+      description: `写稿${stepSuffix}→定稿`,
+      executor: async (step, context, callbacks) => {
+        const { BatchChapterCommand } = await import('./commands/batch-chapter.command')
+        const cmd = new BatchChapterCommand(n, {
+          autoReview: params.autoReview,
+          reviewMaxRounds: params.reviewMaxRounds,
+          reviewGate: params.reviewGate,
+          reviewFocus: params.reviewFocus,
+          deaify: params.deaify,
+          deaifyIntensity: params.deaifyIntensity,
+          onReviewFail: params.onReviewFail,
+          resume: params.resume,
+          models: params.models,
+        })
+        return cmd.execute({ step, context, callbacks })
+      },
+    })
+  }
+
+  return {
+    type: 'batch_generate',
+    title: `📚 批量生成 第${start}-${end}章`,
+    steps,
+    onComplete: { mode: 'open', message: `📚 批量生成结束（第${start}-${end}章）` },
+  }
+}

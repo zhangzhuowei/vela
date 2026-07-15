@@ -3,12 +3,14 @@ import {
   FolderOpen,
   BookOpen,
   Users,
+  Milestone,
   Settings,
   Plus,
   Clock,
   X,
   Home,
   ChevronRight,
+  Download,
 } from 'lucide-react'
 import { useLayoutStore, type SidebarView } from '../../stores/layout-store'
 import { useProjectStore } from '../../stores/project-store'
@@ -23,6 +25,7 @@ const activities: Array<{ id: SidebarView; icon: typeof FolderOpen; label: strin
   { id: 'project', icon: FolderOpen, label: '项目结构' },
   { id: 'knowledge', icon: BookOpen, label: '知识库' },
   { id: 'characters', icon: Users, label: '角色管理' },
+  { id: 'foreshadowing', icon: Milestone, label: '伏笔台账' },
 ]
 
 export default function ActivityBar() {
@@ -64,6 +67,12 @@ export default function ActivityBar() {
     if (folder) {
       useProjectStore.getState().openProject(folder)
     }
+  }
+
+  /** 导出项目（Markdown / TXT / EPUB） */
+  const handleExportProject = () => {
+    setShowProjectMenu(false)
+    useLayoutStore.getState().openExport()
   }
 
   /** 打开最近项目 */
@@ -193,6 +202,13 @@ export default function ActivityBar() {
                   shortcut="⌘O"
                   onClick={handleOpenProject}
                 />
+                {currentProject && (
+                  <MenuItem
+                    icon={<Download size={13} />}
+                    label="导出项目（MD / TXT / EPUB）..."
+                    onClick={handleExportProject}
+                  />
+                )}
                 {currentProject && (
                   <MenuItem
                     icon={<X size={13} />}

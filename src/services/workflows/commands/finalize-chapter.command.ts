@@ -153,6 +153,8 @@ export function buildFinalizePostProcessSteps(
           mentalState?: string
           keyItems?: string
           recentEvents?: string
+          knownInfo?: string
+          speechStyle?: string
         }
 
         const cardUpdates = parseJSON<{
@@ -173,10 +175,19 @@ export function buildFinalizePostProcessSteps(
                 mentalState: cs.mentalState || (dbCharState.mentalState as string) || '',
                 keyItems: cs.keyItems || (dbCharState.keyItems as string) || '',
                 recentEvents: cs.recentEvents || '',
+                // 已知信息累积维护：新值优先，否则保留既有（角色不会"忘记"已知情报）
+                knownInfo: cs.knownInfo || (dbCharState.knownInfo as string) || '',
                 updatedAtChapter: chapterNumber,
               }
               await ipc.invoke('db:character-update-state', upd.name, newState)
               callbacks.log(`✅ 更新角色动态状态: ${dbChar.name}`)
+
+              // 说话风格自动初始化：仅当角色卡尚无口癖档案时才写入，绝不覆盖作者手填
+              const existingSpeech = (dbChar.speechStyle as string) || ''
+              if (!existingSpeech.trim() && cs.speechStyle && cs.speechStyle.trim()) {
+                await ipc.invoke('db:character-update-speech', upd.name, cs.speechStyle.trim())
+                callbacks.log(`✅ 初始化角色说话风格: ${dbChar.name}`)
+              }
             }
           }
         }
@@ -192,6 +203,7 @@ export function buildFinalizePostProcessSteps(
               role: newChar.role || 'supporting',
               gender: '', age: '', appearance: '', personality: '', background: '',
               abilities: '', motivation: '', relationships: '', arc: '', notes: '',
+              speechStyle: cs.speechStyle?.trim() || '',
               currentState: {
                 location: cs.location || '',
                 powerLevel: cs.powerLevel || '',
@@ -199,6 +211,7 @@ export function buildFinalizePostProcessSteps(
                 mentalState: cs.mentalState || '',
                 keyItems: cs.keyItems || '',
                 recentEvents: cs.recentEvents || '',
+                knownInfo: cs.knownInfo || '',
                 updatedAtChapter: chapterNumber,
               }
             })
@@ -207,6 +220,58 @@ export function buildFinalizePostProcessSteps(
             callbacks.log(`✅ 自动提取并登记 ${newCharCount} 名新出场角色`)
           }
         }
+      },
+    })
+  }
+
+  // ─── 步骤 3.5: 伏笔台账更新（抽取新伏笔 + 标记回收）──────────────────
+  const foreshadowTemplate = getPromptTemplate('foreshadow_extract')
+  if (foreshadowTemplate) {
+    steps.push({
+      key: 'foreshadow_track',
+      label: '🧵 伏笔台账更新',
+      critical: false,
+      executor: async (callbacks) => {
+        const open = (await ipc.invoke('db:foreshadow-get-open')) as Array<{
+          id: number; content: string; plantedChapter: number; expectedChapter: number | null
+        }>
+        const openSlim = open.map((f) => ({
+          id: f.id, content: f.content, plantedChapter: f.plantedChapter, expectedChapter: f.expectedChapter,
+        }))
+
+        const builder = new PostProcessPromptBuilder(foreshadowTemplate)
+          .withChapterContent(draftContent.slice(0, 6000))
+          .withChapterNumber(chapterNumber)
+          .withOpenForeshadowings(openSlim)
+
+        const raw = await callLLMForPostProcess(builder, callbacks, { responseFormat: { type: 'json_object' } })
+        const result = parseJSON<{
+          planted?: Array<{ content: string; expectedChapter?: number | null }>
+          paidIds?: number[]
+        }>(raw)
+
+        let plantedCount = 0
+        if (Array.isArray(result.planted)) {
+          for (const p of result.planted) {
+            if (!p?.content || !p.content.trim()) continue
+            await ipc.invoke('db:foreshadow-create', {
+              content: p.content.trim(),
+              plantedChapter: chapterNumber,
+              expectedChapter: p.expectedChapter ?? null,
+            })
+            plantedCount++
+          }
+        }
+        let paidCount = 0
+        if (Array.isArray(result.paidIds)) {
+          const openIds = new Set(openSlim.map((f) => f.id))
+          for (const id of result.paidIds) {
+            if (!openIds.has(id)) continue
+            await ipc.invoke('db:foreshadow-mark-paid', id, chapterNumber)
+            paidCount++
+          }
+        }
+        callbacks.log(`✅ 伏笔台账更新：新增 ${plantedCount} 条，回收 ${paidCount} 条`)
       },
     })
   }

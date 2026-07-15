@@ -18,6 +18,7 @@ export interface ProjectCoreRow {
     plot_structure: string
     narrative_pov: string
     writing_style: string
+    style_reference: string
     reference_works: string
     global_guidance: string
     golden_finger: string
@@ -41,6 +42,7 @@ export interface ProjectCoreData {
     plotStructure: string
     narrativePov: string
     writingStyle: string
+    styleReference: string
     referenceWorks: string
     globalGuidance: string
     goldenFinger: string
@@ -63,6 +65,7 @@ function rowToData(row: ProjectCoreRow): ProjectCoreData {
         plotStructure: row.plot_structure,
         narrativePov: row.narrative_pov,
         writingStyle: row.writing_style,
+        styleReference: row.style_reference ?? '',
         referenceWorks: row.reference_works,
         globalGuidance: row.global_guidance,
         goldenFinger: row.golden_finger,
@@ -114,6 +117,7 @@ export class ProjectCoreRepository {
             plotStructure: 'plot_structure',
             narrativePov: 'narrative_pov',
             writingStyle: 'writing_style',
+            styleReference: 'style_reference',
             referenceWorks: 'reference_works',
             globalGuidance: 'global_guidance',
             goldenFinger: 'golden_finger',

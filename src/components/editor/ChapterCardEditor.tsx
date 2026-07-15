@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback } from 'react'
 import {
   Save, BookOpen, RefreshCw, Plus, Trash2,
-  Sparkles, PenLine
+  Sparkles, PenLine, Layers
 } from 'lucide-react'
 import { useProjectStore } from '../../stores/project-store'
 import { useWorkflowStore } from '../../stores/workflow-store'
@@ -237,11 +237,27 @@ export default function ChapterCardEditor() {
               size="sm"
               onClick={() => {
                 const bp = blueprints.find(b => b.chapterNumber === nextWriteChapter)
-                if (bp) handleWriteChapter(bp)
+                if (bp) {
+                  handleWriteChapter(bp)
+                } else {
+                  toast.warning(`第 ${nextWriteChapter} 章还没有蓝图，请先用「AI 生成蓝图」生成该章，或点「+」手动新建后再写作`)
+                }
               }}
             >
               <PenLine size={12} />
               写作第{nextWriteChapter}章
+            </Button>
+          )}
+          {/* 批量无人值守生成 */}
+          {blueprints.length > 0 && (
+            <Button
+              variant="ai"
+              size="sm"
+              onClick={() => useLayoutStore.getState().openBatchGenerate()}
+              title="批量无人值守生成：连续多章 写稿→审校闭环→去AI味→定稿"
+            >
+              <Layers size={12} />
+              批量生成
             </Button>
           )}
           {/* AI 生成蓝图 → 弹出 DirectoryConfigDialog */}

@@ -9,7 +9,42 @@
  */
 
 import type { StepCallbacks } from '../../stores/workflow-store'
+import type { CharacterData } from '../../../electron/repositories/character-repository'
 import { ipc } from '../ipc-client'
+
+// ===== 角色卡资产合并（重新提取时保留已积累字段） =====
+
+/**
+ * 重新提取角色卡（架构/导入推演）时，把库中已有、但提取结果不含的「运行期字段」并回，
+ * 避免用一份只含静态档案的提取结果直接 save-all 抹掉这些数据。
+ *
+ * 保留字段（提取结果为空才回退到库中已有值，从而不丢已积累数据）：
+ *  - speechStyle  说话风格/口癖（定稿时自动推断，或用户手动填写）
+ *  - portraitPath 文生图人设图路径
+ *  - currentState 角色动态状态快照（位置/境界/身体·心理状态/关键道具/最近事件/已知信息，定稿时累积）
+ *
+ * 静态档案字段（外貌、性格、背景等）仍以提取结果为准，实现「刷新档案但不丢已生成/已积累资产」。
+ * 取不到库中角色（首次提取/查询失败）时按原样返回，不影响正常写入。
+ */
+export async function mergePreservedCharacterAssets(extracted: CharacterData[]): Promise<CharacterData[]> {
+  let existing: CharacterData[] = []
+  try {
+    existing = await ipc.invoke('db:character-get-all')
+  } catch { /* 查询失败则按纯提取结果写入 */ }
+  if (!Array.isArray(existing) || existing.length === 0) return extracted
+
+  const byName = new Map(existing.map((c) => [c.name, c]))
+  return extracted.map((card) => {
+    const prev = byName.get(card.name)
+    if (!prev) return card
+    return {
+      ...card,
+      speechStyle: card.speechStyle || prev.speechStyle || '',
+      portraitPath: card.portraitPath || prev.portraitPath || '',
+      currentState: card.currentState ?? prev.currentState,
+    }
+  })
+}
 
 // ===== 文本处理通用工具 =====
 
@@ -21,6 +56,63 @@ export function stripThinkingTags(text: string): string {
   if (!text) return text
   // 支持只有 <think> 没有闭合标签的情况
   return text.replace(/<think>[\s\S]*?(?:<\/think>|$)/gi, '').trim()
+}
+
+// ===== 未回收伏笔注入格式化（带上限） =====
+
+export interface OpenForeshadowing {
+  id: number
+  content: string
+  plantedChapter: number
+  expectedChapter: number | null
+}
+
+/**
+ * 把未回收伏笔格式化为写稿/审稿的注入上下文，并施加注入上限，
+ * 避免长篇里未回收伏笔越积越多、撑大 prompt 稀释重点。
+ *
+ * 优先级：① 已到期（expected<=current）② 有预期未到期（越近越前）③ 无预期（越新埋越前）。
+ * 超出 maxItems 的较早/低优先伏笔折叠为一行计数提示。
+ *
+ * @param open          未回收伏笔列表
+ * @param currentChapter 当前章节号（用于判定"已到期"）
+ * @param maxItems      注入上限，默认 12 条
+ */
+export function formatOpenForeshadowings(
+  open: OpenForeshadowing[] | null | undefined,
+  currentChapter: number,
+  maxItems = 12,
+): string {
+  if (!open || open.length === 0) return '（暂无未回收伏笔）'
+
+  const priorityOf = (f: OpenForeshadowing): number => {
+    if (f.expectedChapter != null && f.expectedChapter <= currentChapter) return 0 // 已到期
+    if (f.expectedChapter != null) return 1 // 有预期未到期
+    return 2 // 无预期
+  }
+
+  const sorted = [...open].sort((a, b) => {
+    const pa = priorityOf(a), pb = priorityOf(b)
+    if (pa !== pb) return pa - pb
+    // 有预期：按预期回收章升序（越急越前）；无预期：按埋设章降序（越新越前）
+    if (pa <= 1) return (a.expectedChapter ?? 0) - (b.expectedChapter ?? 0)
+    return b.plantedChapter - a.plantedChapter
+  })
+
+  const shown = sorted.slice(0, Math.max(1, maxItems))
+  const hidden = sorted.length - shown.length
+
+  const lines = shown.map((f) => {
+    const due = f.expectedChapter ? `预期第${f.expectedChapter}章回收` : '回收章未定'
+    const overdue = f.expectedChapter != null && f.expectedChapter <= currentChapter
+      ? ' 【已到期，本章应考虑回收】'
+      : ''
+    return `- (#${f.id}) ${f.content}（第${f.plantedChapter}章埋下，${due}）${overdue}`
+  })
+  if (hidden > 0) {
+    lines.push(`- …另有 ${hidden} 条较早的未回收伏笔（暂略，可在「伏笔台账」查看）`)
+  }
+  return lines.join('\n')
 }
 
 // ===== 通用重试包装器 =====

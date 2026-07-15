@@ -6,7 +6,7 @@ import { ipc } from '../ipc-client'
 import type { NovelConfig } from '../../shared/ipc-channels'
 import type { CharacterData } from '../../../electron/repositories/character-repository'
 
-import { runPostProcessPipeline, type PostProcessStep, stripThinkingTags } from './workflow-utils'
+import { runPostProcessPipeline, type PostProcessStep, stripThinkingTags, mergePreservedCharacterAssets } from './workflow-utils'
 
 // ==========================================
 // 1. 类型定义
@@ -237,9 +237,10 @@ export function createCharacterExtractSteps(_projectPath: string, characterDynam
           characterDataList.push({ ...card, role, name: card.name })
         }
 
-        // 批量写入数据库
-        await ipc.invoke('db:character-save-all', characterDataList as unknown as CharacterData[])
-        cb.log(`✅ 角色卡提取完毕（共 ${characterDataList.length} 个角色）`)
+        // 并回库中已有的口癖/人设图，避免重新提取覆盖已生成/已推断的数据，再批量写入
+        const merged = await mergePreservedCharacterAssets(characterDataList as unknown as CharacterData[])
+        await ipc.invoke('db:character-save-all', merged)
+        cb.log(`✅ 角色卡提取完毕（共 ${merged.length} 个角色）`)
       },
     },
   ]

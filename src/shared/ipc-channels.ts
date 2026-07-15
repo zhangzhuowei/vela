@@ -23,6 +23,7 @@ export interface GlobalConfig {
   theme: string
   defaultModelId: string | null
   defaultEmbeddingModelId?: string | null
+  defaultImageModelId?: string | null
   editorFontSize: number
   editorFontFamily: string
   autoSaveInterval: number
@@ -136,9 +137,41 @@ export interface LLMChannels {
     args: []
     return: string | null
   }
+  'llm:set-default-image-model': {
+    args: [modelId: string | null]
+    return: { success: boolean; error?: string }
+  }
+  'llm:get-default-image-model': {
+    args: []
+    return: string | null
+  }
+  'export:epub': {
+    args: [payload: {
+      title: string
+      author: string
+      language?: string
+      outputPath: string
+      chapters: Array<{ title: string; content: string }>
+    }]
+    return: { success: boolean; path?: string; error?: string }
+  }
+  'image:generate': {
+    args: [payload: {
+      model: ModelProfile
+      prompt: string
+      projectPath: string
+      size?: string
+      filenameHint?: string
+    }]
+    return: { success: boolean; path?: string; dataUrl?: string; error?: string }
+  }
+  'image:read': {
+    args: [filePath: string]
+    return: { success: boolean; dataUrl?: string; error?: string }
+  }
   'llm:test-connection': {
     args: [model: ModelProfile]
-    return: { success: boolean; error?: string }
+    return: { success: boolean; error?: string; dimension?: number }
   }
 }
 
@@ -173,6 +206,7 @@ export interface NovelConfig {
   protagonistProfile: string
   globalGuidance: string
   writingStyle?: string
+  styleReference?: string
   referenceWorks?: string
 }
 
@@ -216,17 +250,19 @@ export interface ModelProfile {
   baseUrl: string
   temperature: number
   maxTokens: number
-  purposes: Array<'generation' | 'refinement' | 'summary' | 'embedding'>
+  purposes: Array<'generation' | 'refinement' | 'summary' | 'embedding' | 'image'>
 }
 
 // ===== 引入 DB 类型 =====
 import type { ProjectCoreData } from '../../electron/repositories/project-core-repository'
 import type { BlueprintData } from '../../electron/repositories/blueprint-repository'
 import type { CharacterData, CharacterStateData } from '../../electron/repositories/character-repository'
+import type { ChapterImageData } from '../../electron/repositories/chapter-image-repository'
 import type { DraftMeta, DraftFull } from '../../electron/repositories/draft-repository'
 import type { RevisionMeta, RevisionFull } from '../../electron/repositories/revision-repository'
 import type { ReviewMeta, ReviewFull } from '../../electron/repositories/review-repository'
 import type { PostProcessRunData, PostProcessStepData } from '../../electron/repositories/post-process-repository'
+import type { ForeshadowingData } from '../../electron/repositories/foreshadowing-repository'
 
 // ===== 数据库操作 =====
 export interface DatabaseChannels {
@@ -249,6 +285,11 @@ export interface DatabaseChannels {
   'db:character-save-all': { args: [items: CharacterData[]]; return: { success: boolean; error?: string } }
   'db:character-delete': { args: [name: string]; return: { success: boolean; error?: string } }
   'db:character-update-state': { args: [name: string, state: CharacterStateData]; return: { success: boolean; error?: string } }
+  'db:character-update-speech': { args: [name: string, speechStyle: string]; return: { success: boolean; error?: string } }
+  'db:character-update-portrait': { args: [name: string, portraitPath: string]; return: { success: boolean; error?: string } }
+  'db:chapter-image-list': { args: [chapterNumber: number]; return: ChapterImageData[] }
+  'db:chapter-image-add': { args: [payload: { chapterNumber: number; kind: 'header' | 'scene'; path: string; prompt: string }]; return: { success: boolean; id?: number; error?: string } }
+  'db:chapter-image-delete': { args: [id: number]; return: { success: boolean; error?: string } }
 
   // 4. drafts
   'db:draft-create': { args: [params: { chapterNumber: number; version: number; source: 'write' | 'rewrite'; content: string; wordCount: number }]; return: { success: boolean; id?: number; error?: string } }
@@ -285,6 +326,14 @@ export interface DatabaseChannels {
   'db:post-process-mark-step-ok': { args: [runId: string, stepKey: string]; return: { success: boolean; error?: string } }
   'db:post-process-mark-step-failed': { args: [runId: string, stepKey: string, errorMsg: string]; return: { success: boolean; error?: string } }
   'db:post-process-is-all-passed': { args: [sourceType: string, sourceId: string]; return: boolean }
+
+  // 10. foreshadowings — 伏笔/线索台账
+  'db:foreshadow-get-all': { args: []; return: ForeshadowingData[] }
+  'db:foreshadow-get-open': { args: []; return: ForeshadowingData[] }
+  'db:foreshadow-create': { args: [data: { content: string; plantedChapter: number; expectedChapter?: number | null; notes?: string }]; return: { success: boolean; id?: number; error?: string } }
+  'db:foreshadow-mark-paid': { args: [id: number, paidChapter: number]; return: { success: boolean; error?: string } }
+  'db:foreshadow-update': { args: [data: ForeshadowingData]; return: { success: boolean; error?: string } }
+  'db:foreshadow-delete': { args: [id: number]; return: { success: boolean; error?: string } }
 
   // 沿用旧表
   'db:log-llm-call': { args: [call: Record<string, unknown>]; return: { success: boolean } }

@@ -88,6 +88,48 @@ export function closeConnection(projectPath: string): void {
   connectionPool.delete(dbPath)
 }
 
+// ===== 向量维度工具 =====
+// 向量维度不再写死，而是按 Embedding 模型实际输出动态确定，
+// 以兼容任意 provider（智谱 embedding-3=2048、bge-m3=1024、bce=768、OpenAI=1536/3072…）。
+
+/** 从一批向量中取首个非空向量的维度；全为空则返回 null */
+function firstVectorDim(vectors?: Array<number[] | undefined>): number | null {
+  if (!vectors) return null
+  for (const v of vectors) {
+    if (v && v.length > 0) return v.length
+  }
+  return null
+}
+
+/** 读取已存在表 vector 列的维度（FixedSizeList 的 listSize）；无向量列返回 null */
+function schemaVectorDim(schema: { fields: Array<{ name: string; type: unknown }> }): number | null {
+  const vf = schema.fields.find((f) => f.name === 'vector')
+  if (!vf) return null
+  const t = vf.type as { listSize?: number }
+  return typeof t.listSize === 'number' ? t.listSize : null
+}
+
+/** 按维度构建 chunks 表 schema；dim 为 null/0 时不含 vector 列（FTS-only 模式） */
+function buildChunkSchema(dim: number | null): ArrowSchema {
+  const fields: Field[] = [
+    new Field('id', new Utf8()),
+    new Field('docId', new Utf8()),
+    new Field('fileName', new Utf8()),
+    new Field('chapterNumber', new Int32(), true),
+    new Field('chapterTitle', new Utf8(), true),
+    new Field('text', new Utf8()),
+  ]
+  if (dim && dim > 0) {
+    fields.push(new Field('vector', new ArrowFixedSizeList(dim, new Field('item', new Float32())), true))
+  }
+  fields.push(
+    new Field('chunkIndex', new Int32()),
+    new Field('totalChunks', new Int32()),
+    new Field('importedAt', new Utf8()),
+  )
+  return new ArrowSchema(fields)
+}
+
 
 // ===== 核心操作 =====
 
@@ -128,36 +170,41 @@ export async function addChunks(
       return record
     })
 
-    // 写入 chunks 表
+    // 写入 chunks 表 —— 向量维度按本批实际输出确定（兼容任意 Embedding 模型）
     const tableNames = await db.tableNames()
-    const VECTOR_DIM = 2048
-    const vectorField = new Field('vector', new ArrowFixedSizeList(VECTOR_DIM, new Field('item', new Float32())), true)
-    const targetSchema = new ArrowSchema([
-      new Field('id', new Utf8()),
-      new Field('docId', new Utf8()),
-      new Field('fileName', new Utf8()),
-      new Field('chapterNumber', new Int32(), true),
-      new Field('chapterTitle', new Utf8(), true),
-      new Field('text', new Utf8()),
-      vectorField,
-      new Field('chunkIndex', new Int32()),
-      new Field('totalChunks', new Int32()),
-      new Field('importedAt', new Utf8()),
-    ])
+    const incomingDim = firstVectorDim(vectors)
 
     if (tableNames.includes(TABLE_NAME)) {
       const table = await db.openTable(TABLE_NAME)
       const existingSchema = await table.schema()
       const existingFieldNames = existingSchema.fields.map(f => f.name)
+      const existingDim = schemaVectorDim(existingSchema)
       // 检查旧表 schema 是否包含所有必要字段
       const requiredFields = ['id', 'docId', 'fileName', 'text', 'chunkIndex', 'totalChunks', 'importedAt', 'chapterNumber', 'chapterTitle', 'vector']
       const hasAllFields = requiredFields.every(f => existingFieldNames.includes(f))
+      // 维度冲突：更换了 Embedding 模型，新旧向量维度不同（FixedSizeList 无法混存）
+      const dimConflict = incomingDim != null && existingDim != null && incomingDim !== existingDim
 
-      if (hasAllFields) {
+      if (hasAllFields && !dimConflict) {
         await table.add(records)
+      } else if (dimConflict) {
+        // 换模型：旧向量与新模型不兼容，重建表、丢弃旧向量（保留文本，供按新模型重新回填）
+        const allRows = await table.query().toArray()
+        const cleanRows = allRows.map((r: Record<string, unknown>) => {
+          const cleaned: Record<string, unknown> = {}
+          for (const [k, v] of Object.entries(r)) {
+            if (k === 'vector') continue // 丢弃旧维度向量
+            cleaned[k] = v
+          }
+          return cleaned
+        })
+        await db.dropTable(TABLE_NAME)
+        await db.createTable(TABLE_NAME, [...cleanRows, ...records], { schema: buildChunkSchema(incomingDim) })
+        console.log(`[Vela VectorStore] Embedding 维度变化(${existingDim}→${incomingDim})，已重建向量表，旧向量待重新回填`)
       } else {
-        // schema 不匹配（旧表缺少字段），需要重建表
+        // 旧表缺字段，重建补齐；沿用本批/既有维度
         // 先把 Arrow Vector 对象转成纯 number[]，避免 isValid 等元数据字段干扰 schema 校验
+        const rebuildDim = incomingDim ?? existingDim
         const allRows = await table.query().toArray()
         const cleanRows = allRows.map((r: Record<string, unknown>) => {
           const cleaned: Record<string, unknown> = {}
@@ -173,11 +220,12 @@ export async function addChunks(
           return cleaned
         })
         await db.dropTable(TABLE_NAME)
-        await db.createTable(TABLE_NAME, [...cleanRows, ...records], { schema: targetSchema })
+        await db.createTable(TABLE_NAME, [...cleanRows, ...records], { schema: buildChunkSchema(rebuildDim) })
       }
     } else {
-      // 首次创建时使用显式 Schema，确保 vector 列正确识别为 FixedSizeList
-      await db.createTable(TABLE_NAME, records, { schema: targetSchema })
+      // 首次创建：有向量则按其维度建 vector 列；纯 FTS（无向量）则先不建 vector 列，
+      // 待配置 Embedding 后回填时再按真实维度重建，避免锁死错误维度。
+      await db.createTable(TABLE_NAME, records, { schema: buildChunkSchema(incomingDim) })
     }
 
     // 写入/更新 documents 表
@@ -387,10 +435,10 @@ export async function getStats(projectPath: string): Promise<KBStats> {
     let vectorDimension = 0
     try {
       const schema = await table.schema()
-      const vectorField = schema.fields.find(f => f.name === 'vector')
-      if (vectorField) {
+      const dim = schemaVectorDim(schema)
+      if (dim != null) {
         hasVectors = true
-        vectorDimension = 2048 // 向量维度（需与 Embedding 模型输出匹配）
+        vectorDimension = dim // 实际向量维度（由 Embedding 模型输出决定）
       }
     } catch { /* 忽略 */ }
 
@@ -497,11 +545,13 @@ export async function updateChunkVectors(
     if (!tableNames.includes(TABLE_NAME)) return { success: false, count: 0 }
 
     const table = await db.openTable(TABLE_NAME)
-    const schema = await table.schema()
-    const hasVectorCol = schema.fields.some(f => f.name === 'vector')
+    const existingSchema = await table.schema()
+    const hasVectorCol = existingSchema.fields.some(f => f.name === 'vector')
+    const existingDim = schemaVectorDim(existingSchema)
+    const updateDim = firstVectorDim(updates.map(u => u.vector))
 
-    if (hasVectorCol) {
-      // 如果已有 vector 列，直接 update
+    // 维度一致（或无法判定）时走高效的逐行 update
+    if (hasVectorCol && (existingDim == null || updateDim == null || existingDim === updateDim)) {
       for (const update of updates) {
         try {
           await table.update({
@@ -513,44 +563,42 @@ export async function updateChunkVectors(
         }
       }
       return { success: true, count: updates.length }
-    } else {
-      // 没有 vector 列，必须覆写全表以增加列
-      const allRecords = await table.query().toArray()
-      const newData = allRecords.map((r: { [key: string]: unknown; id: string }) => {
-        const up = updates.find(u => u.id === r.id)
-        if (up) return { ...r, vector: up.vector }
-        return r
-      })
-
-      // 使用显式 Schema 确保 vector 列正确持久化
-      const VECTOR_DIM = 2048
-      const vectorField = new Field('vector', new ArrowFixedSizeList(VECTOR_DIM, new Field('item', new Float32())), true)
-      const schema = new ArrowSchema([
-        new Field('id', new Utf8()),
-        new Field('docId', new Utf8()),
-        new Field('fileName', new Utf8()),
-        new Field('chapterNumber', new Int32(), true),
-        new Field('chapterTitle', new Utf8(), true),
-        new Field('text', new Utf8()),
-        vectorField,
-        new Field('chunkIndex', new Int32()),
-        new Field('totalChunks', new Int32()),
-        new Field('importedAt', new Utf8()),
-      ])
-
-      await db.dropTable(TABLE_NAME)
-      await db.createTable(TABLE_NAME, newData, { schema })
-
-      // 重建 FTS 索引
-      try {
-        const newTable = await db.openTable(TABLE_NAME)
-        await newTable.createIndex('text', { config: lancedb.Index.fts() })
-      } catch (e) {
-        console.warn('[Vela VectorStore] 回填覆写后 FTS 重建失败:', e)
-      }
-
-      return { success: true, count: updates.length }
     }
+
+    // 无 vector 列，或维度变化 → 覆写全表重建（按 updateDim 建 vector 列）
+    const rebuildDim = updateDim ?? existingDim
+    const updateMap = new Map(updates.map(u => [u.id, u.vector]))
+    const allRecords = await table.query().toArray()
+    const newData = allRecords.map((r: Record<string, unknown>) => {
+      const row: Record<string, unknown> = {}
+      for (const [k, v] of Object.entries(r)) {
+        if (k === 'vector') continue // 稍后按维度决定是否保留
+        row[k] = v
+      }
+      const up = updateMap.get(r.id as string)
+      if (up && up.length > 0) {
+        row.vector = up
+      } else if (r.vector) {
+        // 保留既有向量，但仅当维度与目标一致（否则丢弃，等待后续重新回填）
+        const vec = r.vector as { toArray?: () => number[] }
+        const arr = vec.toArray ? vec.toArray() : (r.vector as number[])
+        if (Array.isArray(arr) && arr.length === rebuildDim) row.vector = arr
+      }
+      return row
+    })
+
+    await db.dropTable(TABLE_NAME)
+    await db.createTable(TABLE_NAME, newData, { schema: buildChunkSchema(rebuildDim) })
+
+    // 重建 FTS 索引
+    try {
+      const newTable = await db.openTable(TABLE_NAME)
+      await newTable.createIndex('text', { config: lancedb.Index.fts() })
+    } catch (e) {
+      console.warn('[Vela VectorStore] 回填覆写后 FTS 重建失败:', e)
+    }
+
+    return { success: true, count: updates.length }
   } catch (error) {
     console.error('[Vela VectorStore] 批量更新向量失败:', error)
     return { success: false, count: 0 }

@@ -8,12 +8,12 @@ export type CharacterCard = CharacterData
 export const EMPTY_CARD: CharacterCard = {
   name: '', role: 'supporting', gender: '', age: '',
   appearance: '', personality: '', background: '', abilities: '',
-  motivation: '', relationships: '', arc: '', notes: '',
+  motivation: '', relationships: '', arc: '', notes: '', speechStyle: '',
 }
 
 export const EMPTY_STATE: CharacterCurrentState = {
   location: '', powerLevel: '', physicalState: '', mentalState: '',
-  keyItems: '', recentEvents: '', updatedAtChapter: 0,
+  keyItems: '', recentEvents: '', knownInfo: '', updatedAtChapter: 0,
 }
 
 export const ROLE_LABELS: Record<CharacterCard['role'], string> = {

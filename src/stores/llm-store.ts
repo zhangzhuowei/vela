@@ -16,6 +16,8 @@ interface LLMState {
   defaultModelId: string | null
   /** 当前默认向量模型 ID */
   defaultEmbeddingModelId: string | null
+  /** 当前默认文生图模型 ID */
+  defaultImageModelId: string | null
   /** 正在进行的活跃请求 */
   activeRequests: Map<string, { status: 'running' | 'done' | 'error'; text: string }>
   /** 是否已加载模型配置 */
@@ -34,6 +36,8 @@ interface LLMState {
   setDefaultModel: (modelId: string) => void
   /** 设置默认向量模型（持久化到 ~/.vela/config.json） */
   setDefaultEmbeddingModel: (modelId: string) => void
+  /** 设置默认文生图模型（持久化到 ~/.vela/config.json） */
+  setDefaultImageModel: (modelId: string) => void
   /** 非流式生成 */
   generate: (
     messages: Array<{ role: 'system' | 'user' | 'assistant'; content: string }>,
@@ -49,14 +53,15 @@ interface LLMState {
   ) => Promise<string>
   /** 取消生成 */
   cancelGeneration: (requestId: string) => Promise<void>
-  /** 测试模型连接 */
-  testConnection: (model: ModelProfile) => Promise<{ success: boolean; error?: string }>
+  /** 测试模型连接（embedding 模型会额外返回向量维度） */
+  testConnection: (model: ModelProfile) => Promise<{ success: boolean; error?: string; dimension?: number }>
 }
 
 export const useLLMStore = create<LLMState>()((set, get) => ({
   models: [],
   defaultModelId: null,
   defaultEmbeddingModelId: null,
+  defaultImageModelId: null,
   activeRequests: new Map(),
   loaded: false,
 
@@ -65,11 +70,12 @@ export const useLLMStore = create<LLMState>()((set, get) => ({
     // 从 ~/.vela/ 加载模型列表和默认模型 ID
     await get().loadModels()
     if (ipc.isElectron) {
-      const [defaultId, defaultEmbeddingId] = await Promise.all([
+      const [defaultId, defaultEmbeddingId, defaultImageId] = await Promise.all([
         ipc.invoke('llm:get-default-model'),
         ipc.invoke('llm:get-default-embedding-model'),
+        ipc.invoke('llm:get-default-image-model'),
       ])
-      set({ defaultModelId: defaultId, defaultEmbeddingModelId: defaultEmbeddingId, loaded: true })
+      set({ defaultModelId: defaultId, defaultEmbeddingModelId: defaultEmbeddingId, defaultImageModelId: defaultImageId, loaded: true })
     } else {
       set({ loaded: true })
     }
@@ -103,6 +109,11 @@ export const useLLMStore = create<LLMState>()((set, get) => ({
         set({ defaultEmbeddingModelId: null })
         ipc.invoke('llm:set-default-embedding-model', null)
       }
+      // 如果删除的是默认文生图模型，清空默认
+      if (get().defaultImageModelId === modelId) {
+        set({ defaultImageModelId: null })
+        ipc.invoke('llm:set-default-image-model', null)
+      }
     }
     return result.success
   },
@@ -115,6 +126,11 @@ export const useLLMStore = create<LLMState>()((set, get) => ({
   setDefaultEmbeddingModel: (modelId) => {
     set({ defaultEmbeddingModelId: modelId })
     ipc.invoke('llm:set-default-embedding-model', modelId)
+  },
+
+  setDefaultImageModel: (modelId) => {
+    set({ defaultImageModelId: modelId })
+    ipc.invoke('llm:set-default-image-model', modelId)
   },
 
   generate: async (messages, modelId, options) => {

@@ -35,6 +35,33 @@ async function withFileMutex<T>(filePath: string, task: () => Promise<T>): Promi
 }
 
 export function registerFSController() {
+  // 导出 EPUB（零依赖，在主进程构建 ZIP 二进制并写盘）
+  ipcMain.handle('export:epub', async (_event, payload: {
+    title: string
+    author: string
+    language?: string
+    outputPath: string
+    chapters: Array<{ title: string; content: string }>
+  }) => {
+    try {
+      if (!payload.chapters || payload.chapters.length === 0) {
+        return { success: false, error: '无可导出的章节' }
+      }
+      const { buildEpub } = await import('../utils/epub-builder')
+      const buf = buildEpub({
+        title: payload.title,
+        author: payload.author,
+        language: payload.language,
+        chapters: payload.chapters,
+      })
+      await fsPromises.mkdir(path.dirname(payload.outputPath), { recursive: true })
+      await fsPromises.writeFile(payload.outputPath, buf)
+      return { success: true, path: payload.outputPath }
+    } catch (error) {
+      return { success: false, error: String(error) }
+    }
+  })
+
   // 安全的异步读取
   ipcMain.handle('fs:read-file', async (_event, filePath: string) => {
     try {

@@ -1,5 +1,5 @@
 import {
-  FolderOpen, BookOpen, Users,
+  FolderOpen, BookOpen, Users, Milestone,
   Home, Zap, ScrollText, Cpu,
 } from 'lucide-react'
 import { useLayoutStore, type SidebarView, type BottomTab } from '../../stores/layout-store'
@@ -10,6 +10,7 @@ const sidebarActivities: Array<{ id: SidebarView; icon: typeof FolderOpen; label
   { id: 'project', icon: FolderOpen, label: '项目结构' },
   { id: 'knowledge', icon: BookOpen, label: '知识库' },
   { id: 'characters', icon: Users, label: '角色管理' },
+  { id: 'foreshadowing', icon: Milestone, label: '伏笔台账' },
 ]
 
 /** 底部面板 Tab 按钮配置 */
