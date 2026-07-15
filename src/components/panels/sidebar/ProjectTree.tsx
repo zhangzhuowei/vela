@@ -19,7 +19,7 @@ import { useTranslation } from 'react-i18next'
 
 
 import {
-  ARCH_FILES, LeafItem, renderIcon, showSidebarMenu,
+  getArchFiles, LeafItem, renderIcon, showSidebarMenu,
   openArchFile, openBuiltinEditor,
 } from './SidebarShared'
 import DraftBoxGroup from './DraftBoxGroup'
@@ -134,8 +134,9 @@ export default function ProjectTree() {
   const nc = currentProject.novelConfig
   const configDone = !!(nc.coreOutline?.trim() || nc.protagonistProfile?.trim())
 
-  // 故事架构进度
-  const archDone = ARCH_FILES.filter(f => archStatus[f.key]).length
+  // 故事架构进度（getArchFiles() 在渲染时取翻译标签，切换语言即时生效）
+  const archFiles = getArchFiles()
+  const archDone = archFiles.filter(f => archStatus[f.key]).length
 
   return (
     <div className="text-sm">
@@ -229,8 +230,9 @@ function WorldBuildingGroup({
 }) {
   const { t } = useTranslation('panels')
   const [open, setOpen] = useState(true)
+  const archFiles = getArchFiles()
 
-  const allDone = archDone === ARCH_FILES.length
+  const allDone = archDone === archFiles.length
 
   return (
     <div>
@@ -263,14 +265,14 @@ function WorldBuildingGroup({
                 : 'var(--color-text-muted)'
           }}
         >
-          {archDone}/{ARCH_FILES.length}
+          {archDone}/{archFiles.length}
         </span>
       </div>
 
       {/* 子文件列表（点击直接在 Markdown 编辑器打开） */}
       {open && (
         <div>
-          {ARCH_FILES.map(f => {
+          {archFiles.map(f => {
             const isGenerated = archStatus[f.key]
             const filePath = `vela://core/${f.key}`
             return (
