@@ -6,6 +6,11 @@ dist
 dist-electron
 release
 
+# TS 增量构建缓存 / 配置编译产物
+*.tsbuildinfo
+vite.config.js
+vite.config.d.ts
+
 # 日志
 logs
 *.log
