@@ -12,23 +12,26 @@ import {
   ChevronRight,
   Download,
 } from 'lucide-react'
+import { useTranslation } from 'react-i18next'
 import { useLayoutStore, type SidebarView } from '../../stores/layout-store'
 import { useProjectStore } from '../../stores/project-store'
 import { useEditorStore } from '../../stores/editor-store'
 import { ipc } from '../../services/ipc-client'
+import i18n from '../../i18n'
 import { confirm } from '../../components/ui/Confirm'
 import { MenuItem } from '../../components/ui/MenuItem'
 import { useOutsideClick } from '../../hooks/useOutsideClick'
 
 /** 活动栏按钮配置 */
 const activities: Array<{ id: SidebarView; icon: typeof FolderOpen; label: string }> = [
-  { id: 'project', icon: FolderOpen, label: '项目结构' },
-  { id: 'knowledge', icon: BookOpen, label: '知识库' },
-  { id: 'characters', icon: Users, label: '角色管理' },
-  { id: 'foreshadowing', icon: Milestone, label: '伏笔台账' },
+  { id: 'project', icon: FolderOpen, label: 'project' },
+  { id: 'knowledge', icon: BookOpen, label: 'knowledge' },
+  { id: 'characters', icon: Users, label: 'characters' },
+  { id: 'foreshadowing', icon: Milestone, label: 'foreshadowing' },
 ]
 
 export default function ActivityBar() {
+  const { t } = useTranslation('layout')
   const sidebarView = useLayoutStore(s => s.sidebarView)
   const sidebarOpen = useLayoutStore(s => s.sidebarOpen)
   const setSidebarView = useLayoutStore(s => s.setSidebarView)
@@ -90,7 +93,7 @@ export default function ActivityBar() {
       const names = dirtyTabs.map((t: { name: string }) => t.name).join('、')
       const ok = await confirm(
         `以下文件有未保存的修改：\n${names}\n\n确定要关闭项目吗？未保存的内容将丢失。`,
-        { title: '关闭项目', confirmText: '放弃并关闭', danger: true }
+        { title: i18n.t('closeProject', { ns: 'layout' }), confirmText: i18n.t('discardAndClose', { ns: 'layout' }), danger: true }
       )
       if (!ok) return
     }
@@ -116,7 +119,7 @@ export default function ActivityBar() {
           <button
             onClick={handleHomeClick}
             onContextMenu={e => { e.preventDefault(); handleToggleMenu() }}
-            title={currentProject ? `${currentProject.name}（右键管理项目）` : '项目管理'}
+            title={currentProject ? `${currentProject.name} (right-click to manage)` : t('activityBar.projectManagement')}
             className="relative flex items-center justify-center w-[36px] h-[36px] rounded-md transition-all"
             style={{
               color: (showProjectMenu || (sidebarOpen && sidebarView === 'home'))
@@ -154,7 +157,7 @@ export default function ActivityBar() {
                 style={{ borderBottom: '1px solid var(--color-border)' }}
               >
                 <span className="text-xs font-semibold" style={{ color: 'var(--color-text-muted)' }}>
-                  项目管理
+                  {t('activityBar.projectManagement')}
                 </span>
                 <button
                   onClick={() => setShowProjectMenu(false)}
@@ -181,7 +184,7 @@ export default function ActivityBar() {
                         {currentProject.name}
                       </p>
                       <p className="text-[0.7rem] truncate mt-0.5" style={{ color: 'var(--color-text-muted)' }}>
-                        当前项目
+                        {t('activityBar.currentProject')}
                       </p>
                     </div>
                   </div>
@@ -192,13 +195,13 @@ export default function ActivityBar() {
               <div className="px-1">
                 <MenuItem
                   icon={<Plus size={13} />}
-                  label="新建项目"
+                  label={t('activityBar.newProject')}
                   shortcut="⌘N"
                   onClick={handleNewProject}
                 />
                 <MenuItem
                   icon={<FolderOpen size={13} />}
-                  label="打开项目..."
+                  label={t('activityBar.openProject')}
                   shortcut="⌘O"
                   onClick={handleOpenProject}
                 />
@@ -212,7 +215,7 @@ export default function ActivityBar() {
                 {currentProject && (
                   <MenuItem
                     icon={<X size={13} />}
-                    label="关闭当前项目"
+                    label={t('activityBar.closeProject')}
                     onClick={handleCloseProject}
                     danger
                   />
@@ -228,7 +231,7 @@ export default function ActivityBar() {
                   >
                     <Clock size={11} style={{ color: 'var(--color-text-muted)' }} />
                     <span className="text-xs font-medium" style={{ color: 'var(--color-text-muted)' }}>
-                      最近项目
+                      {t('activityBar.recentProjects')}
                     </span>
                   </div>
                   <div className="px-1 max-h-[180px] overflow-y-auto">
@@ -255,7 +258,7 @@ export default function ActivityBar() {
                       ))}
                     {recentProjects.filter(p => p.path !== currentProject?.path).length === 0 && (
                       <p className="text-xs px-2 py-1.5 opacity-50" style={{ color: 'var(--color-text-muted)' }}>
-                        暂无其他最近项目
+                        {t('activityBar.noOtherRecent')}
                       </p>
                     )}
                   </div>
@@ -280,7 +283,7 @@ export default function ActivityBar() {
             <button
               key={id}
               onClick={() => setSidebarView(id)}
-              title={label}
+              title={t(`activityBar.${label}`)}
               className="relative flex items-center justify-center w-[36px] h-[36px] rounded-md transition-colors"
               style={{
                 color: isActive
@@ -304,7 +307,7 @@ export default function ActivityBar() {
       <div className="flex flex-col items-center gap-0.5 pb-1">
         <button
           onClick={() => useLayoutStore.getState().openSettings()}
-          title="设置"
+          title={t('activityBar.settings')}
           className="flex items-center justify-center w-[36px] h-[36px] rounded-md transition-colors"
           style={{ color: 'var(--color-activity-icon)' }}
         >

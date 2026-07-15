@@ -7,12 +7,14 @@
  * 架构生成 Prompt 来源于 AI_NovelGenerator 项目（经专业优化）
  */
 
+import i18n from '../i18n'
+
 export interface PromptTemplate {
   /** 模板唯一标识 */
   key: string
-  /** 显示名称 */
+  /** 显示名称（i18n key: promptTemplates.{key}.name） */
   name: string
-  /** 用途说明 */
+  /** 用途说明（i18n key: promptTemplates.{key}.description） */
   description: string
   /** 模板内容（支持 {{变量}} 插值） */
   content: string
@@ -22,6 +24,16 @@ export interface PromptTemplate {
   systemRole?: string
   /** 可用变量列表 */
   variables: Record<string, string>
+}
+
+/** 获取翻译后的模板名称 */
+export function getPromptName(key: string): string {
+  return i18n.t(`promptTemplates.${key}.name`, { ns: 'settings' })
+}
+
+/** 获取翻译后的模板描述 */
+export function getPromptDescription(key: string): string {
+  return i18n.t(`promptTemplates.${key}.description`, { ns: 'settings' })
 }
 
 /** 允许用户自定义编辑的模板 Key 列表（其余为系统模板，不可编辑） */
@@ -500,6 +512,7 @@ export const BUILTIN_PROMPTS: PromptTemplate[] = [
     description: '基于上下文和章节蓝图生成后续章节',
     systemRole: '你是一位笔力精湛的顶尖网文小说家，擅长撰写引人入胜、让读者欲罢不能的商业网文正文。',
     variables: {
+      canon_context: '【强制】叙事一致性 Canon Context（最高优先级：包含正史设定、人物状态、时间线、最近章节摘要、未结剧情、本章目标、RAG、风格、硬性约束）',
       global_summary: '章节要点时间线（从蓝图按序拼装）',
       character_states: '角色状态',
       short_summary: '近期三章简要',
@@ -517,6 +530,9 @@ export const BUILTIN_PROMPTS: PromptTemplate[] = [
       character_voices: '出场角色说话风格（可选）',
     },
     content: `你正在连载写作最新章节。
+
+【★★★ 叙事一致性 Canon 上下文（必须严格遵循 · 优先级最高）★★★】
+{{canon_context}}
 
 【剧情记忆库与前置断点上下文】
 - [全局剧情进展]：{{global_summary}}
@@ -579,6 +595,7 @@ export const BUILTIN_PROMPTS: PromptTemplate[] = [
     description: '将草稿提升到大神级质量',
     systemRole: '你是一位功力深厚的文学编辑，擅长将普通文稿精修为白金品质力作。',
     variables: {
+      canon_context: '【强制】叙事一致性 Canon Context（精修时绝不可破坏的事实基线）',
       draft_content: '章节草稿内容',
       chapter_info: '章节信息',
       global_guidance: '写作要求',
@@ -589,6 +606,9 @@ export const BUILTIN_PROMPTS: PromptTemplate[] = [
       writing_style: '文风描述（可选）',
     },
     content: `请对章节草稿进行【精修与细节填充】。
+
+【★★★ 叙事一致性 Canon 上下文（精修时绝不可破坏的事实基线）★★★】
+{{canon_context}}
 
 【剧情上下文】
 - 全书目前进度摘要：{{global_summary}}
@@ -635,6 +655,7 @@ export const BUILTIN_PROMPTS: PromptTemplate[] = [
       character_states: '角色状态',
       global_summary: '上下文检索结果',
       world_building: '世界观设定',
+      canon_context: '已确立事实（时间线+角色状态+剧情线+硬性约束），用于交叉验证',
       review_focus: '审稿维度侧重点（可选）',
       foreshadowing: '已知未回收伏笔清单（可选）',
     },
@@ -648,6 +669,10 @@ export const BUILTIN_PROMPTS: PromptTemplate[] = [
 
 【全局摘要】
 {{global_summary}}
+
+
+【已确立事实基线（用于交叉验证 — 所有事实以此为准，本章不得与之矛盾）】
+{{canon_context}}
 
 【世界观设定】
 {{world_building}}
@@ -732,12 +757,16 @@ severity 取值：error=严重矛盾强烈建议修复, warning=轻微不一致�
     description: '根据审稿报告中的问题精准修复草稿',
     systemRole: '你是一位严谨的小说编辑，擅长精准修复文本中的具体问题而不过度改写。',
     variables: {
+      canon_context: '【强制】叙事一致性 Canon Context（审稿修复时绝不可破坏的事实基线）',
       review_report: '审稿报告内容',
       draft_content: '待修稿内容',
       global_guidance: '全局写作要求',
       user_refine_prompt: '用户额外修稿指导（可选）',
     },
     content: `请根据【审稿报告】中列出的问题，对草稿进行**精准修复**。
+
+【★★★ 叙事一致性 Canon 上下文（修复时绝不可破坏的事实基线）★★★】
+{{canon_context}}
 
 【审稿报告】
 {{review_report}}
@@ -1070,34 +1099,37 @@ severity 取值：error=严重矛盾强烈建议修复, warning=轻微不一致�
 4. role 字段仅限以下取值：protagonist（主角）、antagonist（反派）、supporting（配角）、minor（龙套）。
 5. currentState 是角色的初始状态（故事开始时），updatedAtChapter 固定为 0。
 
-【输出格式（JSON 数组）】
-[
-  {
-    "name": "角色名",
-    "role": "protagonist",
-    "gender": "性别",
-    "age": "年龄或年龄段",
-    "appearance": "外貌特征",
-    "personality": "性格特点",
-    "background": "背景故事",
-    "abilities": "能力/技能/修为",
-    "motivation": "核心动机与渴望",
-    "relationships": "与其他角色的关系",
-    "arc": "预期的角色弧光/成长轨迹",
-    "notes": "其他补充说明",
-    "currentState": {
-      "location": "初始位置",
-      "powerLevel": "初始境界/能力等级",
-      "physicalState": "初始身体状态",
-      "mentalState": "初始心理状态",
-      "keyItems": "初始持有道具",
-      "recentEvents": "故事开始前的背景事件",
-      "updatedAtChapter": 0
+【输出格式】
+必须返回一个 JSON 对象，格式如下（characters 数组包含所有角色）：
+{
+  "characters": [
+    {
+      "name": "角色名",
+      "role": "protagonist",
+      "gender": "性别",
+      "age": "年龄或年龄段",
+      "appearance": "外貌特征",
+      "personality": "性格特点",
+      "background": "背景故事",
+      "abilities": "能力/技能/修为",
+      "motivation": "核心动机与渴望",
+      "relationships": "与其他角色的关系",
+      "arc": "预期的角色弧光/成长轨迹",
+      "notes": "其他补充说明",
+      "currentState": {
+        "location": "初始位置",
+        "powerLevel": "初始境界/能力等级",
+        "physicalState": "初始身体状态",
+        "mentalState": "初始心理状态",
+        "keyItems": "初始持有道具",
+        "recentEvents": "故事开始前的背景事件",
+        "updatedAtChapter": 0
+      }
     }
-  }
-]
+  ]
+}
 
-如果图谱中没有任何可提取的角色，返回空数组 []。`,
+如果图谱中没有任何可提取的角色，返回 {"characters": []}。`,
   },
 
   // ================================================================

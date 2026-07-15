@@ -1,5 +1,6 @@
 import { create } from 'zustand'
 import { randomUUID } from '../utils/id'
+import i18n from '../i18n'
 
 // ===== 工作流数据模型 =====
 
@@ -232,7 +233,7 @@ export const useWorkflowStore = create<WorkflowState>()((set, get) => ({
       const newRuns = [...s.activeRuns, run]
       return { activeRuns: newRuns, ...computeCompat(newRuns, s.waitingRuns) }
     })
-    get().addLog('info', `🚀 工作流「${definition.title}」已启动`)
+    get().addLog('info', i18n.t('workflow.started', { ns: 'stores', title: definition.title }))
 
     // 自动联动：打开右侧面板的 AI 输出视图（非阻塞 import 避免循环依赖）
     import('./layout-store').then(m => m.useLayoutStore.getState().openRightPanel('ai-output')).catch(() => {})
@@ -246,7 +247,7 @@ export const useWorkflowStore = create<WorkflowState>()((set, get) => ({
       // 检查取消
       if (context.cancelled) {
         updateRunById(set, run.id, { status: 'failed' })
-        get().addLog('warn', `⏹ 工作流「${definition.title}」已取消`)
+        get().addLog('warn', i18n.t('workflow.cancelled', { ns: 'stores', title: definition.title }))
         break
       }
 
@@ -255,7 +256,7 @@ export const useWorkflowStore = create<WorkflowState>()((set, get) => ({
       // 标记当前步骤为运行中
       updateStepById(set, run.id, i, { status: 'running', startedAt: new Date().toISOString() })
       updateRunById(set, run.id, { currentStepIndex: i })
-      get().addLog('info', `▶ [${definition.title}] 执行步骤: ${stepDef.name}`)
+      get().addLog('info', i18n.t('workflow.stepRunning', { ns: 'stores', title: definition.title, step: stepDef.name }))
 
       // 创建步骤回调
       // 流式文本节流：累积 chunk，最多每 120ms 刷一次 store，避免推理模型（R1 等）
@@ -295,7 +296,7 @@ export const useWorkflowStore = create<WorkflowState>()((set, get) => ({
           progress: 100,
           result: result || get().activeRuns.find(r => r.id === run.id)?.steps[i].result,
         })
-        get().addLog('info', `✅ [${definition.title}] 步骤完成: ${stepDef.name}`)
+        get().addLog('info', i18n.t('workflow.stepComplete', { ns: 'stores', title: definition.title, step: stepDef.name }))
 
         // 步进模式：非最后一步，且未取消 → 暂停等待用户确认
         if (stepByStep && i < definition.steps.length - 1 && !context.cancelled) {
@@ -304,7 +305,7 @@ export const useWorkflowStore = create<WorkflowState>()((set, get) => ({
             const newWaiting = { ...s.waitingRuns, [run.id]: { waitingForConfirm: true, waitingAfterStepIndex: i } }
             return { waitingRuns: newWaiting, ...computeCompat(s.activeRuns, newWaiting) }
           })
-          get().addLog('info', `⏸ [${definition.title}] 等待确认继续第 ${i + 2} 步：${definition.steps[i + 1].name}`)
+          get().addLog('info', i18n.t('workflow.waitingConfirm', { ns: 'stores', title: definition.title, index: i + 2, nextStep: definition.steps[i + 1].name }))
           await new Promise<void>((resolve) => { continueResolveRefs.set(run.id, resolve) })
           if (context.cancelled) break
           updateRunById(set, run.id, { status: 'running' })
@@ -319,7 +320,7 @@ export const useWorkflowStore = create<WorkflowState>()((set, get) => ({
           completedAt: new Date().toISOString(),
         })
         updateRunById(set, run.id, { status: 'failed' })
-        get().addLog('error', `❌ [${definition.title}] 步骤失败: ${stepDef.name} — ${errorMsg}`)
+        get().addLog('error', i18n.t('workflow.stepFailed', { ns: 'stores', title: definition.title, step: stepDef.name, error: errorMsg }))
         break
       }
     }
@@ -328,7 +329,7 @@ export const useWorkflowStore = create<WorkflowState>()((set, get) => ({
     const finalRun = get().activeRuns.find(r => r.id === run.id)
     if (finalRun && finalRun.status === 'running') {
       updateRunById(set, run.id, { status: 'completed', completedAt: new Date().toISOString() })
-      get().addLog('info', `🎉 工作流「${definition.title}」已完成`)
+      get().addLog('info', i18n.t('workflow.completed', { ns: 'stores', title: definition.title }))
 
       // 通过 EventBus 广播工作流完成事件（替代 window.dispatchEvent）
       import('../shared/event-bus').then(m => {
@@ -345,7 +346,7 @@ export const useWorkflowStore = create<WorkflowState>()((set, get) => ({
           }
           // silent 模式不做额外操作
         } catch (e) {
-          get().addLog('warn', `⚠️ onComplete 执行失败: ${e}`)
+          get().addLog('warn', i18n.t('workflow.onCompleteFailed', { ns: 'stores', error: String(e) }))
         }
       }
     }
@@ -398,7 +399,7 @@ export const useWorkflowStore = create<WorkflowState>()((set, get) => ({
           ...computeCompat(newRuns, newWaiting),
         }
       })
-      get().addLog('warn', '⏹ 工作流已取消')
+      get().addLog('warn', i18n.t('workflow.allCancelled', { ns: 'stores' }))
     } else {
       // 取消全部
       for (const [id, ctx] of activeContexts) {
@@ -419,7 +420,7 @@ export const useWorkflowStore = create<WorkflowState>()((set, get) => ({
           waitingAfterStepIndex: -1,
         }
       })
-      get().addLog('warn', '⏹ 所有工作流已取消')
+      get().addLog('warn', i18n.t('workflow.allCancelled', { ns: 'stores' }))
     }
   },
 

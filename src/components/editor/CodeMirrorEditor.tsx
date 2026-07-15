@@ -6,6 +6,7 @@ import { languages } from '@codemirror/language-data'
 import { EditorState } from '@codemirror/state'
 import { openSearchPanel, closeSearchPanel, search } from '@codemirror/search'
 import { Sparkles, Bold } from 'lucide-react'
+import { useTranslation } from 'react-i18next'
 import { cn } from '../../lib/utils'
 
 /** 统计字数（简单字符数统计，包含空格换行等格式符） */
@@ -25,13 +26,6 @@ export type CodeMirrorEditorProps = {
   mode?: 'document' | 'prose'
 }
 
-const AI_ACTIONS = [
-  { key: 'refine', label: '润色', color: 'text-blue-400', prompt: '在保持原意、篇幅相近的前提下润色这段文字，提升文学性、节奏与画面感。不要扩大篇幅，不要添加原文没有的情节或设定。' },
-  { key: 'expand', label: '扩写', color: 'text-amber-400', prompt: '扩写这段文字：补充视觉、听觉、触觉、嗅觉等感官细节，环境氛围烘托，以及人物的神态与细微动作，让画面更立体可感。只把已有的这一刻写得更细致，不要推进新剧情、不要改变已经发生的事实。' },
-  { key: 'continue', label: '续写', color: 'text-purple-400', prompt: '承接上文的语气、人称与节奏，合理续写接下来的一小段情节，结尾自然留出继续的余地。' },
-  { key: 'dialogue', label: '对话', color: 'text-emerald-400', prompt: '将这段改写为更生动传神的对话形式：贴合各角色的身份与说话风格，用对话配合神态、动作推进，减少平铺直叙的旁白。' },
-]
-
 export default function CodeMirrorEditor({
   content,
   editable = true,
@@ -40,7 +34,15 @@ export default function CodeMirrorEditor({
   onCharCountChange,
   mode = 'document',
 }: CodeMirrorEditorProps) {
+  const { t } = useTranslation('editors')
   const editorRef = useRef<ReactCodeMirrorRef>(null)
+
+  const AI_ACTIONS = useMemo(() => [
+    { key: 'refine', label: t('codeMirrorEditor.aiRefine'), color: 'text-blue-400', prompt: t('codeMirrorEditor.aiRefinePrompt') },
+    { key: 'expand', label: t('codeMirrorEditor.aiExpand'), color: 'text-amber-400', prompt: t('codeMirrorEditor.aiExpandPrompt') },
+    { key: 'continue', label: t('codeMirrorEditor.aiContinue'), color: 'text-purple-400', prompt: t('codeMirrorEditor.aiContinuePrompt') },
+    { key: 'dialogue', label: t('codeMirrorEditor.aiDialogue'), color: 'text-emerald-400', prompt: t('codeMirrorEditor.aiDialoguePrompt') },
+  ], [t])
 
   // 避免状态回路
   const lastEmittedContentRef = useRef(content)
@@ -217,33 +219,33 @@ export default function CodeMirrorEditor({
       ]),
       // 汉化 Search / UI 文本（涵盖官方大小写所有变种）
       EditorState.phrases.of({
-        "Find": "查找",
-        "find": "查找",
-        "Replace": "替换",
-        "replace": "替换",
-        "Replace all": "全部替换",
-        "replace all": "全部替换",
-        "Next": "下一个",
-        "next": "下一个",
-        "Previous": "上一个",
-        "previous": "上一个",
-        "All": "全部选中",
-        "all": "全部选中",
-        "Match case": "区分大小写",
-        "match case": "区分大小写",
-        "Regexp": "正则表达式",
-        "regexp": "正则表达式",
-        "by word": "全词匹配",
-        "By word": "全词匹配",
-        "Close": "关闭",
-        "close": "关闭"
+        "Find": t('codeMirrorEditor.search.find'),
+        "find": t('codeMirrorEditor.search.find'),
+        "Replace": t('codeMirrorEditor.search.replace'),
+        "replace": t('codeMirrorEditor.search.replace'),
+        "Replace all": t('codeMirrorEditor.search.replaceAll'),
+        "replace all": t('codeMirrorEditor.search.replaceAll'),
+        "Next": t('codeMirrorEditor.search.next'),
+        "next": t('codeMirrorEditor.search.next'),
+        "Previous": t('codeMirrorEditor.search.previous'),
+        "previous": t('codeMirrorEditor.search.previous'),
+        "All": t('codeMirrorEditor.search.all'),
+        "all": t('codeMirrorEditor.search.all'),
+        "Match case": t('codeMirrorEditor.search.matchCase'),
+        "match case": t('codeMirrorEditor.search.matchCase'),
+        "Regexp": t('codeMirrorEditor.search.regexp'),
+        "regexp": t('codeMirrorEditor.search.regexp'),
+        "by word": t('codeMirrorEditor.search.byWord'),
+        "By word": t('codeMirrorEditor.search.byWord'),
+        "Close": t('codeMirrorEditor.search.close'),
+        "close": t('codeMirrorEditor.search.close')
       })
     ]
     if (mode === 'document') {
       exts.push(markdown({ base: markdownLanguage, codeLanguages: languages }))
     }
     return exts
-  }, [mode])
+  }, [mode, t])
 
   // AI 菜单处理（流式调用，实时显示生成内容）
   const handleAIAction = async (prompt: string, _actionKey: string) => {
@@ -300,13 +302,13 @@ export default function CodeMirrorEditor({
             setAiResult(prev => (prev ?? '') + chunk)
           },
           onError: () => {
-            setAiResult('生成失败')
+            setAiResult(t('codeMirrorEditor.generateFailed'))
           },
         }
       )
     } catch (e) {
       console.error(e)
-      setAiResult('生成失败')
+      setAiResult(t('codeMirrorEditor.generateFailed'))
     }
   }
 
@@ -414,7 +416,7 @@ export default function CodeMirrorEditor({
                 className="text-[10px] mb-1.5 font-medium flex items-center gap-1"
                 style={{ color: 'var(--color-text-muted)' }}
               >
-                <Sparkles size={11} style={{ color: 'var(--color-accent)' }} /> {activeAIAction ? `${activeAIAction}预览` : 'AI 预览'}
+                <Sparkles size={11} style={{ color: 'var(--color-accent)' }} /> {activeAIAction ? t('codeMirrorEditor.aiPreviewWithAction', { action: activeAIAction }) : t('codeMirrorEditor.aiPreview')}
               </div>
               {/* 流式输入中显示动态内容 */}
               {aiResult === '' ? (
@@ -422,7 +424,7 @@ export default function CodeMirrorEditor({
                   className="text-xs leading-relaxed mb-3"
                   style={{ color: 'var(--color-text-muted)' }}
                 >
-                  正在生成 {loadingDots}
+                  {t('codeMirrorEditor.generating')} {loadingDots}
                 </div>
               ) : (
                 <div
@@ -439,7 +441,7 @@ export default function CodeMirrorEditor({
                   onMouseEnter={e => (e.currentTarget.style.backgroundColor = 'var(--color-hover)')}
                   onMouseLeave={e => (e.currentTarget.style.backgroundColor = 'transparent')}
                   onClick={handleRejectAI}
-                >取消</button>
+                >{t('codeMirrorEditor.cancel')}</button>
                 <button
                   className="px-2.5 py-1 text-xs rounded-md font-medium transition-colors"
                   style={{ backgroundColor: 'var(--color-accent)', color: '#fff' }}
@@ -447,7 +449,7 @@ export default function CodeMirrorEditor({
                   onMouseLeave={e => (e.currentTarget.style.opacity = '1')}
                   disabled={aiResult === ''}
                   onClick={handleAcceptAI}
-                >✓ 替换</button>
+                >{t('codeMirrorEditor.replace')}</button>
               </div>
             </div>
           ) : (
