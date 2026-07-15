@@ -513,19 +513,19 @@ function LogsView() {
         <Button
           variant="ghost" size="icon"
           onClick={() => setAutoScroll(!autoScroll)}
-          title={autoScroll ? t('common.autoScrollOn') : t('common.autoScrollOff')}
+          title={autoScroll ? t('autoScrollOn', { ns: 'common' }) : t('autoScrollOff', { ns: 'common' })}
           className={autoScroll ? 'text-[var(--color-accent)]' : 'text-[var(--color-text-muted)]'}
         >
           <ChevronsDown size={13} />
         </Button>
-        <Button variant="ghost" size="icon" onClick={clearLogs} title={t('common.clearLogs')}>
+        <Button variant="ghost" size="icon" onClick={clearLogs} title={t('clearLogs', { ns: 'common' })}>
           <Trash2 size={13} />
         </Button>
       </div>
 
       <div ref={scrollRef} className="flex-1 overflow-y-auto px-3 pb-2 font-mono text-xs leading-5">
         {globalLogs.length === 0 && (
-          <div className="text-center py-8 opacity-30">{t('common.noLogs')}</div>
+          <div className="text-center py-8 opacity-30">{t('noLogs', { ns: 'common' })}</div>
         )}
         {globalLogs.map((log, i) => (
           <div key={i} className="flex gap-2">
@@ -571,22 +571,22 @@ function ModelsView() {
           style={{ borderBottom: '1px solid var(--color-border)' }}
         >
           <div className="text-[0.7rem] text-[var(--color-text-muted)]">
-            <span className="font-bold text-sm text-[var(--color-text)]">{stats.totalCalls}</span> {t('common.calls')}
+            <span className="font-bold text-sm text-[var(--color-text)]">{stats.totalCalls}</span> {t('calls', { ns: 'common' })}
           </div>
           <div className="text-[0.7rem] text-[var(--color-text-muted)]">
-            <span className="font-bold text-sm text-[var(--color-text)]">{(stats.totalTokens / 1000).toFixed(1)}k</span> {t('common.tokens')}
+            <span className="font-bold text-sm text-[var(--color-text)]">{(stats.totalTokens / 1000).toFixed(1)}k</span> {t('tokens', { ns: 'common' })}
           </div>
           <div className="text-[0.7rem] text-[var(--color-text-muted)]">
-            {t('common.input')} <span className="font-mono text-[var(--color-text-secondary)]">{(stats.totalPromptTokens / 1000).toFixed(1)}k</span>
+            {t('input', { ns: 'common' })} <span className="font-mono text-[var(--color-text-secondary)]">{(stats.totalPromptTokens / 1000).toFixed(1)}k</span>
           </div>
           <div className="text-[0.7rem] text-[var(--color-text-muted)]">
-            {t('common.output')} <span className="font-mono text-[var(--color-text-secondary)]">{(stats.totalCompletionTokens / 1000).toFixed(1)}k</span>
+            {t('output', { ns: 'common' })} <span className="font-mono text-[var(--color-text-secondary)]">{(stats.totalCompletionTokens / 1000).toFixed(1)}k</span>
           </div>
         </div>
       )}
       <div className="flex-1 overflow-y-auto font-mono text-xs">
         {history.length === 0 ? (
-          <div className="flex items-center justify-center h-full opacity-30 text-sm">{t('common.noRecords')}</div>
+          <div className="flex items-center justify-center h-full opacity-30 text-sm">{t('noRecords', { ns: 'common' })}</div>
         ) : (
           <table className="w-full">
             <thead>

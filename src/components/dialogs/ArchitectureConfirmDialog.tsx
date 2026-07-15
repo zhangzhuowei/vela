@@ -312,7 +312,7 @@ export default function ArchitectureConfirmDialog({
         </div>
 
         <DialogFooter>
-          <Button variant="outline" onClick={onClose} disabled={isConfirming}>{t('common.cancel')}</Button>
+          <Button variant="outline" onClick={onClose} disabled={isConfirming}>{t('cancel', { ns: 'common' })}</Button>
           <Button variant="default" onClick={handleConfirm} disabled={noneSelected || isConfirming}>
             <Wand2 size={13} />
             {isConfirming ? t('architectureConfirm.validating') : t('architectureConfirm.confirmGeneration', { count: selectedSteps.length })}

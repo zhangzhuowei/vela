@@ -207,6 +207,14 @@
     }
   },
   "worldBuilding": {
+    "premise": "故事前提",
+    "premiseDesc": "Logline、核心冲突、金手指定位",
+    "characterMap": "角色图谱",
+    "characterMapDesc": "角色弧光、关系网、矛盾交织",
+    "worldbuilding": "世界观",
+    "worldbuildingDesc": "核心规则、阶层断层、深层危机",
+    "synopsis": "情节大纲",
+    "synopsisDesc": "三幕式情节骨架",
     "storyArchitecture": "故事架构",
     "openProjectFirst": "请先打开项目",
     "generated": "已生成",
