@@ -19,6 +19,11 @@ export interface ChapterInfo {
   userGuidance?: string
   /** 用户自定义知识库检索关键词（追加到向量搜索 query） */
   knowledgeQueryHint?: string
+  /**
+   * 本章目标字数（创作对话框可单章覆盖）。
+   * 缺省时回退到小说配置的「每章字数」。
+   */
+  wordsTarget?: number
 }
 
 export interface RefineOnlyParams {

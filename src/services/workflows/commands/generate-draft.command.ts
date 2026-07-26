@@ -76,6 +76,10 @@ export class GenerateDraftCommand extends BaseWorkflowCommand {
     } catch (e) {
       callbacks.log(`  ⚠️ Canon 上下文构造失败，继续以基础上下文生成：${String(e)}`)
     }
+    // 目标字数：优先本章覆盖值，其次全局「每章字数」
+    const targetWords = Number(this.chapterInfo.wordsTarget) || Number(project.novelConfig.wordsPerChapter) || 0
+    callbacks.log(`  📏 本章目标字数：${targetWords || '未设置'}${this.chapterInfo.wordsTarget ? '（本章覆盖）' : '（全局配置）'}`)
+
     const isFirstChapter = this.chapterInfo.chapterNumber === 1
     const templateKey = isFirstChapter ? 'first_chapter_draft' : 'next_chapter_draft'
     const template = getPromptTemplate(templateKey)
@@ -92,7 +96,8 @@ export class GenerateDraftCommand extends BaseWorkflowCommand {
       .withWritingStyle(project.novelConfig.writingStyle || '')
       .withStyleReference(project.novelConfig.styleReference || '')
       .withNovelConfig(project.novelConfig)
-      .withWordNumber(project.novelConfig.wordsPerChapter)
+      // 单章目标字数优先于全局「每章字数」
+      .withWordNumber(targetWords)
 
     if (!isFirstChapter) {
       // 从蓝图 JSON 的 notes 字段读取章节要点时间线（按序拼装，利于前缀缓存）
@@ -175,7 +180,7 @@ export class GenerateDraftCommand extends BaseWorkflowCommand {
     // ==========================================
     cleanDraftText = await this.ensureWordCount(
       cleanDraftText,
-      Number(project.novelConfig.wordsPerChapter) || 0,
+      targetWords,
       promptBuilder.getSystemRole(),
       callbacks,
       context,
