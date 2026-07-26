@@ -20,6 +20,8 @@ export interface ProjectCoreRow {
     writing_style: string
     style_reference: string
     reference_works: string
+    art_style: string
+    negative_prompt: string
     global_guidance: string
     golden_finger: string
     premise: string
@@ -44,6 +46,8 @@ export interface ProjectCoreData {
     writingStyle: string
     styleReference: string
     referenceWorks: string
+    artStyle: string
+    negativePrompt: string
     globalGuidance: string
     goldenFinger: string
     premise: string
@@ -67,6 +71,8 @@ function rowToData(row: ProjectCoreRow): ProjectCoreData {
         writingStyle: row.writing_style,
         styleReference: row.style_reference ?? '',
         referenceWorks: row.reference_works,
+        artStyle: row.art_style ?? '',
+        negativePrompt: row.negative_prompt ?? '',
         globalGuidance: row.global_guidance,
         goldenFinger: row.golden_finger,
         premise: row.premise,
@@ -119,6 +125,8 @@ export class ProjectCoreRepository {
             writingStyle: 'writing_style',
             styleReference: 'style_reference',
             referenceWorks: 'reference_works',
+            artStyle: 'art_style',
+            negativePrompt: 'negative_prompt',
             globalGuidance: 'global_guidance',
             goldenFinger: 'golden_finger',
             premise: 'premise',

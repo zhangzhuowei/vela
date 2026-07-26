@@ -159,11 +159,18 @@ export interface LLMChannels {
     args: [payload: {
       model: ModelProfile
       prompt: string
+      /** 反向提示词：描述不希望出现的元素，比写在正面提示词里的「禁止…」更有效 */
+      negativePrompt?: string
       projectPath: string
       size?: string
       filenameHint?: string
     }]
     return: { success: boolean; path?: string; dataUrl?: string; error?: string }
+  }
+  /** 手动导入外部图片作为人设图 / 配图（弹出文件选择框，复制到项目内） */
+  'image:import': {
+    args: [payload: { projectPath: string; filenameHint?: string }]
+    return: { success: boolean; canceled?: boolean; path?: string; dataUrl?: string; error?: string }
   }
   'image:read': {
     args: [filePath: string]
@@ -208,6 +215,10 @@ export interface NovelConfig {
   writingStyle?: string
   styleReference?: string
   referenceWorks?: string
+  /** 全局美术风格：统一注入到人设图与章节配图的文生图提示词末尾，保证全书画风一致 */
+  artStyle?: string
+  /** 全局反向提示词：统一作为 negative_prompt 发送，排除写实、人形等不希望出现的元素 */
+  negativePrompt?: string
 }
 
 export interface FileNode {

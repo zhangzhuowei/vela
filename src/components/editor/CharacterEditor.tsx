@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import { Save, Trash2, Users, Network, Image as ImageIcon, Loader2, RefreshCw } from 'lucide-react'
+import { Save, Trash2, Users, Network, Image as ImageIcon, Loader2, RefreshCw, Upload } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { useProjectStore } from '../../stores/project-store'
 import { useWorkflowStore } from '../../stores/workflow-store'
@@ -39,6 +39,7 @@ export default function CharacterEditor() {
   // 人设图 dataUrl 缓存（按角色名）+ 生成中状态
   const [portraits, setPortraits] = useState<Record<string, string>>({})
   const [generatingPortrait, setGeneratingPortrait] = useState(false)
+  const [uploadingPortrait, setUploadingPortrait] = useState(false)
 
   // 数据由 ProjectService 统一加载，组件只消费 store 数据
 
@@ -73,10 +74,14 @@ export default function CharacterEditor() {
     try {
       const c = selectedCard
       const genre = currentProject.novelConfig?.genre || ''
+      const artStyle = (currentProject.novelConfig?.artStyle || '').trim()
+      const negativePrompt = (currentProject.novelConfig?.negativePrompt || '').trim()
+      const charPrompt = (c.imagePrompt || '').trim()
       const base = [
         c.gender && `性别：${c.gender}`,
         c.age && `年龄：${c.age}`,
         c.appearance && `外貌：${c.appearance}`,
+        charPrompt && `外观补充（最高优先级，必须严格体现）：${charPrompt}`,
         c.personality && `性格气质：${c.personality}`,
         genre && `作品类型：${genre}`,
       ].filter(Boolean).join('；')
@@ -87,17 +92,22 @@ export default function CharacterEditor() {
       try {
         if (llm.defaultModelId) {
           const r = await llm.generate([
-            { role: 'system', content: '你是文生图提示词工程师。把人物设定浓缩成一段用于文生图的中文提示词，聚焦外貌/服饰/气质/构图/画面质感，80-140字，单人半身立绘，只输出提示词本身，不要任何解释。' },
+            { role: 'system', content: '你是文生图提示词工程师。把人物设定浓缩成一段用于文生图的中文提示词，聚焦外貌/服饰/气质/构图/画面质感，80-140字，单人半身立绘，只输出提示词本身，不要任何解释。若设定中含「外观补充」，其中的特征必须全部保留，不得省略或改写。' },
             { role: 'user', content: `${c.name}\n${base}` },
           ])
           if (r.success && r.content.trim()) prompt = r.content.trim()
         }
       } catch { /* 用兜底 prompt */ }
 
+      // 角色专属提示词与全局画风在润色之后强制追加，避免被文本模型的改写吞掉
+      if (charPrompt) prompt += `。角色关键特征：${charPrompt}`
+      if (artStyle) prompt += `。整体画风：${artStyle}`
+
       addLog('info', `🎨 正在生成「${c.name}」的人设图...`)
       const res = await ipc.invoke('image:generate', {
         model: imgModel,
         prompt,
+        negativePrompt,
         projectPath: currentProject.path,
         size: '1024x1024',
         filenameHint: c.name || 'character',
@@ -115,6 +125,32 @@ export default function CharacterEditor() {
       toast.error(`人设图生成失败：${e}`)
     } finally {
       setGeneratingPortrait(false)
+    }
+  }
+
+  /** 手动上传人设图：选本地图片 → 复制进项目 → 更新角色卡 */
+  const handleUploadPortrait = async () => {
+    if (!selectedCard || !currentProject || uploadingPortrait) return
+    setUploadingPortrait(true)
+    try {
+      const c = selectedCard
+      const res = await ipc.invoke('image:import', {
+        projectPath: currentProject.path,
+        filenameHint: c.name || 'character',
+      })
+      if (res.canceled) return
+      if (res.success && res.dataUrl && res.path) {
+        setPortraits((prev) => ({ ...prev, [c.name]: res.dataUrl! }))
+        updateField(c.name, 'portraitPath', res.path)
+        await ipc.invoke('db:character-update-portrait', c.name, res.path)
+        addLog('info', `✅ 「${c.name}」人设图已上传`)
+      } else {
+        toast.error(`人设图上传失败：${res.error ?? '未知错误'}`)
+      }
+    } catch (e) {
+      toast.error(`人设图上传失败：${e}`)
+    } finally {
+      setUploadingPortrait(false)
     }
   }
 
@@ -259,14 +295,20 @@ export default function CharacterEditor() {
                 <div className="flex-1 min-w-0">
                   <Label>人设图</Label>
                   <p className="text-xs mb-2" style={{ color: 'var(--color-text-muted)' }}>
-                    根据「外貌 / 性格」用文生图模型生成。需先在 设置 → 文生图模型 配置模型。
+                    可用文生图模型根据「外貌 / 性格」生成，也可直接上传本地图片（如官方设定图），上传的形象完全准确且跨章节一致。
                   </p>
-                  <Button variant="outline" size="sm" onClick={handleGeneratePortrait} disabled={generatingPortrait}>
-                    {generatingPortrait
-                      ? <Loader2 size={12} className="animate-spin" />
-                      : (portraits[selectedCard.name] ? <RefreshCw size={12} /> : <ImageIcon size={12} />)}
-                    {generatingPortrait ? '生成中...' : (portraits[selectedCard.name] ? '重新生成' : '生成人设图')}
-                  </Button>
+                  <div className="flex items-center gap-2">
+                    <Button variant="outline" size="sm" onClick={handleGeneratePortrait} disabled={generatingPortrait || uploadingPortrait}>
+                      {generatingPortrait
+                        ? <Loader2 size={12} className="animate-spin" />
+                        : (portraits[selectedCard.name] ? <RefreshCw size={12} /> : <ImageIcon size={12} />)}
+                      {generatingPortrait ? '生成中...' : (portraits[selectedCard.name] ? '重新生成' : '生成人设图')}
+                    </Button>
+                    <Button variant="outline" size="sm" onClick={handleUploadPortrait} disabled={generatingPortrait || uploadingPortrait} title="选择本地图片作为人设图">
+                      {uploadingPortrait ? <Loader2 size={12} className="animate-spin" /> : <Upload size={12} />}
+                      {uploadingPortrait ? '上传中...' : '上传图片'}
+                    </Button>
+                  </div>
                 </div>
               </div>
               <div className="grid grid-cols-3 gap-3">
@@ -287,6 +329,7 @@ export default function CharacterEditor() {
               <div><Label>{t('characterEditor.fields.appearance')}</Label><Textarea value={selectedCard.appearance} onChange={(e) => updateField(selectedCard.name, 'appearance', e.target.value)} rows={3} placeholder={t('characterEditor.fields.appearancePlaceholder')} /></div>
               <div><Label>{t('characterEditor.fields.personality')}</Label><Textarea value={selectedCard.personality} onChange={(e) => updateField(selectedCard.name, 'personality', e.target.value)} rows={3} placeholder={t('characterEditor.fields.personalityPlaceholder')} /></div>
               <div><Label>说话风格 / 口癖 <span className="text-[0.7rem] opacity-50">（写稿时注入，让该角色对白有辨识度）</span></Label><Textarea value={selectedCard.speechStyle || ''} onChange={(e) => updateField(selectedCard.name, 'speechStyle', e.target.value)} rows={2} placeholder="如：说话简短爱用反问；口头禅『行吧』；紧张时结巴；文绉绉爱掉书袋..." /></div>
+              <div><Label>生图提示词 <span className="text-[0.7rem] opacity-50">（仅用于人设图，强制生效，用来纠正 AI 画错的形象特征）</span></Label><Textarea value={selectedCard.imagePrompt || ''} onChange={(e) => updateField(selectedCard.name, 'imagePrompt', e.target.value)} rows={2} placeholder="如：四足小马而非人类；额上有独角、背生双翼；毛色纯白，鬃毛为流动的极光色..." /></div>
               <div><Label>{t('characterEditor.fields.background')}</Label><Textarea value={selectedCard.background} onChange={(e) => updateField(selectedCard.name, 'background', e.target.value)} rows={4} placeholder={t('characterEditor.fields.backgroundPlaceholder')} /></div>
               <div><Label>{t('characterEditor.fields.abilities')}</Label><Textarea value={selectedCard.abilities} onChange={(e) => updateField(selectedCard.name, 'abilities', e.target.value)} rows={3} placeholder={t('characterEditor.fields.abilitiesPlaceholder')} /></div>
               <div><Label>{t('characterEditor.fields.motivation')}</Label><Textarea value={selectedCard.motivation} onChange={(e) => updateField(selectedCard.name, 'motivation', e.target.value)} rows={2} placeholder={t('characterEditor.fields.motivationPlaceholder')} /></div>

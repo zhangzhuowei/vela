@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback } from 'react'
 import { Image as ImageIcon, Loader2, Trash2, Plus, RefreshCw } from 'lucide-react'
 import { ipc } from '../../services/ipc-client'
 import { useLLMStore } from '../../stores/llm-store'
+import { useProjectStore } from '../../stores/project-store'
 import type { ChapterImageData } from '../../../electron/repositories/chapter-image-repository'
 import { toast } from '../ui/Toast'
 import { Button } from '../ui/Button'
@@ -85,9 +86,17 @@ export default function ChapterImagesPanel({ chapterNumber, chapterTitle, projec
           if (r.success && r.content.trim()) prompt = r.content.trim()
         } catch { /* 用原始 prompt */ }
       }
+
+      // 全局美术风格在润色之后强制追加，保证全书插图画风统一
+      const novelConfig = useProjectStore.getState().currentProject?.novelConfig
+      const artStyle = (novelConfig?.artStyle || '').trim()
+      const negativePrompt = (novelConfig?.negativePrompt || '').trim()
+      if (artStyle) prompt += `。整体画风：${artStyle}`
+
       const res = await ipc.invoke('image:generate', {
         model: imgModel,
         prompt,
+        negativePrompt,
         projectPath,
         size: '1024x1024',
         filenameHint: `ch${chapterNumber}-${kind}`,

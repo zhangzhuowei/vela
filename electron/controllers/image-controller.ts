@@ -1,4 +1,4 @@
-import { ipcMain } from 'electron'
+import { ipcMain, dialog } from 'electron'
 import { promises as fsPromises } from 'node:fs'
 import path from 'node:path'
 import { readJsonFile, GLOBAL_CONFIG_PATH, DEFAULT_GLOBAL_CONFIG } from '../utils/config-utils'
@@ -57,6 +57,7 @@ export function registerImageController() {
   ipcMain.handle('image:generate', async (_event, payload: {
     model: ModelProfile
     prompt: string
+    negativePrompt?: string
     projectPath: string
     size?: string
     filenameHint?: string
@@ -77,6 +78,11 @@ export function registerImageController() {
         batch_size: 1,
         n: 1,
       }
+
+      // 反向提示词：SiliconFlow 等接口支持 negative_prompt，用于排除写实、人形等元素。
+      // 不支持该参数的服务端通常会忽略未知字段，故仅在非空时附带，避免影响兼容性。
+      const negativePrompt = payload.negativePrompt?.trim()
+      if (negativePrompt) body.negative_prompt = negativePrompt
 
       const res = await fetch(url, {
         method: 'POST',
@@ -111,6 +117,49 @@ export function registerImageController() {
       }
 
       const { ext, mime } = detectImage(bytes)
+      const dir = path.join(payload.projectPath, '.vela', 'images')
+      await fsPromises.mkdir(dir, { recursive: true })
+      const safeHint = (payload.filenameHint || 'image')
+        .replace(/[^\w\u4e00-\u9fa5-]+/g, '_')
+        .slice(0, 40) || 'image'
+      const filePath = path.join(dir, `${safeHint}-${Date.now()}.${ext}`)
+      await fsPromises.writeFile(filePath, bytes)
+
+      return {
+        success: true,
+        path: filePath,
+        dataUrl: `data:${mime};base64,${bytes.toString('base64')}`,
+      }
+    } catch (error) {
+      return { success: false, error: String(error) }
+    }
+  })
+
+  /**
+   * 手动导入图片：弹出文件选择框，把用户选中的图片复制到 {projectPath}/.vela/images/，
+   * 返回本地路径 + base64 data URL。用于直接使用官方设定图等外部素材作为人设图，
+   * 相比文生图可获得完全准确、跨章节一致的形象。
+   */
+  ipcMain.handle('image:import', async (_event, payload: {
+    projectPath: string
+    filenameHint?: string
+  }) => {
+    try {
+      if (!payload?.projectPath) return { success: false, error: '未指定项目路径' }
+
+      const result = await dialog.showOpenDialog({
+        properties: ['openFile'],
+        title: '选择图片文件',
+        filters: [{ name: '图片', extensions: ['png', 'jpg', 'jpeg', 'webp', 'gif'] }],
+      })
+      if (result.canceled || result.filePaths.length === 0) {
+        return { success: false, canceled: true }
+      }
+
+      const srcPath = result.filePaths[0]
+      const bytes = await fsPromises.readFile(srcPath)
+      const { ext, mime } = detectImage(bytes)
+
       const dir = path.join(payload.projectPath, '.vela', 'images')
       await fsPromises.mkdir(dir, { recursive: true })
       const safeHint = (payload.filenameHint || 'image')

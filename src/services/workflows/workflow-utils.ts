@@ -20,6 +20,7 @@ import { ipc } from '../ipc-client'
  *
  * 保留字段（提取结果为空才回退到库中已有值，从而不丢已积累数据）：
  *  - speechStyle  说话风格/口癖（定稿时自动推断，或用户手动填写）
+ *  - imagePrompt  角色专属文生图提示词（用户手动填写，提取结果不含此字段）
  *  - portraitPath 文生图人设图路径
  *  - currentState 角色动态状态快照（位置/境界/身体·心理状态/关键道具/最近事件/已知信息，定稿时累积）
  *
@@ -40,6 +41,7 @@ export async function mergePreservedCharacterAssets(extracted: CharacterData[]):
     return {
       ...card,
       speechStyle: card.speechStyle || prev.speechStyle || '',
+      imagePrompt: card.imagePrompt || prev.imagePrompt || '',
       portraitPath: card.portraitPath || prev.portraitPath || '',
       currentState: card.currentState ?? prev.currentState,
     }

@@ -137,7 +137,10 @@ function migrateSchema(db: BetterSqlite3.Database) {
   addColumnIfMissing('characters', 'speech_style', `speech_style TEXT DEFAULT ''`)
   addColumnIfMissing('characters', 'cs_known_info', `cs_known_info TEXT DEFAULT ''`)
   addColumnIfMissing('characters', 'portrait_path', `portrait_path TEXT DEFAULT ''`)
+  addColumnIfMissing('characters', 'image_prompt', `image_prompt TEXT DEFAULT ''`)
   addColumnIfMissing('project_core', 'style_reference', `style_reference TEXT DEFAULT ''`)
+  addColumnIfMissing('project_core', 'art_style', `art_style TEXT DEFAULT ''`)
+  addColumnIfMissing('project_core', 'negative_prompt', `negative_prompt TEXT DEFAULT ''`)
 }
 
 /** 创建完整表结构（9 张核心表 + 2 张沿用表） */
@@ -208,6 +211,7 @@ function createTables(db: BetterSqlite3.Database) {
       arc TEXT DEFAULT '',                        -- 弧光
       notes TEXT DEFAULT '',                      -- 备忘录
       speech_style TEXT DEFAULT '',               -- 说话风格/口癖（对白一致性）
+      image_prompt TEXT DEFAULT '',               -- 角色专属文生图提示词（手工补充外观特征）
       portrait_path TEXT DEFAULT '',              -- 人设图本地路径（文生图生成）
       cs_location TEXT DEFAULT '',                -- 当前位置
       cs_power_level TEXT DEFAULT '',             -- 修为境界

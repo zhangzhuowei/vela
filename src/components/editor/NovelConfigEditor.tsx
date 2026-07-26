@@ -384,6 +384,31 @@ export default function NovelConfigEditor() {
             </div>
           </Section>
 
+          {/* 美术风格（文生图） */}
+          <Section
+            title="美术风格（配图统一画风）"
+            desc="统一注入到「角色人设图」与「章节配图」的提示词末尾，保证全书插图画风一致。留空则不干预。"
+            t={t}
+          >
+            <Textarea
+              value={config.artStyle || ''}
+              onChange={(e) => update('artStyle', e.target.value)}
+              placeholder="如：卡通动画风格，扁平明亮的色块，柔和光照，儿童动画质感，无文字水印…"
+              rows={3}
+            />
+            <div className="mt-3">
+              <label className="text-xs mb-1 block font-medium text-[var(--color-text-muted)]">
+                反向提示词（描述不希望出现的元素，比写在上方的「禁止…」更有效）
+              </label>
+              <Textarea
+                value={config.negativePrompt || ''}
+                onChange={(e) => update('negativePrompt', e.target.value)}
+                placeholder="如：写实风格，3D渲染，真人，人形，直立双足，文字，水印，多余肢体，画面模糊…"
+                rows={3}
+              />
+            </div>
+          </Section>
+
           {/* 参考作品 */}
           <Section title={t('novelConfig.referenceWorks')} desc={t('novelConfig.referenceWorksDesc')} t={t}>
             <Textarea value={config.referenceWorks || ''} onChange={(e) => update('referenceWorks', e.target.value)} placeholder={t('novelConfig.referenceWorksPlaceholder')} rows={2} />

@@ -33,6 +33,8 @@ export interface CharacterData {
     arc: string
     notes: string
     speechStyle?: string
+    /** 角色专属文生图提示词（手工补充外观特征，用于修正 AI 对角色形象的误判） */
+    imagePrompt?: string
     portraitPath?: string
     currentState?: CharacterStateData
 }
@@ -52,6 +54,7 @@ function rowToData(row: Record<string, unknown>): CharacterData {
         arc: (row.arc as string) || '',
         notes: (row.notes as string) || '',
         speechStyle: (row.speech_style as string) || '',
+        imagePrompt: (row.image_prompt as string) || '',
         portraitPath: (row.portrait_path as string) || '',
     }
 
@@ -136,10 +139,10 @@ export class CharacterRepository {
         db.prepare(`
       INSERT INTO characters (
         name, role, gender, age, appearance, personality, background,
-        abilities, motivation, relationships, arc, notes, speech_style, portrait_path,
+        abilities, motivation, relationships, arc, notes, speech_style, image_prompt, portrait_path,
         cs_location, cs_power_level, cs_physical_state, cs_mental_state,
         cs_key_items, cs_recent_events, cs_known_info, cs_updated_at_chapter
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       ON CONFLICT(name) DO UPDATE SET
         role = excluded.role,
         gender = excluded.gender,
@@ -153,6 +156,7 @@ export class CharacterRepository {
         arc = excluded.arc,
         notes = excluded.notes,
         speech_style = excluded.speech_style,
+        image_prompt = excluded.image_prompt,
         portrait_path = excluded.portrait_path,
         cs_location = excluded.cs_location,
         cs_power_level = excluded.cs_power_level,
@@ -177,6 +181,7 @@ export class CharacterRepository {
             data.arc,
             data.notes,
             data.speechStyle ?? '',
+            data.imagePrompt ?? '',
             effectivePortrait,
             cs?.location ?? '',
             cs?.powerLevel ?? '',

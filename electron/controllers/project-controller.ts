@@ -123,6 +123,8 @@ export function registerProjectController() {
           writingStyle: updatedCoreData.writingStyle,
           styleReference: updatedCoreData.styleReference,
           referenceWorks: updatedCoreData.referenceWorks,
+          artStyle: updatedCoreData.artStyle,
+          negativePrompt: updatedCoreData.negativePrompt,
         },
         characterStates: updatedCoreData.characterStates,
         createdAt: new Date().toISOString(), // db 中实际上有，但这里先 mock 一下时间避免前端报错
@@ -157,6 +159,8 @@ export function registerProjectController() {
           writingStyle: data.novelConfig.writingStyle ?? '',
           styleReference: data.novelConfig.styleReference ?? '',
           referenceWorks: data.novelConfig.referenceWorks ?? '',
+          artStyle: data.novelConfig.artStyle ?? '',
+          negativePrompt: data.novelConfig.negativePrompt ?? '',
         })
       }
 
@@ -197,6 +201,8 @@ export function registerProjectController() {
           writingStyle: data.novelConfig.writingStyle ?? '',
           styleReference: data.novelConfig.styleReference ?? '',
           referenceWorks: data.novelConfig.referenceWorks ?? '',
+          artStyle: data.novelConfig.artStyle ?? '',
+          negativePrompt: data.novelConfig.negativePrompt ?? '',
         })
       }
       return { success: true }
