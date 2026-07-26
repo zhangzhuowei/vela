@@ -584,7 +584,7 @@ function ModelForm({
       {/* 模型标识：有预设时显示下拉，否则纯输入 */}
       <div>
         <div className="flex items-center justify-between mb-1">
-          <Label className="mb-0">{t('models.modelName')}</Label>
+          <Label className="mb-0">{t('models.modelId')}</Label>
           {presetModels.length > 0 && (
             <button
               type="button"
@@ -716,7 +716,7 @@ function ModelForm({
           <Save size={13} />
           {saving ? t('models.saving') : t('models.saveConfig')}
         </Button>
-        <Button variant="ghost" onClick={onCancel}>{t('draftEditor.cancel')}</Button>
+        <Button variant="ghost" onClick={onCancel}>{t('models.cancel')}</Button>
       </div>
       {testResult && (
         <div className={`text-xs p-2 rounded ${testResult.success ? 'bg-green-500/10 text-green-500 border border-green-500/20' : 'bg-red-500/10 text-red-500 border border-red-500/20'} break-all`}>
