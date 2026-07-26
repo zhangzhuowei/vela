@@ -129,8 +129,23 @@ export class ChapterPromptBuilder extends BasePromptBuilder {
     return this;
   }
 
+  /**
+   * 注入目标字数，并同时派生「硬下限 / 上限」区间变量。
+   *
+   * 原实现只注入 {{word_number}}，模板措辞为"大约 N 字左右"，属于弱约束；
+   * 与紧随其后的"切忌注水/达成目标即断章"叠加后，模型会系统性地朝下方偏离，
+   * 实测目标 2500 字仅产出 1100~1300 字。派生出显式区间供模板做硬性下限表述。
+   */
   withWordNumber(wordNumber: number | string) {
     this.variables.word_number = String(wordNumber);
+    const n = Number(wordNumber)
+    if (Number.isFinite(n) && n > 0) {
+      this.variables.word_number_min = String(Math.round(n * 0.95))
+      this.variables.word_number_max = String(Math.round(n * 1.25))
+    } else {
+      this.variables.word_number_min = String(wordNumber)
+      this.variables.word_number_max = String(wordNumber)
+    }
     return this;
   }
 

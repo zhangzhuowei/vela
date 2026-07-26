@@ -168,7 +168,18 @@ export class GenerateDraftCommand extends BaseWorkflowCommand {
     callbacks.log('调用 AI 生成章节草稿...')
 
     const draftText = await this.callLLMWithBuilder(promptBuilder, callbacks, undefined, undefined, this.modelId)
-    const cleanDraftText = this.stripThinkingTags(draftText)
+    let cleanDraftText = this.stripThinkingTags(draftText)
+
+    // ==========================================
+    // 篇幅闸门：字数低于下限时自动续写补足
+    // ==========================================
+    cleanDraftText = await this.ensureWordCount(
+      cleanDraftText,
+      Number(project.novelConfig.wordsPerChapter) || 0,
+      promptBuilder.getSystemRole(),
+      callbacks,
+      context,
+    )
 
     // ==========================================
     // [Canon] 生成后一致性 Gate + 自动修复
@@ -213,7 +224,7 @@ export class GenerateDraftCommand extends BaseWorkflowCommand {
       version: nextVersion,
       source: 'write',
       content: finalDraft,
-      wordCount: finalDraft.length,
+      wordCount: this.countWords(finalDraft),
     })
 
     const pseudoPath = createResult.id ? `vela://draft/${createResult.id}` : `vela://draft/ch${this.chapterInfo.chapterNumber}/v${nextVersion}`
@@ -240,13 +251,89 @@ export class GenerateDraftCommand extends BaseWorkflowCommand {
           name: `第${this.chapterInfo.chapterNumber}章 ${this.chapterInfo.title} v${nextVersion}`,
           type: 'chapter',
           filePath: pseudoPath,
-          content: cleanDraftText,
+          content: finalDraft,
         })
       } catch { /* 忽略 */ }
     }
 
-    callbacks.log(`✅ 草稿已自动入库保存为版本 v${nextVersion}（${draftText.length} 字）`)
-    return draftText
+    callbacks.log(`✅ 草稿已自动入库保存为版本 v${nextVersion}（${this.countWords(finalDraft)} 字）`)
+    return finalDraft
+  }
+
+  /** 正文字数统计：忽略空白字符，与"中文字数"的直观认知对齐 */
+  private countWords(text: string): number {
+    return (text || '').replace(/\s/g, '').length
+  }
+
+  /**
+   * 篇幅闸门：草稿字数低于目标下限时，自动发起续写补足（最多 2 轮）。
+   *
+   * 背景：写稿模板对字数只有"大约 N 字左右"的弱约束，且紧邻多条反注水指令，
+   * 模型会系统性写短；而原链路对字数不做任何校验，短稿会直接入库。
+   * 走"续写补足"而非"整篇重写"，是为了保住第一轮已经写好的文笔与细节。
+   */
+  private async ensureWordCount(
+    draft: string,
+    targetWords: number,
+    systemRole: string,
+    callbacks: CommandExecuteParams['callbacks'],
+    context: CommandExecuteParams['context'],
+  ): Promise<string> {
+    if (!targetWords || targetWords <= 0) return draft
+
+    const floor = Math.round(targetWords * 0.9)
+    const MAX_ROUNDS = 2
+    let result = draft
+
+    for (let round = 1; round <= MAX_ROUNDS; round++) {
+      const current = this.countWords(result)
+      if (current >= floor) {
+        if (round === 1) callbacks.log(`  📏 篇幅校验通过：${current} 字（目标 ${targetWords} / 下限 ${floor}）`)
+        return result
+      }
+
+      const gap = targetWords - current
+      callbacks.log(`  📏 篇幅不足：${current} 字 < 下限 ${floor} 字，自动续写补足约 ${gap} 字（第 ${round}/${MAX_ROUNDS} 轮）...`)
+
+      const continuePrompt = `你正在完成一章尚未写完的小说正文。下面是本章已经写好的部分，它的篇幅不足，需要你直接续写下去。
+
+【本章写作方向】
+${typeof this.chapterInfo === 'object' ? JSON.stringify(this.chapterInfo, null, 2) : String(this.chapterInfo)}
+
+【本章已写好的部分（全文）】
+${result}
+
+【续写要求】
+1. 直接从上文的最后一句往下接着写，不要重写开头，不要复述或改写上文已有的任何段落，不要写"（续）"之类的标记。
+2. 需要补足约 ${gap} 字，使本章总字数达到 ${targetWords} 字左右。
+3. 补足篇幅的方式是把本章既定情节的每个节拍写足：补足场景的五感细节、角色的动作与微表情、对白的来回交锋与言外之意、主角的即时心理判断。严禁靠设定科普、无关寒暄、重复同一信息点来凑字数，更不许把后续章节的情节提前写进来。
+4. 如果上文末尾已经像是一个收尾，请把它当作本章中途的一个小高潮，继续往下推进剧情。
+5. 在你续写内容的最后一段留下一个强力的悬念钩子，作为整章的断章点。
+6. 只输出续写的正文纯文本，不要 Markdown 符号，对话用中文双引号，段落之间保留一个空行。`
+
+      let added = ''
+      try {
+        added = this.stripThinkingTags(
+          await this.callLLM(continuePrompt, systemRole, callbacks, undefined, context, this.modelId)
+        )
+      } catch (e) {
+        callbacks.log(`  ⚠️ 续写补足失败，保留当前篇幅：${String(e)}`)
+        return result
+      }
+
+      if (this.countWords(added) < 50) {
+        callbacks.log('  ⚠️ 续写返回内容过少，停止补足')
+        return result
+      }
+
+      result = `${result.trimEnd()}\n\n${added.trim()}`
+      const after = this.countWords(result)
+      callbacks.log(`  📏 补足后 ${after} 字${after >= floor ? '，已达标' : ''}`)
+      if (after >= floor) return result
+    }
+
+    callbacks.log(`  ⚠️ 已达最大补足轮次，最终 ${this.countWords(result)} 字（目标 ${targetWords}）`)
+    return result
   }
 
   /** 加载未回收伏笔，格式化为写稿上下文（到期伏笔会标注提醒本章回收） */
