@@ -27,7 +27,8 @@ import { DRAFT_STATUS_LABEL, DRAFT_STATUS_COLOR } from '../../shared/draft-statu
 import { PostProcessStatusPanel } from '../ui/PostProcessStatusPanel'
 import { getChapterFinalizeScope } from '../../services/workflows/workflow-utils'
 import { guardRepairPostProcess } from '../../services/workflow-guards'
-import { normalizeChinesePunctuation } from '../../lib/punctuation'
+import { normalizeChinesePunctuation, describeNormalizeResult, type NormalizeResult } from '../../lib/punctuation'
+import MonacoDiffViewer from './MonacoDiffViewer'
 
 interface Props {
   filePath: string
@@ -55,6 +56,9 @@ export default function DraftEditor({ filePath, content }: Props) {
 
   // 后处理失败状态（用于控制是否展示修复按钮）
   const [hasProcessFailure, setHasProcessFailure] = useState(false)
+
+  // 标点规范化的待确认结果（弹出 diff 供逐处核对，确认后才写入正文）
+  const [punctPreview, setPunctPreview] = useState<{ original: string; result: NormalizeResult } | null>(null)
 
   useEffect(() => {
     let cancelled = false
@@ -237,22 +241,45 @@ export default function DraftEditor({ filePath, content }: Props) {
   /**
    * 标点规范化 — 纯本地文本处理，不调用模型
    *
-   * 把中文语境下混入的半角标点（, ; : ! ? 以及成对小括号）转成全角，
+   * 把中文语境下混入的半角标点（, ; : ! ? 、成对小括号与成对双引号）转成全角，
    * 并清理全角标点后多余的空格。西文/数字用法、代码块与 URL 一律跳过。
-   * 编辑器查找会做 NFKD 归一化（半角与全角逗号等价），作者无法手工替换，
-   * 因此提供一键处理。结果写入编辑器并标记未保存，作者可比对后再保存。
+   * 编辑器查找会做 NFKD 归一化（半角与全角逗号等价）导致无法手工替换，
+   * 半角双引号更是无法用替换处理（中文引号需交替产出左右形态），故提供一键处理。
+   *
+   * 全文机械替换不适合直接落盘，这里先算出结果并弹出 diff 供作者逐处核对，
+   * 确认后才写入编辑器。检测到但刻意未处理的项（半角句点、无法配对的引号）一并告知，
+   * 避免出现"报告无事发生、正文里却仍有半角标点"的误导。
    */
   const doNormalizePunctuation = () => {
     if (isReadonly || isChapterBusy) return
     const source = currentBodyRef.current
-    const { text, count } = normalizeChinesePunctuation(source)
-    if (count === 0) {
-      toast.info('未发现需要规范化的半角标点')
+    const result = normalizeChinesePunctuation(source)
+
+    if (result.count === 0) {
+      const notes: string[] = []
+      if (result.skipped.unpairedQuotes > 0) {
+        notes.push(`${result.skipped.unpairedQuotes} 处半角引号因所在行引号数为奇数无法配对`)
+      }
+      if (result.skipped.periods > 0) {
+        notes.push(`${result.skipped.periods} 处中文语境下的半角句点未处理（避免误伤小数点与省略号）`)
+      }
+      if (notes.length > 0) {
+        toast.warning(`没有可自动规范化的标点，但检测到：${notes.join('；')}。需要手工处理`)
+      } else {
+        toast.info('未发现需要规范化的半角标点')
+      }
       return
     }
+
+    setPunctPreview({ original: source, result })
+  }
+
+  /** 采纳标点规范化结果（在 diff 弹窗中确认后） */
+  const applyPunctuation = (text: string) => {
     currentBodyRef.current = text
     useEditorStore.getState().updateTabContent(filePath, text)
-    toast.success(`已规范化 ${count} 处标点，确认后请保存`)
+    setPunctPreview(null)
+    toast.success('标点已规范化，确认后请保存')
   }
 
   /** 定稿 */
@@ -510,7 +537,7 @@ export default function DraftEditor({ filePath, content }: Props) {
               size="sm"
               onClick={doNormalizePunctuation}
               disabled={isChapterBusy}
-              title="标点规范化 — 把中文语境下的半角标点（, ; : ! ? 及成对小括号）转为全角，并清理全角标点后多余空格；数字、西文、代码与链接不受影响。不调用模型"
+              title="标点规范化 — 把中文语境下的半角标点（, ; : ! ?、成对小括号与成对双引号）转为全角，并清理全角标点后多余空格；数字、西文、代码与链接不受影响。弹出 diff 供核对，确认后才写入。不调用模型"
             >
               <Pilcrow size={12} />
               标点
@@ -790,6 +817,50 @@ export default function DraftEditor({ filePath, content }: Props) {
                 modifiedContent={mergeData.modifiedContent}
                 onComplete={handleMergeComplete}
                 onCancel={() => setMergeData(null)}
+              />
+            )}
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* 标点规范化预览 —— 全文机械替换，先 diff 核对再落盘 */}
+      <Dialog open={punctPreview !== null} onOpenChange={(v) => !v && setPunctPreview(null)}>
+        <DialogContent
+          className="p-0"
+          style={{
+            width: '90vw',
+            maxWidth: '90vw',
+            height: '85vh',
+            maxHeight: '85vh',
+            overflow: 'hidden',
+          }}
+          /* 阻止点击遮罩关闭，避免误触丢失待确认结果 */
+          onPointerDownOutside={(e) => e.preventDefault()}
+        >
+          <DialogHeader className="px-4 py-0" style={{ minHeight: 38, display: 'flex', justifyContent: 'center' }}>
+            <DialogTitle className="flex items-center gap-2 text-[0.8rem]">
+              <Pilcrow size={13} />
+              标点规范化预览 — 第 {meta?.chapterNumber} 章 {meta?.chapterTitle}
+            </DialogTitle>
+            {punctPreview && (
+              <DialogDescription className="text-[0.7rem]">
+                共 {punctPreview.result.count} 处改动（{describeNormalizeResult(punctPreview.result)}）
+                {punctPreview.result.skipped.unpairedQuotes > 0 &&
+                  ` · 另有 ${punctPreview.result.skipped.unpairedQuotes} 处半角引号所在行引号数为奇数，无法安全配对，已跳过`}
+                {punctPreview.result.skipped.periods > 0 &&
+                  ` · 另有 ${punctPreview.result.skipped.periods} 处中文语境半角句点未处理（避免误伤小数点与省略号）`}
+              </DialogDescription>
+            )}
+          </DialogHeader>
+          <div className="flex-1 overflow-hidden" style={{ height: 'calc(85vh - 56px)' }}>
+            {punctPreview && (
+              <MonacoDiffViewer
+                original={punctPreview.original}
+                modified={punctPreview.result.text}
+                originalLabel="原稿"
+                modifiedLabel="规范化后"
+                onAccept={applyPunctuation}
+                onReject={() => setPunctPreview(null)}
               />
             )}
           </div>
