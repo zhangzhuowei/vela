@@ -11,9 +11,26 @@
 
 [Read in Chinese (中文)](README.md) | [Read in Russian (Русский)](README_RU.md)
 
-[Download](#installation) | [Sponsor](#sponsor)
+[Download](#installation) | [Sponsor the Original Author](#sponsor-the-original-author)
 
 </div>
+
+---
+
+> ### 📌 About This Fork
+>
+> This repository is a **personal modified version** of [heider-x/vela](https://github.com/heider-x/vela), released under GPL-3.0 as required. The original project was created by and is copyrighted to [heider-x](https://github.com/heider-x); this repository only adds modifications on top of it.
+>
+> **Main changes relative to upstream** (see [CHANGELOG.md](CHANGELOG.md) for the full record):
+>
+> - **Fixed drafts falling far short of the target word count**: the word-count instruction changed from a weak hint ("about N characters") to a hard lower bound plus a target range, with length requirements and content boundaries stated separately; the drafting pipeline now has a length gate that auto-continues the draft when output falls below 90% of target
+> - **Fixed refinement shrinking the text on every pass**: the refine template now forbids going below the original word count, and any deletion must be compensated in place with concrete detail
+> - **Wired up the "target word count" field in the chapter creation dialog**: it previously only went into the history record and never reached the drafting pipeline, so the global setting always won
+> - **Fixed character-card extraction failing wholesale on long text**: now auto-batched with tolerant parsing of truncated JSON, and extraction failures are no longer silently reported as success
+> - **Added global art style and negative prompts**, per-character image prompts, and manual upload of character portraits
+> - Filled in missing i18n keys and duplicated field labels in the settings panel
+>
+> Windows releases are published in **this repository's** [Releases](https://github.com/zhangzhuowei/vela/releases).
 
 ---
 
@@ -94,9 +111,11 @@ Vela is not just another chat-based text editor — it is a **production-grade n
 
 ### Direct Download
 
-Go to [Releases](https://github.com/Izya12/vela/releases) to download the latest version for your OS:
+Go to [Releases](https://github.com/zhangzhuowei/vela/releases) to download the latest version for your OS:
 - **macOS**: `.dmg` installer
 - **Windows**: `.exe` installer (NSIS)
+
+> For the upstream original releases, see [heider-x/vela/releases](https://github.com/heider-x/vela/releases).
 
 ### Build from Source
 
@@ -104,7 +123,7 @@ Go to [Releases](https://github.com/Izya12/vela/releases) to download the latest
 # Requirements: Node.js >= 18, npm >= 9
 
 # 1. Clone the project
-git clone https://github.com/Izya12/vela.git
+git clone https://github.com/zhangzhuowei/vela.git
 cd vela
 
 # 2. Install dependencies
@@ -139,9 +158,11 @@ Vela supports multiple mainstream LLM providers. Quick setup:
 
 ---
 
-## Sponsor
+## Sponsor the Original Author
 
-Vela's open-source edition is driven by passion in spare time. If this tool has improved your writing efficiency or you see its commercial potential, feel free to sponsor! Your support is my biggest motivation to keep iterating.
+Vela's open-source edition is driven by the original author's passion in spare time. If this tool has improved your writing efficiency or you see its commercial potential, feel free to sponsor the original author — see the QR codes and contact info in the [Chinese README](README.md#-赞助与支持原作者--sponsor-the-original-author).
+
+> Those donation channels and referral links belong to the **original author [heider-x](https://github.com/heider-x)**, not to the maintainer of this fork.
 
 ---
 
@@ -167,7 +188,9 @@ We welcome community contributions, including but not limited to:
 - Internationalization (i18n) translations
 - Documentation improvements
 
-> For major feature refactors, please discuss with the author first in [Issues](https://github.com/Izya12/vela/issues) to avoid direction conflicts.
+> For major refactors that affect the upstream project's direction, please discuss with the original author first in the upstream [Issues](https://github.com/heider-x/vela/issues) to avoid direction conflicts.
+>
+> For issues specific to this fork, please use [this repository's Issues](https://github.com/zhangzhuowei/vela/issues).
 
 ---
 
@@ -175,7 +198,9 @@ We welcome community contributions, including but not limited to:
 
 This project is licensed under [GPL-3.0 License](LICENSE). You are free to run, study, share, and modify the code, but new software based on this modified distribution **must also be open-sourced under GPL-3.0**.
 
-For closed-source commercial licensing, please contact the author via email.
+This repository is a modified version of [heider-x/vela](https://github.com/heider-x/vela). Copyright remains with the original author and contributors; the modifications are likewise released under GPL-3.0.
+
+For closed-source commercial licensing, please contact the **original author**.
 
 ---
 

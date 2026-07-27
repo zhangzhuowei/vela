@@ -11,9 +11,26 @@
 [![TypeScript](https://img.shields.io/badge/TypeScript-5-3178C6.svg)](https://www.typescriptlang.org/)
 [![License: GPL-3.0](https://img.shields.io/badge/License-GPLv3-yellow.svg)](https://opensource.org/licenses/GPL-3.0)
 
-[🚀 下载客户端 / Download](#-安装与使用--installation) • [☕ 赞助作者 / Sponsor](#-赞助与支持--sponsor)
+[🚀 下载客户端 / Download](#-安装与使用--installation) • [☕ 赞助原作者 / Sponsor](#-赞助与支持原作者--sponsor-the-original-author)
 
 </div>
+
+---
+
+> ### 📌 关于本仓库 / About This Fork
+>
+> 本仓库是 [heider-x/vela](https://github.com/heider-x/vela) 的**个人修改版**，依照 GPL-3.0 协议继续开源。原项目由 [heider-x](https://github.com/heider-x) 创建并持有版权，本仓库仅包含在其基础上的修改。
+>
+> **相对上游的主要改动**（完整记录见 [CHANGELOG.md](CHANGELOG.md)）：
+>
+> - **修复写稿字数远低于设定值**：提示词中的字数由弱约束（「大约 N 字左右」）改为硬性下限加目标区间，并将「篇幅要求」与「内容边界」拆分表述；写稿链路新增篇幅闸门，低于目标 90% 时自动续写补足
+> - **修复修稿越修越短**：修稿模板的篇幅条款改为不得少于原稿字数，删减必须在同一处用具体细节补回
+> - **接通创作对话框的「目标字数」**：该字段原先只写入历史记录、从未传入写稿流程，实际生效的一直是全局配置
+> - **修复角色卡提取在长文本下整批失败**：改为自动分批、容错解析被截断的 JSON，且提取失败不再被静默为成功
+> - **新增全局美术风格与反向提示词**、角色专属生图提示词、人设图手动上传
+> - 补全设置面板的 i18n 缺失翻译键与重复字段标签
+>
+> Windows 发行版请从**本仓库**的 [Releases](https://github.com/zhangzhuowei/vela/releases) 下载。
 
 ---
 
@@ -100,9 +117,11 @@ Vela 不是又一个带对话框的文本编辑器——它是一套深度融合
 
 ### 方式一：直接下载 / Direct Download
 
-前往 [Releases](https://github.com/heider-x/vela/releases) 下载对应操作系统的最新版本：
+前往 [Releases](https://github.com/zhangzhuowei/vela/releases) 下载对应操作系统的最新版本：
 - **macOS**: `.dmg` 安装包
 - **Windows**: `.exe` 安装程序 (NSIS)
+
+> 上游原版的发行版请见 [heider-x/vela/releases](https://github.com/heider-x/vela/releases)。
 
 ### 方式二：源码构建 / Build from Source
 
@@ -110,7 +129,7 @@ Vela 不是又一个带对话框的文本编辑器——它是一套深度融合
 # 环境要求：Node.js >= 18, pnpm >= 8
 
 # 1. 克隆项目
-git clone https://github.com/heider-x/vela.git
+git clone https://github.com/zhangzhuowei/vela.git
 cd vela
 
 # 2. 安装依赖
@@ -145,9 +164,13 @@ Vela 支持接入多种主流 LLM 服务商，以下是快速配置步骤：
 
 ---
 
-## 🤝 赞助与支持 / Sponsor
+## 🤝 赞助与支持原作者 / Sponsor the Original Author
 
-Vela 开源版由独立开发者利用业余时间热情驱动。如果这个工具有效提升了您的小说创作效率，欢迎扫码赞助！您的每一份支持都是我持续迭代的最大动力 ❤️
+> 以下微信群、联系方式、赞助二维码与推荐链接**均属于原项目作者 [heider-x](https://github.com/heider-x)**，随上游 README 一并保留，与本修改版仓库的维护者无关。
+>
+> The WeChat group, contact info, donation QR codes and referral links below all belong to the **original author [heider-x](https://github.com/heider-x)**, retained from the upstream README.
+
+Vela 开源版由原作者利用业余时间热情驱动。如果这个工具有效提升了您的小说创作效率，欢迎扫码赞助原作者 ❤️
 
 ### 📢 微信群交流 / WeChat Group
 
@@ -157,13 +180,13 @@ Vela 开源版由独立开发者利用业余时间热情驱动。如果这个工
 
 ### 👤 技术交流与合作 / Contact
 
-如果您对本项目的商业化落地（SaaS 授权）、AI 写作技术实现或产品方向感兴趣，欢迎扫码加我个人微信：
+如果您对本项目的商业化落地（SaaS 授权）、AI 写作技术实现或产品方向感兴趣，可扫码添加**原作者**个人微信：
 
 <p align="left">
-  <img src="public/buyme/wechat.jpg" width="200" alt="个人微信 Author WeChat"/>
+  <img src="public/buyme/wechat.jpg" width="200" alt="原作者个人微信 Original Author WeChat"/>
 </p>
 
-### 💰 赞助二维码 / Donate QR Codes
+### 💰 赞助二维码 / Donate QR Codes（原作者收款码）
 
 <p align="left">
   <img src="public/buyme/wepay.jpg" width="200" alt="微信赞助 WeChat Donate"/>
@@ -173,7 +196,7 @@ Vela 开源版由独立开发者利用业余时间热情驱动。如果这个工
 
 ### 🎁 推荐 API 服务商 / Recommended API Providers
 
-以下是经过测试、与 Vela 完美兼容的 API 服务商，使用推荐链接注册可享受专属优惠，同时也是对本项目的支持：
+以下是经过测试、与 Vela 完美兼容的 API 服务商。**下列为原作者的推荐链接**，使用它们注册可享受专属优惠，同时也是对原项目的支持：
 
 * **智谱 AI (GLM Coding)**：国内顶流编程大模型，20+ 主流工具全适配 👉 [立即参与「拼好模」](https://www.bigmodel.cn/glm-coding?ic=7IJ2G7AE6W)
 * **MiniMax (海螺 AI)**：Token Plan 含语音/视频/生图权益，新用户 **9折** 优惠 👉 [立即订阅](https://platform.minimaxi.com/subscribe/token-plan?code=EjhLD7uCvT&source=link)
@@ -202,7 +225,9 @@ Vela 开源版由独立开发者利用业余时间热情驱动。如果这个工
 - 🌐 国际化 (i18n) 翻译
 - 📖 文档完善
 
-> 重大功能重构请先在 [Issues](https://github.com/heider-x/vela/issues) 中与作者探讨，以避免方向冲突。
+> 涉及上游项目方向的重大功能重构，请先在上游 [Issues](https://github.com/heider-x/vela/issues) 中与原作者探讨，以避免方向冲突。
+>
+> 仅针对本修改版的问题与建议，请提到[本仓库 Issues](https://github.com/zhangzhuowei/vela/issues)。
 
 ---
 
@@ -210,7 +235,9 @@ Vela 开源版由独立开发者利用业余时间热情驱动。如果这个工
 
 本项目采用 [GPL-3.0 License](LICENSE) 开源。您可以自由地运行、研究、分享和修改代码，但基于此修改分发的新软件**必须同样遵循 GPL-3.0 协议开源**。
 
-如需闭源商用授权，请通过微信或邮件联系作者。
+本仓库为 [heider-x/vela](https://github.com/heider-x/vela) 的修改版，版权归原作者及各贡献者所有，修改部分同样以 GPL-3.0 发布。
+
+如需闭源商用授权，请通过微信或邮件联系**原作者**。
 
 ---
 
