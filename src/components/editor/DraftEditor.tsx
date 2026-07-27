@@ -28,7 +28,6 @@ import { PostProcessStatusPanel } from '../ui/PostProcessStatusPanel'
 import { getChapterFinalizeScope } from '../../services/workflows/workflow-utils'
 import { guardRepairPostProcess } from '../../services/workflow-guards'
 import { normalizeChinesePunctuation, describeNormalizeResult, type NormalizeResult } from '../../lib/punctuation'
-import MonacoDiffViewer from './MonacoDiffViewer'
 
 interface Props {
   filePath: string
@@ -823,7 +822,7 @@ export default function DraftEditor({ filePath, content }: Props) {
         </DialogContent>
       </Dialog>
 
-      {/* 标点规范化预览 —— 全文机械替换，先 diff 核对再落盘 */}
+      {/* 标点规范化预览 —— 复用三栏合并视图，与「修稿合并」保持同一套外观与交互 */}
       <Dialog open={punctPreview !== null} onOpenChange={(v) => !v && setPunctPreview(null)}>
         <DialogContent
           className="p-0"
@@ -834,33 +833,34 @@ export default function DraftEditor({ filePath, content }: Props) {
             maxHeight: '85vh',
             overflow: 'hidden',
           }}
-          /* 阻止点击遮罩关闭，避免误触丢失待确认结果 */
+          /* 阻止点击遮罩/ESC 关闭，避免误触丢失逐段取舍的结果 */
           onPointerDownOutside={(e) => e.preventDefault()}
+          onEscapeKeyDown={(e) => e.preventDefault()}
         >
-          <DialogHeader className="px-4 py-0" style={{ minHeight: 38, display: 'flex', justifyContent: 'center' }}>
+          <DialogHeader className="px-4 py-0" style={{ height: 38, display: 'flex', alignItems: 'center' }}>
             <DialogTitle className="flex items-center gap-2 text-[0.8rem]">
               <Pilcrow size={13} />
-              标点规范化预览 — 第 {meta?.chapterNumber} 章 {meta?.chapterTitle}
+              标点规范化 — 第 {meta?.chapterNumber} 章 {meta?.chapterTitle}
+              {punctPreview && (
+                <span style={{ color: 'var(--color-text-muted)', fontWeight: 400 }}>
+                  {punctPreview.result.count} 处（{describeNormalizeResult(punctPreview.result)}）
+                  {punctPreview.result.skipped.unpairedQuotes > 0 &&
+                    ` · ${punctPreview.result.skipped.unpairedQuotes} 处引号所在行引号数为奇数，无法配对已跳过`}
+                  {punctPreview.result.skipped.periods > 0 &&
+                    ` · ${punctPreview.result.skipped.periods} 处半角句点未处理`}
+                </span>
+              )}
             </DialogTitle>
-            {punctPreview && (
-              <DialogDescription className="text-[0.7rem]">
-                共 {punctPreview.result.count} 处改动（{describeNormalizeResult(punctPreview.result)}）
-                {punctPreview.result.skipped.unpairedQuotes > 0 &&
-                  ` · 另有 ${punctPreview.result.skipped.unpairedQuotes} 处半角引号所在行引号数为奇数，无法安全配对，已跳过`}
-                {punctPreview.result.skipped.periods > 0 &&
-                  ` · 另有 ${punctPreview.result.skipped.periods} 处中文语境半角句点未处理（避免误伤小数点与省略号）`}
-              </DialogDescription>
-            )}
           </DialogHeader>
-          <div className="flex-1 overflow-hidden" style={{ height: 'calc(85vh - 56px)' }}>
+          <div className="flex-1 overflow-hidden" style={{ height: 'calc(85vh - 38px - 1px)' }}>
             {punctPreview && (
-              <MonacoDiffViewer
-                original={punctPreview.original}
-                modified={punctPreview.result.text}
-                originalLabel="原稿"
-                modifiedLabel="规范化后"
-                onAccept={applyPunctuation}
-                onReject={() => setPunctPreview(null)}
+              <ThreeWayMerge
+                originalContent={punctPreview.original}
+                modifiedContent={punctPreview.result.text}
+                onComplete={applyPunctuation}
+                onCancel={() => setPunctPreview(null)}
+                labels={{ modified: '规范化后', complete: '应用' }}
+                defaultApplyAll
               />
             )}
           </div>

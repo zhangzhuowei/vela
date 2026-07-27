@@ -31,6 +31,22 @@ interface ThreeWayMergeProps {
   modifiedContent: string
   onComplete: (mergedText: string) => void
   onCancel?: () => void
+  /**
+   * 文案覆盖。用于非「修稿合并」场景复用本视图（如标点规范化），
+   * 避免出现「修稿」「完成合并」这类与实际操作不符的字眼。缺省走 i18n 默认值。
+   */
+  labels?: {
+    /** 右栏标题 */
+    modified?: string
+    /** 确认按钮 */
+    complete?: string
+  }
+  /**
+   * 初始即采用全部变更。
+   * 修稿合并默认逐条确认（不采用），而机械性批量改写（如标点规范化）
+   * 的预期是全部生效、个别排除，故由调用方指定初始态。
+   */
+  defaultApplyAll?: boolean
 }
 
 // ===== 文本工具 =====
@@ -302,21 +318,26 @@ function EditableCell({ text, onChange }: { text: string; onChange: (t: string) 
 // ===== 主组件 =====
 
 export default function ThreeWayMerge({
-  originalContent, modifiedContent, onComplete, onCancel,
+  originalContent, modifiedContent, onComplete, onCancel, labels, defaultApplyAll = false,
 }: ThreeWayMergeProps) {
   const { t } = useTranslation('editors')
   const segments = useMemo(() => computeSegments(originalContent, modifiedContent),
     [originalContent, modifiedContent])
   const hunks = useMemo(() => segments.filter(s => s.type === 'hunk').map(s => s.hunk!), [segments])
 
-  const [applied, setApplied] = useState<Record<number, boolean>>({})
+  const [applied, setApplied] = useState<Record<number, boolean>>(() => {
+    if (!defaultApplyAll) return {}
+    const init: Record<number, boolean> = {}
+    segments.forEach(s => { if (s.hunk) init[s.hunk.index] = true })
+    return init
+  })
 
   // 每个 segment 的编辑文本
   const [segTexts, setSegTexts] = useState<Record<number, string>>(() => {
     const init: Record<number, string> = {}
     segments.forEach((s, i) => {
       if (s.type === 'same') init[i] = (s.lines || []).join('\n')
-      else if (s.hunk) init[i] = s.hunk.originalLines.join('\n')
+      else if (s.hunk) init[i] = (defaultApplyAll ? s.hunk.modifiedLines : s.hunk.originalLines).join('\n')
     })
     return init
   })
@@ -372,14 +393,14 @@ export default function ThreeWayMerge({
         <Button variant="ghost" size="sm" onClick={applyAll}>{t('threeWayMerge.applyAll')}</Button>
         <span className="twm-toolbar-progress">{t('threeWayMerge.progress', { applied: processedCount, total: hunks.length })}</span>
         {onCancel && <Button variant="ghost" size="sm" onClick={onCancel}>{t('threeWayMerge.cancel')}</Button>}
-        <Button variant="success" size="sm" onClick={() => onComplete(buildMergedText())}>{t('threeWayMerge.completeMerge')}</Button>
+        <Button variant="success" size="sm" onClick={() => onComplete(buildMergedText())}>{labels?.complete ?? t('threeWayMerge.completeMerge')}</Button>
       </div>
 
       {/* 固定表头 */}
       <div className="twm-headers">
         <div className="twm-header">{t('threeWayMerge.original')} <span className="twm-tag readonly">{t('threeWayMerge.readonly')}</span></div>
         <div className="twm-header">{t('threeWayMerge.mergeResult')} <span className="twm-tag editable">{t('threeWayMerge.editable')}</span></div>
-        <div className="twm-header">{t('threeWayMerge.revised')} <span className="twm-tag readonly">{t('threeWayMerge.readonly')}</span></div>
+        <div className="twm-header">{labels?.modified ?? t('threeWayMerge.revised')} <span className="twm-tag readonly">{t('threeWayMerge.readonly')}</span></div>
       </div>
 
       {/* 单滚动容器 + CSS Grid 自动行高对齐 */}
