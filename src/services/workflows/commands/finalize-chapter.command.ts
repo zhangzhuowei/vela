@@ -56,7 +56,58 @@ async function callLLMForPostProcess(
   })
 }
 
-/** 容错 JSON 解析（剥离 Markdown 代码块 + 自动截取有效 JSON 边界） */
+/**
+ * 转义 JSON 字符串字面量内部的裸控制字符（未转义的换行/制表符等）。
+ *
+ * LLM 偶发会在字符串值里直接输出真实换行/制表符，而合法 JSON 要求这些字符
+ * 必须转义（\n、\t…），否则 JSON.parse 抛 "Bad control character in string literal"。
+ * 本函数只处理字符串内部的裸控制字符，字符串外的空白（token 间的换行/缩进）原样保留，
+ * 因此对本就合法的 JSON 没有任何影响。
+ */
+function escapeControlCharsInStrings(input: string): string {
+  let out = ''
+  let inString = false
+  let escaped = false
+  for (let i = 0; i < input.length; i++) {
+    const ch = input[i]
+    if (inString) {
+      if (escaped) {
+        out += ch
+        escaped = false
+        continue
+      }
+      if (ch === '\\') {
+        out += ch
+        escaped = true
+        continue
+      }
+      if (ch === '"') {
+        out += ch
+        inString = false
+        continue
+      }
+      const code = input.charCodeAt(i)
+      if (code < 0x20) {
+        switch (ch) {
+          case '\n': out += '\\n'; break
+          case '\r': out += '\\r'; break
+          case '\t': out += '\\t'; break
+          case '\b': out += '\\b'; break
+          case '\f': out += '\\f'; break
+          default: out += '\\u' + code.toString(16).padStart(4, '0')
+        }
+        continue
+      }
+      out += ch
+    } else {
+      if (ch === '"') inString = true
+      out += ch
+    }
+  }
+  return out
+}
+
+/** 容错 JSON 解析（剥离 Markdown 代码块 + 自动截取有效 JSON 边界 + 裸控制字符兜底） */
 function parseJSON<T>(text: string): T {
   let cleanText = text.replace(/```json?\n?/gi, '').replace(/```\n?/gi, '').trim()
   const firstBrace = cleanText.indexOf('{')
@@ -64,7 +115,12 @@ function parseJSON<T>(text: string): T {
   if (firstBrace !== -1 && lastBrace !== -1) {
     cleanText = cleanText.substring(firstBrace, lastBrace + 1)
   }
-  return JSON.parse(cleanText) as T
+  try {
+    return JSON.parse(cleanText) as T
+  } catch {
+    // 兜底：模型偶发在字符串里输出裸控制字符，转义后重试
+    return JSON.parse(escapeControlCharsInStrings(cleanText)) as T
+  }
 }
 
 // ===== 后处理步骤构建器 =====
