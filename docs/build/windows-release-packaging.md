@@ -2,6 +2,23 @@
 
 记录时间：2026-07-27，首次触发版本：0.2.1（electron-builder 26.8.1 / Electron 41.2.0 / Windows 11 22631 x64）
 
+> **⚠️ 现状（2026-07-27 更新）：正式发行请走 CI，不要在本地手打。**
+>
+> 发行版已改为由 GitHub Actions 构建：推送 `v*` tag 触发 `.github/workflows/release.yml`，
+> 在 `windows-latest` / `macos-latest`(arm64) / `macos-15-intel`(x64) 三个 runner 上分别原生构建，
+> 产物自动上传为 draft Release。0.2.1 已用此流程发布三平台包。
+>
+> **本文记录的 rcedit `Unable to commit changes` 是本地 Windows 环境特有的**：根因是杀软实时防护
+> 在扫描刚落盘的大 exe，占用文件句柄，而 electron-builder 的 4 次重试间隔太短，全部撞在占用窗口里。
+> CI 的干净环境没有这个干扰，本地正常也打得出来（问题偶发）。因此下面的 `--prepackaged` 两阶段绕法
+> **仅作为本地应急备份**，例如 CI 不可用、或需要快速本地验证时。日常发行一律用 CI。
+>
+> CI 相关的另外两个坑（同样值得留意，已在 workflow 注释中记录）：
+> - **`electron_mirror` 会劫持 electron-builder 自身的二进制下载**：`.npmrc` 里一旦设置
+>   `electron_mirror`，会被 `@electron/get` 优先于调用方传入的 `mirrorOptions` 采用，导致
+>   dmg-builder 等二进制去错误仓库下载并 404（只有 macOS 的 dmg 构建受影响）。已从 `.npmrc` 移除。
+> - **`macos-13` runner 已于 2025-12-04 退役**：请求已移除的标签不会报错，只会永久排队。Intel 用 `macos-15-intel`。
+
 ## 1. 症状
 
 `electron-builder` 打 Windows 包时，前面所有阶段（rebuild 原生依赖、asar 打包、写入 asar 完整性资源）都成功，最后卡在给主 exe 写版本信息和图标这一步，重试 4 次全失败，进程以 `exit code 1` 结束：
