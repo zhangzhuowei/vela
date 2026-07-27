@@ -394,6 +394,34 @@ export function createDeaifyWorkflow(params: DeaifyWorkflowParams): WorkflowDefi
   }
 }
 
+/**
+ * 单章滚动蓝图刷新工作流
+ *
+ * 手动入口：按当前剧情进度把某一章的蓝图修正到可执行状态，
+ * 不写稿、不定稿，仅更新蓝图（主线定位锚定不变）。
+ */
+export function createRefreshBlueprintWorkflow(chapterNumber: number, modelId?: string): WorkflowDefinition {
+  return {
+    type: 'directory',
+    title: `🧭 刷新第${chapterNumber}章蓝图`,
+    steps: [
+      {
+        name: '按剧情进度刷新蓝图',
+        description: '依据已定稿正文、角色状态、未回收伏笔与节奏位置修正本章蓝图',
+        executor: async (step, context, callbacks) => {
+          const { RefreshBlueprintCommand } = await import('./commands/refresh-blueprint.command')
+          const cmd = new RefreshBlueprintCommand(chapterNumber, modelId)
+          const res = await cmd.execute({ step, context, callbacks })
+          return res.changed
+            ? `第${chapterNumber}章蓝图已刷新：${res.reason}`
+            : `第${chapterNumber}章蓝图无需调整：${res.reason}`
+        },
+      },
+    ],
+    onComplete: { mode: 'silent', message: `🧭 第${chapterNumber}章蓝图刷新完成` },
+  }
+}
+
 export interface BatchGenerateWorkflowParams {
   startChapter: number
   endChapter: number
@@ -405,8 +433,10 @@ export interface BatchGenerateWorkflowParams {
   deaifyIntensity: '轻' | '中' | '重'
   onReviewFail: 'stop' | 'continue'
   resume: boolean
-  /** 按任务派模型（为空走默认模型）：写稿/审校/去AI味 */
-  models?: { write?: string; review?: string; deaify?: string }
+  /** 滚动蓝图：写稿前按已写剧情自适应刷新本章蓝图（默认开启） */
+  rollingBlueprint?: boolean
+  /** 按任务派模型（为空走默认模型）：蓝图刷新/写稿/审校/去AI味 */
+  models?: { blueprint?: string; write?: string; review?: string; deaify?: string }
 }
 
 /**
@@ -417,13 +447,15 @@ export interface BatchGenerateWorkflowParams {
 export function createBatchGenerateWorkflow(params: BatchGenerateWorkflowParams): WorkflowDefinition {
   const start = Math.max(1, params.startChapter)
   const end = Math.max(start, params.endChapter)
+  const rolling = params.rollingBlueprint !== false
+  const stepPrefix = rolling ? '刷新蓝图→' : ''
   const stepSuffix = `${params.autoReview ? '→审校闭环' : ''}${params.deaify ? '→去AI味' : ''}`
 
   const steps: WorkflowDefinition['steps'] = []
   for (let n = start; n <= end; n++) {
     steps.push({
       name: `第${n}章`,
-      description: `写稿${stepSuffix}→定稿`,
+      description: `${stepPrefix}写稿${stepSuffix}→定稿`,
       executor: async (step, context, callbacks) => {
         const { BatchChapterCommand } = await import('./commands/batch-chapter.command')
         const cmd = new BatchChapterCommand(n, {
@@ -435,6 +467,7 @@ export function createBatchGenerateWorkflow(params: BatchGenerateWorkflowParams)
           deaifyIntensity: params.deaifyIntensity,
           onReviewFail: params.onReviewFail,
           resume: params.resume,
+          rollingBlueprint: rolling,
           models: params.models,
         })
         return cmd.execute({ step, context, callbacks })

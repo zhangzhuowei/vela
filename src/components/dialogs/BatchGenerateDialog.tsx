@@ -67,6 +67,7 @@ export default function BatchGenerateDialog({ isOpen, onClose }: Props) {
   const isBatchRunning = useWorkflowStore(s => s.isTypeRunning('batch_generate'))
 
   // 按任务派模型（''=默认模型）
+  const [blueprintModel, setBlueprintModel] = useState('')
   const [writeModel, setWriteModel] = useState('')
   const [reviewModel, setReviewModel] = useState('')
   const [deaifyModel, setDeaifyModel] = useState('')
@@ -80,6 +81,8 @@ export default function BatchGenerateDialog({ isOpen, onClose }: Props) {
   const [deaifyIntensity, setDeaifyIntensity] = useState<'轻' | '中' | '重'>('中')
   const [onReviewFail, setOnReviewFail] = useState<'stop' | 'continue'>('stop')
   const [resume, setResume] = useState(true)
+  // 滚动蓝图：默认开启（静态蓝图是长篇连写质量下滑的主因）
+  const [rollingBlueprint, setRollingBlueprint] = useState(true)
   const [guardError, setGuardError] = useState<string | null>(null)
 
   // 打开时按"下一待写章"和总章数推断默认范围
@@ -105,8 +108,8 @@ export default function BatchGenerateDialog({ isOpen, onClose }: Props) {
   const s = Number(startChapter) || 1
   const e = Math.max(s, Number(endChapter) || s)
   const chapterCount = e - s + 1
-  // 粗略调用量：写1 +（审校：最多 maxRounds 审 + maxRounds-1 修）+（去AI味 1）
-  const perChapter = 1 + (autoReview ? reviewMaxRounds * 2 - 1 : 0) + (deaify ? 1 : 0)
+  // 粗略调用量：（蓝图刷新 1）+ 写1 +（审校：最多 maxRounds 审 + maxRounds-1 修）+（去AI味 1）
+  const perChapter = (rollingBlueprint ? 1 : 0) + 1 + (autoReview ? reviewMaxRounds * 2 - 1 : 0) + (deaify ? 1 : 0)
   const estCalls = chapterCount * perChapter
 
   const handleStart = async () => {
@@ -136,7 +139,9 @@ export default function BatchGenerateDialog({ isOpen, onClose }: Props) {
       deaifyIntensity,
       onReviewFail,
       resume,
+      rollingBlueprint,
       models: {
+        blueprint: blueprintModel || undefined,
         write: writeModel || undefined,
         review: reviewModel || undefined,
         deaify: deaifyModel || undefined,
@@ -155,7 +160,7 @@ export default function BatchGenerateDialog({ isOpen, onClose }: Props) {
             批量无人值守生成
           </DialogTitle>
           <DialogDescription>
-            连续生成多章：写稿 → 审校闭环 → 去AI味 → 定稿，全自动串联
+            连续生成多章：刷新蓝图 → 写稿 → 审校闭环 → 去AI味 → 定稿，全自动串联
           </DialogDescription>
         </DialogHeader>
 
@@ -182,6 +187,21 @@ export default function BatchGenerateDialog({ isOpen, onClose }: Props) {
 
           {/* 各环节开关 */}
           <div className="rounded-lg p-3 space-y-3" style={{ backgroundColor: 'var(--color-panel)', border: '1px solid var(--color-border)' }}>
+            <Toggle
+              checked={rollingBlueprint}
+              onChange={setRollingBlueprint}
+              label="滚动蓝图：写稿前按已写剧情自适应修正本章蓝图（推荐）"
+            />
+            {rollingBlueprint ? (
+              <div className="ml-6 text-[0.7rem] leading-relaxed" style={{ color: 'var(--color-text-muted)' }}>
+                依据已定稿正文、角色当前状态、未回收伏笔与节奏位置修正蓝图，主线定位保持不变。
+                长篇连写主要靠它避免「越写越飘」。
+              </div>
+            ) : (
+              <div className="ml-6 text-[0.7rem] leading-relaxed" style={{ color: 'var(--color-warning, #eab308)' }}>
+                关闭后将沿用开写前规划的静态蓝图，连写多章时剧情偏差会逐章累积。
+              </div>
+            )}
             <Toggle checked={autoReview} onChange={setAutoReview} label="每章写完后自动审校闭环（审稿→修复→复审）" />
             {autoReview && (
               <div className="ml-6 flex items-center gap-3 flex-wrap">
@@ -223,6 +243,7 @@ export default function BatchGenerateDialog({ isOpen, onClose }: Props) {
               <div className="text-xs font-medium" style={{ color: 'var(--color-text)' }}>
                 按任务派模型 <span className="font-normal" style={{ color: 'var(--color-text-muted)' }}>（可选，默认都用默认模型）</span>
               </div>
+              {rollingBlueprint && <ModelRow label="蓝图" value={blueprintModel} onChange={setBlueprintModel} models={models} />}
               <ModelRow label="写稿" value={writeModel} onChange={setWriteModel} models={models} />
               {autoReview && <ModelRow label="审校" value={reviewModel} onChange={setReviewModel} models={models} />}
               {deaify && <ModelRow label="去AI味" value={deaifyModel} onChange={setDeaifyModel} models={models} />}

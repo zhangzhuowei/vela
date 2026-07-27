@@ -359,3 +359,145 @@ export async function runPostProcessPipeline(
 
   return status
 }
+
+// ===== 章节上下文读取（滚动蓝图刷新用） =====
+//
+// 这些函数把「已经写出来的事实」聚合成可注入 Prompt 的文本，
+// 供写稿前的蓝图自适应刷新使用（generate-draft 内另有同类私有实现，
+// 保持其不变以免影响既有写稿链路）。
+
+/** 读取四段式故事架构并拼装为单串文本 */
+export async function readArchitectureText(): Promise<string> {
+  try {
+    const core = await ipc.invoke('db:project-core-get')
+    const parts: string[] = []
+    if (core?.premise) parts.push(core.premise.trim())
+    if (core?.charactersArch) parts.push(core.charactersArch.trim())
+    if (core?.worldbuilding) parts.push(core.worldbuilding.trim())
+    if (core?.synopsis) parts.push(core.synopsis.trim())
+    return parts.join('\n\n---\n\n') || '（暂无故事架构）'
+  } catch {
+    return '（故事架构读取失败）'
+  }
+}
+
+/** 读取角色当前状态档案（含已知信息，用于防穿帮） */
+export async function readCharacterStatesText(): Promise<string> {
+  try {
+    const allChars = await ipc.invoke('db:character-get-all')
+    const states: string[] = []
+    for (const card of allChars) {
+      if (card.name && card.currentState) {
+        const cs = card.currentState
+        states.push(
+          `${card.name}（${card.role || '未知'}）| ` +
+          `境界：${cs.powerLevel || '未知'} | ` +
+          `位置：${cs.location || '未知'} | ` +
+          `身体：${cs.physicalState || '正常'} | ` +
+          `心理：${cs.mentalState || '正常'} | ` +
+          `道具：${cs.keyItems || '无'} | ` +
+          `已知：${cs.knownInfo || '—'} | ` +
+          `最近：第${cs.updatedAtChapter || 0}章 ${cs.recentEvents || ''}`
+        )
+      }
+    }
+    return states.length > 0 ? states.join('\n') : '（暂无角色状态档案）'
+  } catch {
+    return '（角色状态档案读取失败）'
+  }
+}
+
+/**
+ * 读取已写章节的要点时间线（来自蓝图 notes，即定稿后回填的实际剧情要点）。
+ * 近 fullWindow 章完整收录，更早仅留标题行，总量上限 maxChars。
+ *
+ * 一次取回全部蓝图再本地过滤：逐章 IPC 会随连载推进线性变慢
+ * （写到第 200 章就是 199 次往返，且批量连写每章都要跑一遍）。
+ */
+export async function readChapterNotesTimeline(
+  currentChapter: number,
+  fullWindow = 5,
+  maxChars = 3000,
+): Promise<string> {
+  try {
+    const all = await ipc.invoke('db:blueprint-get-all')
+    const byChapter = new Map((all || []).map(b => [b.chapterNumber, b]))
+
+    const lines: string[] = []
+    for (let i = 1; i < currentChapter; i++) {
+      const bp = byChapter.get(i)
+      if (!bp) continue
+      const isRecent = i >= currentChapter - fullWindow
+      if (isRecent && bp.notes?.trim()) {
+        lines.push(`【第${i}章 ${bp.title || ''}】\n${bp.notes.trim()}`)
+      } else {
+        lines.push(`【第${i}章 ${bp.title || ''}】`)
+      }
+    }
+
+    let result = lines.join('\n\n')
+    if (result.length > maxChars) result = result.slice(-maxChars)
+    return result || '（无章节要点）'
+  } catch {
+    return '（章节要点读取失败）'
+  }
+}
+
+/** 读取上一章定稿正文的结尾片段（本章须从此自然接续） */
+export async function readPreviousEnding(currentChapter: number, maxChars = 1000): Promise<string> {
+  if (currentChapter <= 1) return '（无前文，本章为开篇）'
+  try {
+    const meta = await ipc.invoke('db:draft-get-finalized', currentChapter - 1)
+    if (!meta) return '（上一章尚未定稿）'
+    const full = await ipc.invoke('db:draft-get-full', meta.id)
+    const content = full?.content?.trim()
+    return content ? content.slice(-maxChars) : '（上一章正文为空）'
+  } catch {
+    return '（上一章正文读取失败）'
+  }
+}
+
+/** 跨章反雷同：最近数章的开场句与断章句速览 */
+export async function buildAntiRepetitionText(currentChapter: number, windowSize = 3): Promise<string> {
+  const lines: string[] = []
+  for (let i = currentChapter - 1; i >= Math.max(1, currentChapter - windowSize); i--) {
+    try {
+      const meta = await ipc.invoke('db:draft-get-finalized', i)
+      if (!meta) continue
+      const full = await ipc.invoke('db:draft-get-full', meta.id)
+      const content = full?.content?.trim()
+      if (!content) continue
+      const opening = content.slice(0, 55).replace(/\s+/g, ' ')
+      const closing = content.slice(-45).replace(/\s+/g, ' ')
+      lines.push(`- 第${i}章 开场：「${opening}…」｜断章：「…${closing}」`)
+    } catch { /* 忽略单章读取失败 */ }
+  }
+  if (lines.length === 0) return '（暂无往期章节可参考）'
+  return lines.reverse().join('\n')
+}
+
+/** 未回收伏笔上下文（含到期提醒） */
+export async function buildOpenForeshadowingText(currentChapter: number): Promise<string> {
+  try {
+    const open = await ipc.invoke('db:foreshadow-get-open')
+    return formatOpenForeshadowings(open, currentChapter)
+  } catch {
+    return '（暂无未回收伏笔）'
+  }
+}
+
+/** 后续若干章蓝图速览（用于约束本章不抢戏、不提前消耗关键节点） */
+export async function buildFutureBlueprintsText(currentChapter: number, span = 5): Promise<string> {
+  try {
+    const all = await ipc.invoke('db:blueprint-get-all')
+    const future = (all || []).filter(
+      (b) => b.chapterNumber > currentChapter && b.chapterNumber <= currentChapter + span
+    )
+    if (future.length === 0) return '（无后续蓝图）'
+    return future
+      .map((b) => `第${b.chapterNumber}章 ${b.title}：${b.keyEvents}`)
+      .join('\n')
+  } catch {
+    return '（后续蓝图读取失败）'
+  }
+}

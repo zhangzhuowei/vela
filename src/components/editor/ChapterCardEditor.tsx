@@ -108,6 +108,28 @@ export default function ChapterCardEditor() {
     addLog('info', t('chapterCard.blueprintSaved', { chapter: selected.chapterNumber }))
   }
 
+  /**
+   * 按当前剧情进度刷新本章蓝图（滚动蓝图手动入口）
+   * 蓝图由命令内部写回数据库，完成后重新加载列表以显示新内容。
+   *
+   * 刷新会用 AI 结果覆盖标题、主角小目标、实质冲突与转折、出场角色与悬念钩子，
+   * 且不可撤销，因此一律先确认——手写蓝图被静默改写的代价远高于多点一次确认。
+   * 「作者微创意指导」与已回填的章节要点会被保留。
+   */
+  const handleRefreshBlueprint = async () => {
+    if (!currentProject || !selected) return
+    const ok = await confirm(
+      `将依据已写剧情重新推演第 ${selected.chapterNumber} 章蓝图，并覆盖标题、主角小目标、实质冲突与转折、出场关键人与悬念钩子。\n\n`
+      + '「作者微创意指导」与已回填的章节要点会保留。\n'
+      + '覆盖不可撤销。\n'
+      + (dirty ? '\n注意：当前还有未保存的蓝图改动，会一并丢失。' : ''),
+      { title: '按进度刷新蓝图', confirmText: '确认刷新' }
+    )
+    if (!ok) return
+    const { createRefreshBlueprintWorkflow } = await import('../../services/workflows/chapter-workflow')
+    startWorkflow(createRefreshBlueprintWorkflow(selected.chapterNumber), false)
+  }
+
   /** 全量保存（每章写入独立 JSON 文件） */
   const handleSaveAll = async () => {
     if (!currentProject) return
@@ -376,6 +398,19 @@ export default function ChapterCardEditor() {
                       title={t('chapterCard.writeThisChapterTooltip')}
                     >
                       <PenLine size={12} /> {t('chapterCard.writeThisChapter')}
+                    </Button>
+                  )}
+                  {/* 滚动蓝图：按已写剧情修正本章蓝图。
+                      已定稿章节不再显示——正文已经写定，改蓝图只会让两者对不上，
+                      还白花一次模型调用。 */}
+                  {nextWriteChapter !== null && selected.chapterNumber >= nextWriteChapter && (
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={handleRefreshBlueprint}
+                      title="依据已定稿正文、角色当前状态、未回收伏笔与节奏位置，修正本章蓝图（主线定位不变）。会覆盖标题与关键事件，保留作者微创意指导"
+                    >
+                      <RefreshCw size={12} /> 按进度刷新
                     </Button>
                   )}
                   <Button variant="ghost" size="icon" onClick={handleDeleteChapter} title={t('chapterCard.deleteThisChapter')}>

@@ -423,6 +423,79 @@ export class DirectoryPromptBuilder extends BasePromptBuilder {
 }
 
 /**
+ * 滚动蓝图刷新专用 Builder
+ *
+ * 写稿前把「已经写出来的事实」注入，用于把开写前规划的静态蓝图
+ * 修正为贴合当前剧情进度的可执行方案（主线定位由 prompt 锚定，不在此处约束）。
+ */
+export class RefreshBlueprintPromptBuilder extends BasePromptBuilder {
+  withChapterNumber(num: number | string) {
+    this.variables.chapter_number = String(num);
+    return this;
+  }
+
+  withNumberOfChapters(num: number | string) {
+    this.variables.number_of_chapters = String(num);
+    return this;
+  }
+
+  /** 本章原始蓝图（主线锚点） */
+  withOriginalBlueprint(blueprint: string | object) {
+    this.variables.original_blueprint = typeof blueprint === 'string'
+      ? blueprint
+      : JSON.stringify(blueprint, null, 2);
+    return this;
+  }
+
+  withNovelArchitecture(arch: string) {
+    this.variables.novel_architecture = arch;
+    return this;
+  }
+
+  /** 已写章节要点时间线（实际发生过的剧情） */
+  withGlobalSummary(summary: string) {
+    this.variables.global_summary = summary;
+    return this;
+  }
+
+  /** 上一章结尾实际正文 */
+  withPreviousEnding(text: string) {
+    this.variables.previous_ending = text;
+    return this;
+  }
+
+  withCharacterStates(states: string) {
+    this.variables.character_states = states;
+    return this;
+  }
+
+  withForeshadowing(text: string) {
+    this.variables.foreshadowing = text;
+    return this;
+  }
+
+  withAntiRepetition(text: string) {
+    this.variables.anti_repetition = text;
+    return this;
+  }
+
+  withFutureBlueprints(text: string) {
+    this.variables.future_blueprints = text;
+    return this;
+  }
+
+  withGlobalGuidance(guidance: string) {
+    this.variables.global_guidance = guidance;
+    return this;
+  }
+
+  withPacingGuidance(guidance: string) {
+    this.variables.pacing_guidance = guidance;
+    return this;
+  }
+}
+
+/**
  * 导入小说专用 Builder
  * 用于逆向推演（向量采样增强版配置推演 & 单章蓝图推演）
  */

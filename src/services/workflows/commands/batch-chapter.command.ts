@@ -28,8 +28,13 @@ export interface BatchOptions {
   onReviewFail: 'stop' | 'continue'
   /** 断点续跑：跳过已定稿章节 */
   resume: boolean
-  /** 按任务派模型（为空走默认模型）：写稿/审校/去AI味 */
-  models?: { write?: string; review?: string; deaify?: string }
+  /**
+   * 滚动蓝图：写稿前依据已定稿正文/角色状态/伏笔自适应刷新本章蓝图。
+   * 关闭时沿用开写前规划的静态蓝图（长篇连写会逐章累积偏差）。
+   */
+  rollingBlueprint?: boolean
+  /** 按任务派模型（为空走默认模型）：蓝图刷新/写稿/审校/去AI味 */
+  models?: { blueprint?: string; write?: string; review?: string; deaify?: string }
 }
 
 export class BatchChapterCommand extends BaseWorkflowCommand<string> {
@@ -65,7 +70,7 @@ export class BatchChapterCommand extends BaseWorkflowCommand<string> {
     // 2. 加载蓝图 → ChapterInfo
     const bp = await ipc.invoke('db:blueprint-get', n)
     if (!bp) throw new Error(`第${n}章蓝图缺失，请先生成章节蓝图`)
-    const chapterInfo: ChapterInfo = {
+    let chapterInfo: ChapterInfo = {
       chapterNumber: n,
       title: bp.title || `第${n}章`,
       role: bp.role || '',
@@ -74,6 +79,17 @@ export class BatchChapterCommand extends BaseWorkflowCommand<string> {
       keyEvents: bp.keyEvents || '',
       suspenseHook: bp.suspenseHook || undefined,
       userGuidance: bp.userGuidance || undefined,
+    }
+
+    // 2.5 滚动蓝图：按已写出来的实际剧情修正本章蓝图（主线定位锚定不变）
+    //     蓝图是开写前一次性规划的，长篇连写若照旧图硬写会逐章累积偏差。
+    //     刷新失败会在命令内部降级为沿用原蓝图，不阻断批量。
+    if (this.opts.rollingBlueprint !== false) {
+      ensureNotCancelled()
+      const { RefreshBlueprintCommand } = await import('./refresh-blueprint.command')
+      const refresh = new RefreshBlueprintCommand(n, this.opts.models?.blueprint)
+      await refresh.execute(execParams)
+      if (refresh.result) chapterInfo = refresh.result.chapterInfo
     }
 
     // 3. 写稿（复用 GenerateDraftCommand，草稿路径经 context.data 传出）
