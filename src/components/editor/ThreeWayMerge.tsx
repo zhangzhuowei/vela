@@ -11,6 +11,7 @@
 import React, { useState, useCallback, useRef, useMemo, useLayoutEffect } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Button } from '../ui/Button'
+import { diffChars } from '../../lib/char-diff'
 import './three-way-merge.css'
 
 // ===== 类型定义 =====
@@ -47,6 +48,12 @@ interface ThreeWayMergeProps {
    * 的预期是全部生效、个别排除，故由调用方指定初始态。
    */
   defaultApplyAll?: boolean
+  /**
+   * 在改动段落内部标出字符级差异。
+   * 标点这类单字符改动若只做整段着色，作者得逐字去找改在哪；
+   * 大段重写则相反，满屏字符高亮反而更乱，故由调用方按场景开启。
+   */
+  inlineCharDiff?: boolean
 }
 
 // ===== 文本工具 =====
@@ -286,13 +293,54 @@ function computeSegments(original: string, modified: string): DiffSegment[] {
 
 // ===== 渲染辅助 =====
 
-function HunkLines({ lines, padCount, cls, emptyLabel }: {
-  lines: string[]; padCount: number; cls: string; emptyLabel: string
+/**
+ * 渲染单行的字符级差异。
+ * side 决定保留哪一侧：left 保留原文（eq + del），right 保留改后（eq + ins）。
+ */
+function InlineDiffLine({ original, modified, side }: {
+  original: string; modified: string; side: 'left' | 'right'
 }) {
+  const segments = useMemo(() => diffChars(original, modified), [original, modified])
+  const keepKind = side === 'left' ? 'del' : 'ins'
+  const markCls = side === 'left' ? 'twm-chg-del' : 'twm-chg-ins'
+
+  const visible = segments.filter(s => s.kind === 'eq' || s.kind === keepKind)
+  if (visible.length === 0) return <>{'\u00A0'}</>
+
+  return (
+    <>
+      {visible.map((seg, i) => seg.kind === 'eq'
+        ? <span key={i}>{seg.text}</span>
+        // 空格被改动时本身不可见，用类名兜住背景色使其可被看见
+        : <span key={i} className={markCls}>{seg.text}</span>
+      )}
+    </>
+  )
+}
+
+function HunkLines({ lines, padCount, cls, emptyLabel, counterpart, side }: {
+  lines: string[]; padCount: number; cls: string; emptyLabel: string
+  /** 对侧文本；提供且行数一致时启用字符级高亮 */
+  counterpart?: string[]
+  side?: 'left' | 'right'
+}) {
+  // 行数不一致（段落拆分/合并）时无法按行配对，退回整行着色
+  const pairable = !!counterpart && !!side && counterpart.length === lines.length
+
   return (
     <>
       {lines.length > 0
-        ? lines.map((l, i) => <div key={i} className={cls}>{l || '\u00A0'}</div>)
+        ? lines.map((l, i) => (
+          <div key={i} className={cls}>
+            {pairable
+              ? <InlineDiffLine
+                original={side === 'left' ? l : counterpart![i]}
+                modified={side === 'left' ? counterpart![i] : l}
+                side={side!}
+              />
+              : (l || '\u00A0')}
+          </div>
+        ))
         : <div className="twm-line-placeholder">{emptyLabel}</div>}
       {Array.from({ length: padCount }).map((_, i) => (
         <div key={`p${i}`} className="twm-line-padding">{'\u00A0'}</div>
@@ -318,7 +366,8 @@ function EditableCell({ text, onChange }: { text: string; onChange: (t: string) 
 // ===== 主组件 =====
 
 export default function ThreeWayMerge({
-  originalContent, modifiedContent, onComplete, onCancel, labels, defaultApplyAll = false,
+  originalContent, modifiedContent, onComplete, onCancel, labels,
+  defaultApplyAll = false, inlineCharDiff = false,
 }: ThreeWayMergeProps) {
   const { t } = useTranslation('editors')
   const segments = useMemo(() => computeSegments(originalContent, modifiedContent),
@@ -434,7 +483,9 @@ export default function ThreeWayMerge({
               <React.Fragment key={idx}>
                 {/* 左栏 */}
                 <div className={`twm-cell twm-cell-left ${isApplied ? 'processed' : ''}`}>
-                  <HunkLines lines={hunk.originalLines} padCount={leftPad} cls="twm-line-removed"
+                  <HunkLines lines={hunk.originalLines} padCount={leftPad}
+                    cls={inlineCharDiff ? 'twm-line-removed subtle' : 'twm-line-removed'}
+                    counterpart={inlineCharDiff ? hunk.modifiedLines : undefined} side="left"
                     emptyLabel={t('threeWayMerge.newLines', { count: hunk.modifiedLines.length })} />
                 </div>
 
@@ -453,7 +504,9 @@ export default function ThreeWayMerge({
                       {isApplied ? '✓' : '«'}
                     </button>
                     <div className="twm-hunk-text">
-                      <HunkLines lines={hunk.modifiedLines} padCount={rightPad} cls="twm-line-added"
+                      <HunkLines lines={hunk.modifiedLines} padCount={rightPad}
+                        cls={inlineCharDiff ? 'twm-line-added subtle' : 'twm-line-added'}
+                        counterpart={inlineCharDiff ? hunk.originalLines : undefined} side="right"
                         emptyLabel={t('threeWayMerge.deletedLines', { count: hunk.originalLines.length })} />
                     </div>
                   </div>

@@ -181,3 +181,36 @@
   flex: 1;
   min-width: 0;
 }
+
+/* ===== 字符级差异高亮（inlineCharDiff） =====
+ * 标点这类单字符改动若只做整段着色，作者得逐字去找改在哪。
+ * 开启字符级高亮时，整行底色压淡、把注意力让给字符标记本身。
+ */
+.twm-line-removed.subtle,
+.twm-line-added.subtle {
+  background: transparent;
+}
+
+/* 改动字符标记 —— 标点字形很小，靠背景块 + 描边把它撑出来 */
+.twm-chg-del,
+.twm-chg-ins {
+  border-radius: 2px;
+  padding: 1px 2px;
+  margin: 0 1px;
+  font-weight: 700;
+  /* 被删除的空格本身不可见，给一个最小宽度让它能被看见 */
+  min-width: 0.4em;
+  display: inline-block;
+}
+.twm-chg-del {
+  background: rgba(239, 68, 68, 0.3);
+  box-shadow: inset 0 0 0 1px rgba(239, 68, 68, 0.55);
+  color: #fecaca;
+  text-decoration: line-through;
+  text-decoration-thickness: 1px;
+}
+.twm-chg-ins {
+  background: rgba(34, 197, 94, 0.3);
+  box-shadow: inset 0 0 0 1px rgba(34, 197, 94, 0.55);
+  color: #bbf7d0;
+}

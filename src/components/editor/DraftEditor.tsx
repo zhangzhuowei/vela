@@ -861,6 +861,7 @@ export default function DraftEditor({ filePath, content }: Props) {
                 onCancel={() => setPunctPreview(null)}
                 labels={{ modified: '规范化后', complete: '应用' }}
                 defaultApplyAll
+                inlineCharDiff
               />
             )}
           </div>
