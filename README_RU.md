@@ -112,8 +112,18 @@ Vela — это не просто текстовый редактор с чат�
 ### Прямое скачивание
 
 Перейдите в [Releases](https://github.com/zhangzhuowei/vela/releases) для скачивания последней версии:
-- **macOS**: `.dmg` установщик
-- **Windows**: `.exe` установщик (NSIS)
+
+| Платформа | Файл |
+|---|---|
+| **Windows** | `Vela-*-setup.exe` (установщик, с ярлыками и записью для удаления)<br>`Vela-*-portable.exe` (один файл, распаковывается во временную папку при запуске) |
+| **macOS** (Apple Silicon) | `Vela-Mac-*-arm64-Installer.dmg` |
+| **macOS** (Intel) | `Vela-Mac-*-x64-Installer.dmg` |
+
+> **Примечание для пользователей macOS**: сборки не подписаны и не заверены сертификатом Apple Developer, поэтому при первом запуске появится сообщение «Vela повреждён и не может быть открыт». Это блокировка Gatekeeper, а не повреждённый файл. Выполните один раз:
+>
+> ```bash
+> xattr -cr /Applications/Vela.app
+> ```
 
 > Оригинальные сборки upstream — см. [heider-x/vela/releases](https://github.com/heider-x/vela/releases).
 

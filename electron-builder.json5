@@ -22,8 +22,11 @@
   ],
   "mac": {
     "target": ["dmg"],
-    "artifactName": "${productName}-Mac-${version}-Installer.${ext}",
-    "category": "public.app-category.productivity"
+    // 必须带 ${arch}：arm64 与 x64 分两个 runner 构建，同名会在 Release 里互相覆盖
+    "artifactName": "${productName}-Mac-${version}-${arch}-Installer.${ext}",
+    "category": "public.app-category.productivity",
+    // 无 Apple Developer 证书，跳过签名（CI 里同时设了 CSC_IDENTITY_AUTO_DISCOVERY=false）
+    "identity": null
   },
   "win": {
     "target": [

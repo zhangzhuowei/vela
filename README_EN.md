@@ -112,8 +112,18 @@ Vela is not just another chat-based text editor — it is a **production-grade n
 ### Direct Download
 
 Go to [Releases](https://github.com/zhangzhuowei/vela/releases) to download the latest version for your OS:
-- **macOS**: `.dmg` installer
-- **Windows**: `.exe` installer (NSIS)
+
+| Platform | File |
+|---|---|
+| **Windows** | `Vela-*-setup.exe` (installer, with shortcuts and uninstall entry)<br>`Vela-*-portable.exe` (single-file, extracts to a temp dir on launch) |
+| **macOS** (Apple Silicon) | `Vela-Mac-*-arm64-Installer.dmg` |
+| **macOS** (Intel) | `Vela-Mac-*-x64-Installer.dmg` |
+
+> **Note for macOS users**: these builds are not signed or notarized with an Apple Developer certificate, so the first launch will report *"Vela is damaged and can't be opened"*. That is Gatekeeper blocking it, not a corrupted download. Run this once and it will work:
+>
+> ```bash
+> xattr -cr /Applications/Vela.app
+> ```
 
 > For the upstream original releases, see [heider-x/vela/releases](https://github.com/heider-x/vela/releases).
 

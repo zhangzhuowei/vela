@@ -1,0 +1,129 @@
+name: Release
+
+# 推送 v* tag 时构建三平台安装包并发布到 Release。
+# 也可手动触发（workflow_dispatch）只构建不发布，用于验证流水线本身。
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+env:
+  # 仓库 .npmrc 把 registry 指向了 npmmirror（国内加速用）。
+  # GitHub runner 在海外，走官方源更快也更稳，这里用环境变量覆盖。
+  npm_config_registry: https://registry.npmjs.org/
+  npm_config_electron_mirror: https://github.com/electron/electron/releases/download/v
+
+jobs:
+  build:
+    name: Build ${{ matrix.name }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      # 任一平台失败不影响其他平台，便于单独重跑
+      fail-fast: false
+      matrix:
+        include:
+          - name: windows-x64
+            os: windows-latest
+            builder_args: --win --x64
+          - name: macos-arm64
+            os: macos-latest
+            builder_args: --mac --arm64
+          # macos-13 是 Intel runner，原生编译 x64，避免在 arm 上交叉编译
+          # better-sqlite3 / @lancedb 等原生模块。若该 runner 被 GitHub 下线，
+          # 改为 macos-latest 并加 --x64（需自行验证原生模块可用性）。
+          - name: macos-x64
+            os: macos-13
+            builder_args: --mac --x64
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 10
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --no-frozen-lockfile
+
+      - name: Type check
+        run: pnpm exec tsc -p tsconfig.json
+
+      - name: Build renderer & main
+        run: pnpm exec vite build
+
+      - name: Build installers
+        env:
+          # 没有 Apple Developer 证书，关闭签名自动发现，否则 macOS 上会报错中断
+          CSC_IDENTITY_AUTO_DISCOVERY: false
+        run: pnpm exec electron-builder ${{ matrix.builder_args }} --publish never
+
+      - name: List artifacts
+        shell: bash
+        run: ls -lR release || true
+
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.name }}
+          if-no-files-found: error
+          retention-days: 7
+          path: |
+            release/*/*.exe
+            release/*/*.exe.blockmap
+            release/*/*.dmg
+            release/*/*.dmg.blockmap
+            release/*/*.zip
+            release/*/latest*.yml
+
+  release:
+    name: Publish Release
+    needs: build
+    runs-on: ubuntu-latest
+    # 只有 tag 触发才发布；手动触发仅构建，产物留在 Actions artifacts 里
+    if: startsWith(github.ref, 'refs/tags/v')
+    steps:
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+          merge-multiple: true
+
+      - name: List downloaded files
+        run: ls -lR artifacts
+
+      - name: Publish to Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: artifacts/**/*
+          draft: true
+          generate_release_notes: false
+          body: |
+            详细变更见 [CHANGELOG.md](CHANGELOG.md)。
+
+            ## 下载说明
+
+            | 平台 | 文件 |
+            |---|---|
+            | Windows | `Vela-*-setup.exe`（安装版）/ `Vela-*-portable.exe`（免安装） |
+            | macOS (Apple Silicon) | `Vela-Mac-*-Installer.dmg`（arm64） |
+            | macOS (Intel) | `Vela-Mac-*-Installer.dmg`（x64） |
+
+            ### macOS 首次打开提示「已损坏」怎么办
+
+            本项目未做 Apple 签名与公证，macOS 会拦截。在终端执行一次即可：
+
+            ```bash
+            xattr -cr /Applications/Vela.app
+            ```

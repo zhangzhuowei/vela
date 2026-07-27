@@ -118,8 +118,18 @@ Vela 不是又一个带对话框的文本编辑器——它是一套深度融合
 ### 方式一：直接下载 / Direct Download
 
 前往 [Releases](https://github.com/zhangzhuowei/vela/releases) 下载对应操作系统的最新版本：
-- **macOS**: `.dmg` 安装包
-- **Windows**: `.exe` 安装程序 (NSIS)
+
+| 平台 | 文件 |
+|---|---|
+| **Windows** | `Vela-*-setup.exe`（安装版，含快捷方式与卸载入口）<br>`Vela-*-portable.exe`（免安装单文件，启动时解压到临时目录） |
+| **macOS** (Apple Silicon) | `Vela-Mac-*-arm64-Installer.dmg` |
+| **macOS** (Intel) | `Vela-Mac-*-x64-Installer.dmg` |
+
+> **macOS 用户注意**：本项目未做 Apple 签名与公证，首次打开会提示「已损坏，无法打开」。这是 Gatekeeper 的拦截，不是文件损坏。在终端执行一次即可正常使用：
+>
+> ```bash
+> xattr -cr /Applications/Vela.app
+> ```
 
 > 上游原版的发行版请见 [heider-x/vela/releases](https://github.com/heider-x/vela/releases)。
 
