@@ -12,10 +12,13 @@ permissions:
   contents: write
 
 env:
-  # 仓库 .npmrc 把 registry 指向了 npmmirror（国内加速用）。
+  # 仓库 .npmrc 把 registry 与 electron_mirror 指向了 npmmirror（国内加速用）。
   # GitHub runner 在海外，走官方源更快也更稳，这里用环境变量覆盖。
   npm_config_registry: https://registry.npmjs.org/
-  npm_config_electron_mirror: https://github.com/electron/electron/releases/download/v
+  # 结尾必须是 download/ 且不带 v：@electron/get 拼 URL 时用的 customDir
+  # 默认就是 v41.2.0（已含 v），写成 download/v 会拼出 .../download/vv41.2.0/ 从而 404。
+  # 见 @electron/get artifact-utils.js: BASE_URL + `${base}${path}/${file}`
+  npm_config_electron_mirror: https://github.com/electron/electron/releases/download/
 
 jobs:
   build:
