@@ -211,6 +211,30 @@ export class CharacterRepository {
         tx()
     }
 
+    /**
+     * 重命名角色（原地改主键 name，避免改名被当成新卡插入而产生重复）。
+     * - oldName 与 newName 相同：无操作。
+     * - 目标名已被别的卡占用：抛错，交由上层处理，绝不覆盖或制造重复。
+     * - 其余按名字引用的数据（cs_* 动态状态、人设图路径等）都在同一行上，
+     *   改主键即整行迁移，无需额外搬运。
+     */
+    static rename(oldName: string, newName: string): void {
+        const db = getProjectDb()
+        if (!db) return
+        if (!oldName || !newName || oldName === newName) return
+
+        const clash = db.prepare('SELECT 1 FROM characters WHERE name = ?').get(newName)
+        if (clash) {
+            throw new Error(`角色名「${newName}」已存在，无法改名`)
+        }
+        const exists = db.prepare('SELECT 1 FROM characters WHERE name = ?').get(oldName)
+        if (!exists) return
+
+        db.prepare(
+            `UPDATE characters SET name = ?, updated_at = datetime('now') WHERE name = ?`
+        ).run(newName, oldName)
+    }
+
     /** 删除角色（连带清理其人设图磁盘文件） */
     static delete(name: string): void {
         const db = getProjectDb()

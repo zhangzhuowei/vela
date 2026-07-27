@@ -120,6 +120,15 @@ export function registerDatabaseController() {
     }
   })
 
+  ipcMain.handle('db:character-rename', async (_event, oldName: string, newName: string) => {
+    try {
+      CharacterRepository.rename(oldName, newName)
+      return { success: true }
+    } catch (err) {
+      return { success: false, error: String(err) }
+    }
+  })
+
   ipcMain.handle('db:character-delete', async (_event, name: string) => {
     try {
       CharacterRepository.delete(name)

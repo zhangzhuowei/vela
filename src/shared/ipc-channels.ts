@@ -295,6 +295,7 @@ export interface DatabaseChannels {
   'db:character-upsert': { args: [data: CharacterData]; return: { success: boolean; error?: string } }
   'db:character-save-all': { args: [items: CharacterData[]]; return: { success: boolean; error?: string } }
   'db:character-delete': { args: [name: string]; return: { success: boolean; error?: string } }
+  'db:character-rename': { args: [oldName: string, newName: string]; return: { success: boolean; error?: string } }
   'db:character-update-state': { args: [name: string, state: CharacterStateData]; return: { success: boolean; error?: string } }
   'db:character-update-speech': { args: [name: string, speechStyle: string]; return: { success: boolean; error?: string } }
   'db:character-update-portrait': { args: [name: string, portraitPath: string]; return: { success: boolean; error?: string } }
