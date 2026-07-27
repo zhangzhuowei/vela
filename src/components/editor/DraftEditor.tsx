@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect, useCallback } from 'react'
-import { Sparkles, Search, BadgeCheck, Save, FileStack, FileText, Wrench, RefreshCw, Wand2, Image as ImageIcon } from 'lucide-react'
+import { Sparkles, Search, BadgeCheck, Save, FileStack, FileText, Wrench, RefreshCw, Wand2, Image as ImageIcon, Pilcrow } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 
 import { useProjectStore } from '../../stores/project-store'
@@ -27,6 +27,7 @@ import { DRAFT_STATUS_LABEL, DRAFT_STATUS_COLOR } from '../../shared/draft-statu
 import { PostProcessStatusPanel } from '../ui/PostProcessStatusPanel'
 import { getChapterFinalizeScope } from '../../services/workflows/workflow-utils'
 import { guardRepairPostProcess } from '../../services/workflow-guards'
+import { normalizeChinesePunctuation } from '../../lib/punctuation'
 
 interface Props {
   filePath: string
@@ -231,6 +232,27 @@ export default function DraftEditor({ filePath, content }: Props) {
     } catch (e) {
       toast.error(`去AI味启动失败：${e}`)
     }
+  }
+
+  /**
+   * 标点规范化 — 纯本地文本处理，不调用模型
+   *
+   * 把中文语境下混入的半角标点（, ; : ! ? 以及成对小括号）转成全角，
+   * 并清理全角标点后多余的空格。西文/数字用法、代码块与 URL 一律跳过。
+   * 编辑器查找会做 NFKD 归一化（半角与全角逗号等价），作者无法手工替换，
+   * 因此提供一键处理。结果写入编辑器并标记未保存，作者可比对后再保存。
+   */
+  const doNormalizePunctuation = () => {
+    if (isReadonly || isChapterBusy) return
+    const source = currentBodyRef.current
+    const { text, count } = normalizeChinesePunctuation(source)
+    if (count === 0) {
+      toast.info('未发现需要规范化的半角标点')
+      return
+    }
+    currentBodyRef.current = text
+    useEditorStore.getState().updateTabContent(filePath, text)
+    toast.success(`已规范化 ${count} 处标点，确认后请保存`)
   }
 
   /** 定稿 */
@@ -480,6 +502,18 @@ export default function DraftEditor({ filePath, content }: Props) {
             >
               <RefreshCw size={12} />
               自动审校
+            </Button>
+
+            {/* 标点规范化（本地处理，不调模型） */}
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={doNormalizePunctuation}
+              disabled={isChapterBusy}
+              title="标点规范化 — 把中文语境下的半角标点（, ; : ! ? 及成对小括号）转为全角，并清理全角标点后多余空格；数字、西文、代码与链接不受影响。不调用模型"
+            >
+              <Pilcrow size={12} />
+              标点
             </Button>
 
             {/* 去 AI 味 */}
