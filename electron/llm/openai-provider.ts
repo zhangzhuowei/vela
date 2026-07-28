@@ -82,6 +82,9 @@ export class OpenAIProvider implements ILLMProvider {
         messages,
         max_tokens: opts.maxTokens ?? model.maxTokens,
         stream: true,
+        // 流式默认不返回 token 用量，须显式索取；服务商若不支持会忽略该字段，
+        // 此时 usage 保持 undefined，由调用方按 0 记账。
+        stream_options: { include_usage: true },
       }
 
       // 思考模式下 temperature/top_p 等参数不生效（DeepSeek 会静默忽略），仅在非思考模式下传递
@@ -93,7 +96,7 @@ export class OpenAIProvider implements ILLMProvider {
 
       if (opts.responseFormat) body.response_format = opts.responseFormat
 
-      const res = await fetch(url, {
+      const send = () => fetch(url, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -102,6 +105,15 @@ export class OpenAIProvider implements ILLMProvider {
         body: JSON.stringify(body),
         signal: opts.signal,
       })
+
+      let res = await send()
+
+      // stream_options 只是为了取 token 用量。若服务商不认这个字段而返回 400，
+      // 去掉它重试一次——宁可没有用量统计，也不能让生成失败。
+      if (res.status === 400 && body.stream_options) {
+        delete body.stream_options
+        res = await send()
+      }
 
       if (!res.ok) {
         const text = await res.text()
@@ -118,6 +130,8 @@ export class OpenAIProvider implements ILLMProvider {
       const decoder = new TextDecoder()
       let fullText = ''
       let isThinking = false
+      // include_usage 时用量随最后一个数据包到达（该包 choices 为空数组）
+      let usage: { promptTokens: number; completionTokens: number; totalTokens: number } | undefined
 
       const hasMore = true
       while (hasMore) {
@@ -133,7 +147,19 @@ export class OpenAIProvider implements ILLMProvider {
           try {
             const parsed = JSON.parse(json) as {
               choices: Array<{ delta: { content?: string, reasoning_content?: string } }>
+              usage?: { prompt_tokens?: number; completion_tokens?: number; total_tokens?: number }
             }
+
+            if (parsed.usage) {
+              const p = parsed.usage.prompt_tokens ?? 0
+              const c = parsed.usage.completion_tokens ?? 0
+              usage = {
+                promptTokens: p,
+                completionTokens: c,
+                totalTokens: parsed.usage.total_tokens ?? p + c,
+              }
+            }
+
             const delta = parsed.choices?.[0]?.delta
 
             let emitChunk = ''
@@ -174,7 +200,7 @@ export class OpenAIProvider implements ILLMProvider {
         opts.onChunk(closeTag)
       }
 
-      opts.onDone(fullText.replace(/<think>[\s\S]*?(?:<\/think>|$)/gi, '').trim())
+      opts.onDone(fullText.replace(/<think>[\s\S]*?(?:<\/think>|$)/gi, '').trim(), usage)
     } catch (error) {
       if ((error as Error).name === 'AbortError') {
         opts.onError('已取消生成')

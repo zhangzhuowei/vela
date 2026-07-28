@@ -98,6 +98,41 @@ export abstract class BaseWorkflowCommand<TResult = string> {
     return m ? m.name : modelId
   }
 
+  /**
+   * 本次调用的用途标签，用于在统计面板里分辨 token 花在哪一步。
+   * 默认取命令类名（GenerateDraftCommand → GenerateDraft），子命令可覆写成更可读的名字。
+   */
+  protected get callPurpose(): string {
+    return this.constructor.name.replace(/Command$/, '')
+  }
+
+  /**
+   * 上报一次 LLM 调用。成功与失败都记，否则出错的调用在统计里看不见。
+   * 拿不到 usage（服务商不支持 include_usage）时按 0 记，宁可少 token 数也不丢这条记录。
+   * 整个过程不 await、不抛错，绝不干扰生成主流程。
+   */
+  private logCall(
+    modelId: string,
+    startedAt: number,
+    success: boolean,
+    usage?: { promptTokens: number; completionTokens: number; totalTokens: number },
+    errorMessage?: string,
+  ): void {
+    void import('../../stats-service')
+      .then(({ logLLMCall }) => logLLMCall({
+        modelId,
+        modelName: this.modelLabel(modelId || undefined),
+        purpose: this.callPurpose,
+        promptTokens: usage?.promptTokens ?? 0,
+        completionTokens: usage?.completionTokens ?? 0,
+        totalTokens: usage?.totalTokens ?? 0,
+        durationMs: Date.now() - startedAt,
+        success,
+        errorMessage,
+      }))
+      .catch(() => { /* 记账失败不影响生成 */ })
+  }
+
   /** 可重试的瞬时错误：限流 / 服务器繁忙 / 超时 / 网络抖动 / 空响应 */
   protected isRetriableError(msg: string): boolean {
     return /\b(429|500|502|503|504)\b/.test(msg)
@@ -122,6 +157,10 @@ export abstract class BaseWorkflowCommand<TResult = string> {
     if (!modelId && !llmStore.defaultModelId) throw new Error('未配置默认 AI 模型')
 
     callbacks.setProgress(10)
+
+    // 记账用：所有工作流的 LLM 调用都经由此处，在这里上报即可覆盖全部
+    const startedAt = Date.now()
+    const effectiveModelId = modelId ?? llmStore.defaultModelId ?? ''
 
     return new Promise((resolve, reject) => {
       let fullContent = ''
@@ -159,13 +198,14 @@ export abstract class BaseWorkflowCommand<TResult = string> {
             fullContent += chunk
             callbacks.appendText(chunk)
           },
-          onDone: (text) => {
+          onDone: (text, usage) => {
             cleanup()
             // 取消后不 resolve，让 reject 生效
             if (context?.cancelled) {
               reject(new Error('工作流已取消'))
               return
             }
+            this.logCall(effectiveModelId, startedAt, true, usage)
             callbacks.setProgress(90)
             const raw = text || fullContent
             const cleaned = this.stripThinkingTags(raw)
@@ -173,6 +213,7 @@ export abstract class BaseWorkflowCommand<TResult = string> {
           },
           onError: (err) => {
             cleanup()
+            this.logCall(effectiveModelId, startedAt, false, undefined, err)
             reject(new Error(err || '流式生成失败'))
           }
         },
