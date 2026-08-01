@@ -143,7 +143,7 @@ export default function ArchitectureConfirmDialog({
       onConfirm(selectedSteps, stepGuidance)
       onClose()
       const stepNames = selectedSteps.map(k => archLabels[k]).filter(Boolean).join('、')
-      toast.info(t('architectureConfirm.submitted', { stepNames }))
+      toast.info(t('architectureConfirm.submitted', { steps: stepNames }))
     } finally {
       setIsConfirming(false)
     }
@@ -182,8 +182,8 @@ export default function ArchitectureConfirmDialog({
             <div className="grid grid-cols-2 gap-1">
               <ConfigRow label={t('architectureConfirm.genre')} value={[config.genre, config.subGenre].filter(Boolean).join(' · ')} />
               <ConfigRow label={t('architectureConfirm.audience')} value={config.targetAudience} />
-              <ConfigRow label={t('architectureConfirm.totalChaptersLabel')} value={`${config.totalChapters} 章`} />
-              <ConfigRow label={t('architectureConfirm.wordsPerChapterLabel')} value={`${config.wordsPerChapter} 字`} />
+              <ConfigRow label={t('architectureConfirm.totalChaptersLabel')} value={t('architectureConfirm.chaptersValue', { num: config.totalChapters })} />
+              <ConfigRow label={t('architectureConfirm.wordsPerChapterLabel')} value={t('architectureConfirm.wordsValue', { num: config.wordsPerChapter })} />
             </div>
             {config.coreOutline && (
               <p
@@ -209,7 +209,7 @@ export default function ArchitectureConfirmDialog({
                 className="text-xs underline"
                 style={{ color: 'var(--color-text-muted)' }}
               >
-                全选
+                {t('architectureConfirm.selectAll')}
               </button>
             </div>
 
