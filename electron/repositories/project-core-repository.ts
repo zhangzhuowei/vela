@@ -24,6 +24,9 @@ export interface ProjectCoreRow {
     negative_prompt: string
     global_guidance: string
     golden_finger: string
+    core_outline: string
+    world_setting: string
+    protagonist_profile: string
     premise: string
     worldbuilding: string
     characters_arch: string
@@ -50,6 +53,9 @@ export interface ProjectCoreData {
     negativePrompt: string
     globalGuidance: string
     goldenFinger: string
+    coreOutline: string
+    worldSetting: string
+    protagonistProfile: string
     premise: string
     worldbuilding: string
     charactersArch: string
@@ -75,6 +81,9 @@ function rowToData(row: ProjectCoreRow): ProjectCoreData {
         negativePrompt: row.negative_prompt ?? '',
         globalGuidance: row.global_guidance,
         goldenFinger: row.golden_finger,
+        coreOutline: row.core_outline ?? '',
+        worldSetting: row.world_setting ?? '',
+        protagonistProfile: row.protagonist_profile ?? '',
         premise: row.premise,
         worldbuilding: row.worldbuilding,
         charactersArch: row.characters_arch,
@@ -129,6 +138,9 @@ export class ProjectCoreRepository {
             negativePrompt: 'negative_prompt',
             globalGuidance: 'global_guidance',
             goldenFinger: 'golden_finger',
+            coreOutline: 'core_outline',
+            worldSetting: 'world_setting',
+            protagonistProfile: 'protagonist_profile',
             premise: 'premise',
             worldbuilding: 'worldbuilding',
             charactersArch: 'characters_arch',

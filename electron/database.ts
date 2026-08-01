@@ -141,6 +141,10 @@ function migrateSchema(db: BetterSqlite3.Database) {
   addColumnIfMissing('project_core', 'style_reference', `style_reference TEXT DEFAULT ''`)
   addColumnIfMissing('project_core', 'art_style', `art_style TEXT DEFAULT ''`)
   addColumnIfMissing('project_core', 'negative_prompt', `negative_prompt TEXT DEFAULT ''`)
+  // 小说配置正文种子字段（此前误用架构四大件列存储，导致保存后清空，补齐独立列）
+  addColumnIfMissing('project_core', 'core_outline', `core_outline TEXT DEFAULT ''`)
+  addColumnIfMissing('project_core', 'world_setting', `world_setting TEXT DEFAULT ''`)
+  addColumnIfMissing('project_core', 'protagonist_profile', `protagonist_profile TEXT DEFAULT ''`)
 }
 
 /** 创建完整表结构（9 张核心表 + 2 张沿用表） */
@@ -165,6 +169,10 @@ function createTables(db: BetterSqlite3.Database) {
       reference_works TEXT DEFAULT '',            -- 参考作品
       global_guidance TEXT DEFAULT '',            -- 全局行文指导
       golden_finger TEXT DEFAULT '',              -- 金手指设定
+      -- [配置正文种子]（用户在「小说配置」手填，区别于下方 AI 生成的架构四大件）
+      core_outline TEXT DEFAULT '',               -- 核心大纲
+      world_setting TEXT DEFAULT '',              -- 世界观设定/初始设定
+      protagonist_profile TEXT DEFAULT '',        -- 主角人设
       -- [架构四大件]
       premise TEXT DEFAULT '',                    -- 故事前提
       worldbuilding TEXT DEFAULT '',              -- 世界观

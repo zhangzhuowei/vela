@@ -115,10 +115,10 @@ export function registerProjectController() {
           wordsPerChapter: updatedCoreData.wordsPerChapter,
           plotStructure: updatedCoreData.plotStructure as 'three_act' | 'heros_journey' | 'save_the_cat' | 'kishotenketsu' | 'multi_thread' | 'freeform',
           narrativePOV: updatedCoreData.narrativePov as 'third_limited' | 'first_person' | 'third_omniscient' | 'multi_pov',
-          coreOutline: updatedCoreData.synopsis,      // 旧字段映射
-          worldSetting: updatedCoreData.worldbuilding, // 旧字段映射
+          coreOutline: updatedCoreData.coreOutline,
+          worldSetting: updatedCoreData.worldSetting,
           goldenFinger: updatedCoreData.goldenFinger,
-          protagonistProfile: updatedCoreData.charactersArch, // 旧字段映射
+          protagonistProfile: updatedCoreData.protagonistProfile,
           globalGuidance: updatedCoreData.globalGuidance,
           writingStyle: updatedCoreData.writingStyle,
           styleReference: updatedCoreData.styleReference,
@@ -155,6 +155,9 @@ export function registerProjectController() {
           plotStructure: data.novelConfig.plotStructure,
           narrativePov: data.novelConfig.narrativePOV,
           goldenFinger: data.novelConfig.goldenFinger,
+          coreOutline: data.novelConfig.coreOutline,
+          worldSetting: data.novelConfig.worldSetting,
+          protagonistProfile: data.novelConfig.protagonistProfile,
           globalGuidance: data.novelConfig.globalGuidance,
           writingStyle: data.novelConfig.writingStyle ?? '',
           styleReference: data.novelConfig.styleReference ?? '',
@@ -197,6 +200,9 @@ export function registerProjectController() {
           plotStructure: data.novelConfig.plotStructure,
           narrativePov: data.novelConfig.narrativePOV,
           goldenFinger: data.novelConfig.goldenFinger,
+          coreOutline: data.novelConfig.coreOutline,
+          worldSetting: data.novelConfig.worldSetting,
+          protagonistProfile: data.novelConfig.protagonistProfile,
           globalGuidance: data.novelConfig.globalGuidance,
           writingStyle: data.novelConfig.writingStyle ?? '',
           styleReference: data.novelConfig.styleReference ?? '',
