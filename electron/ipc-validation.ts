@@ -204,12 +204,17 @@ export function validateCanonPlotLineInput(v: unknown, path = 'plotLine') {
   }
 }
 
-export function validateCanonCharacterStateSnapshot(v: unknown, path = 'snapshot') {
+export function validateCanonCharacterStateSnapshot(v: unknown, path = 'snapshot', opts: { requireCharacter?: boolean } = {}) {
+  const { requireCharacter = true } = opts
   if (!isObject(v)) {
     throw new ValidationError(path, 'expected object')
   }
   return {
-    character: checkStringLength(v.character, `${path}.character`, { min: 1, max: MAX_NAME_LEN }),
+    // delta.after 是 Partial<CharacterStateSnapshot>（角色名在 delta 顶层的 character），
+    // 此时 character 允许缺省；独立快照 upsert 仍要求 character 必填。
+    character: requireCharacter
+      ? checkStringLength(v.character, `${path}.character`, { min: 1, max: MAX_NAME_LEN })
+      : checkStringLength(v.character ?? '', `${path}.character`, { max: MAX_NAME_LEN }),
     location: checkStringLength(v.location ?? '', `${path}.location`, { max: 200 }),
     powerLevel: checkStringLength(v.powerLevel ?? '', `${path}.powerLevel`, { max: 200 }),
     physicalState: checkStringLength(v.physicalState ?? '', `${path}.physicalState`, { max: 500 }),
@@ -256,7 +261,7 @@ export function validateCanonWritebackPayload(v: unknown, path = 'payload') {
         return {
           character: checkStringLength(d.character, `${p}.character`, { min: 1, max: MAX_NAME_LEN }),
           chapterNumber: checkNumberRange(d.chapterNumber, `${p}.chapterNumber`, { min: 1, max: 1e9, integer: true }),
-          after: validateCanonCharacterStateSnapshot(d.after, `${p}.after`),
+          after: validateCanonCharacterStateSnapshot(d.after, `${p}.after`, { requireCharacter: false }),
         }
       },
       { maxLength: MAX_OBJECTS_PER_REQUEST },
