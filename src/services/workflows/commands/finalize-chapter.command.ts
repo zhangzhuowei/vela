@@ -13,6 +13,7 @@ import {
 } from '../workflow-utils'
 import type { ChapterInfo } from '../chapter-workflow'
 import { extractAndWriteback, runConsistencyGate, buildCanonContext } from '../../narrative-consistency'
+import { parseJSONWithRepair } from '../json-repair'
 
 export interface FinalizeChapterParams {
   draftPath: string
@@ -57,112 +58,10 @@ async function callLLMForPostProcess(
 }
 
 /**
- * 转义 JSON 字符串字面量内部的裸控制字符（未转义的换行/制表符等）。
- *
- * LLM 偶发会在字符串值里直接输出真实换行/制表符，而合法 JSON 要求这些字符
- * 必须转义（\n、\t…），否则 JSON.parse 抛 "Bad control character in string literal"。
- * 本函数只处理字符串内部的裸控制字符，字符串外的空白（token 间的换行/缩进）原样保留，
- * 因此对本就合法的 JSON 没有任何影响。
- */
-function escapeControlCharsInStrings(input: string): string {
-  let out = ''
-  let inString = false
-  let escaped = false
-  for (let i = 0; i < input.length; i++) {
-    const ch = input[i]
-    if (inString) {
-      if (escaped) {
-        out += ch
-        escaped = false
-        continue
-      }
-      if (ch === '\\') {
-        out += ch
-        escaped = true
-        continue
-      }
-      if (ch === '"') {
-        out += ch
-        inString = false
-        continue
-      }
-      const code = input.charCodeAt(i)
-      if (code < 0x20) {
-        switch (ch) {
-          case '\n': out += '\\n'; break
-          case '\r': out += '\\r'; break
-          case '\t': out += '\\t'; break
-          case '\b': out += '\\b'; break
-          case '\f': out += '\\f'; break
-          default: out += '\\u' + code.toString(16).padStart(4, '0')
-        }
-        continue
-      }
-      out += ch
-    } else {
-      if (ch === '"') inString = true
-      out += ch
-    }
-  }
-  return out
-}
-
-/**
- * 转义字符串值内部未转义的半角双引号。
- *
- * LLM 写中文对白时常直接用半角引号，如
- *   "mentalState": "他听见"梦魇之月"这个名字"
- * 内层引号会提前闭合字符串，JSON.parse 抛
- * "Expected ',' or '}' after property value"。
- *
- * 判定规则：处于字符串中遇到 " 时向后跳过空白，若紧接的是 , } ] : 或输入结束，
- * 才视为真正的闭合引号；否则视为内容的一部分并转义为 \"。
- */
-function escapeStrayQuotesInStrings(input: string): string {
-  let out = ''
-  let inString = false
-  let escaped = false
-  for (let i = 0; i < input.length; i++) {
-    const ch = input[i]
-    if (!inString) {
-      if (ch === '"') inString = true
-      out += ch
-      continue
-    }
-    if (escaped) {
-      out += ch
-      escaped = false
-      continue
-    }
-    if (ch === '\\') {
-      out += ch
-      escaped = true
-      continue
-    }
-    if (ch === '"') {
-      let j = i + 1
-      while (j < input.length && /\s/.test(input[j])) j++
-      const next = j < input.length ? input[j] : ''
-      if (next === '' || next === ',' || next === '}' || next === ']' || next === ':') {
-        out += ch
-        inString = false
-      } else {
-        // 字符串内部的游离引号：转义，不闭合字符串
-        out += '\\"'
-      }
-      continue
-    }
-    out += ch
-  }
-  return out
-}
-
-/**
  * 容错 JSON 解析。
  *
- * 先剥离 Markdown 代码块并截取到最外层大括号，再按修复链依次尝试解析：
- * 原样 → 转义裸控制字符 → 转义游离引号 → 两者叠加。
- * 任一步成功即返回；全部失败则抛出原始解析错误，保留可读的诊断信息。
+ * 先剥离 Markdown 代码块并截取到最外层大括号，再委托共享的 parseJSONWithRepair
+ * 走“原样 → 转义裸控制字符 → 转义游离引号 → 两者叠加”修复链。
  */
 function parseJSON<T>(text: string): T {
   let cleanText = text.replace(/```json?\n?/gi, '').replace(/```\n?/gi, '').trim()
@@ -171,23 +70,7 @@ function parseJSON<T>(text: string): T {
   if (firstBrace !== -1 && lastBrace !== -1) {
     cleanText = cleanText.substring(firstBrace, lastBrace + 1)
   }
-
-  const candidates: string[] = [
-    cleanText,
-    escapeControlCharsInStrings(cleanText),
-    escapeStrayQuotesInStrings(cleanText),
-    escapeStrayQuotesInStrings(escapeControlCharsInStrings(cleanText)),
-  ]
-
-  let firstError: unknown = null
-  for (const candidate of candidates) {
-    try {
-      return JSON.parse(candidate) as T
-    } catch (err) {
-      if (firstError === null) firstError = err
-    }
-  }
-  throw firstError
+  return parseJSONWithRepair<T>(cleanText)
 }
 
 // ===== 后处理步骤构建器 =====

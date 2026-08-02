@@ -2,6 +2,7 @@ import type { WorkflowContext, StepCallbacks } from '../../../stores/workflow-st
 import { useLLMStore } from '../../../stores/llm-store'
 import { globalEventBus, EventPayloadMap } from '../../../shared/event-bus'
 import type { BasePromptBuilder } from '../../prompts/prompt-builder'
+import { parseJSONWithRepair } from '../json-repair'
 
 export interface CommandExecuteParams {
   step: unknown
@@ -275,7 +276,7 @@ export abstract class BaseWorkflowCommand<TResult = string> {
         cleanText = cleanText.substring(firstBracket, lastBracket + 1)
       }
       
-      return JSON.parse(cleanText) as T
+      return parseJSONWithRepair<T>(cleanText)
     } catch {
       throw new Error(`AI 返回的数据格式乱码，无法解析为有效层级结构。尝试解析内容末端: ${text.slice(-100)}`)
     }

@@ -7,58 +7,7 @@ import type { NovelConfig } from '../../shared/ipc-channels'
 import type { CharacterData } from '../../../electron/repositories/character-repository'
 
 import { runPostProcessPipeline, type PostProcessStep, stripThinkingTags, mergePreservedCharacterAssets } from './workflow-utils'
-
-/**
- * 容错解析 LLM 返回的 JSON。
- *
- * LLM 输出常因撞上模型单次输出上限（max_tokens）而被截断，导致数组或对象未闭合，
- * 标准 JSON.parse 会整体失败，已经生成好的内容全部丢失。
- * 本函数在标准解析失败时，扫描并保留所有已完整闭合的顶层元素，重新拼成合法 JSON，
- * 从而尽量抢救出可用的角色数据，并通过 truncated 标记告知调用方输出不完整。
- */
-function parseJSONLenient(raw: string): { data: unknown; truncated: boolean } {
-  try {
-    return { data: JSON.parse(raw), truncated: false }
-  } catch {
-    // 标准解析失败，进入截断抢救流程
-  }
-
-  const arrayStart = raw.indexOf('[')
-  if (arrayStart === -1) throw new Error('AI 返回内容中未找到 JSON 数组')
-
-  let depth = 0
-  let inString = false
-  let escaped = false
-  let lastCompleteEnd = -1
-
-  for (let i = arrayStart + 1; i < raw.length; i++) {
-    const ch = raw[i]
-    if (escaped) { escaped = false; continue }
-    if (ch === '\\') { escaped = true; continue }
-    if (ch === '"') { inString = !inString; continue }
-    if (inString) continue
-
-    if (ch === '{' || ch === '[') {
-      depth++
-    } else if (ch === '}' || ch === ']') {
-      depth--
-      if (depth === 0) {
-        // 顶层的一个元素刚刚完整闭合
-        lastCompleteEnd = i
-      } else if (depth < 0) {
-        // 数组本体已闭合，lastCompleteEnd 已指向最后一个完整元素
-        break
-      }
-    }
-  }
-
-  if (lastCompleteEnd === -1) {
-    throw new Error('AI 返回的 JSON 被截断，且没有任何完整的角色对象可供抢救。请减少单批提取的角色数量后重试')
-  }
-
-  const repaired = raw.slice(arrayStart, lastCompleteEnd + 1) + ']'
-  return { data: JSON.parse(repaired), truncated: true }
-}
+import { parseJSONLenient } from './json-repair'
 
 /** 单批送入 LLM 的角色图谱文本长度上限（字符）。超出后模型的 JSON 输出极易撞上 max_tokens 而被截断。 */
 const EXTRACT_BATCH_MAX_CHARS = 1800
