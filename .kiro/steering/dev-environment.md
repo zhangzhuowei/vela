@@ -94,3 +94,16 @@ inclusion: always
   4. 完事把 `signAndEditExecutable` 从配置里去掉，保持仓库配置干净。
 - rcedit 路径无空格，可不加引号；**但绝不能在 `cmd /c "..."` 里再对它套双引号**（会提前截断外层引号，报"文件名/目录名语法不正确"，errorlevel 123）。带空格的值（如 LegalCopyright）用 PowerShell `&` 调用+单引号最稳，`©` 等字符改用 `(c)` 避免编码乱码。
 - `cmd /c "... & ..."` 里的 `%errorlevel%` 在解析期就被展开，**拿不到 pnpm 真实退出码**；要可信退出码用 `cmd /v:on /c "... & echo EXIT=!errorlevel!"`（延迟展开），或直接看日志里的 `ELIFECYCLE` / electron-builder 报错行。
+
+## 13. 单元测试（vitest）
+
+- 测试框架是 **vitest**，`environment: 'node'`，`globals: false`（所以每个测试文件都要 `import { describe, it, expect } from 'vitest'`）。**没有 `test` npm 脚本**，跑测试用 `pnpm exec vitest run`（PowerShell 下仍需 `cmd /c` 包装 + 日志文件判断，见第 2 节）。
+- **最大的坑：`vitest.config.ts` 用的是显式 `include` 白名单**（只跑数组里列出的那几个文件）。**新增测试文件必须把它的路径加进 `include` 数组**，否则永远不会被执行——既不报错也不运行，极易误以为"测试通过"。加完再跑一次确认用例数变多了。
+- 测试就近放同级 `__tests__/`，命名 `*.test.ts`。语言包/JSON 这类可直接 `import x from '../locales/xx.json'` 做结构断言（参考 `src/i18n/__tests__/i18n.test.ts`）。
+- 纯函数（如 `src/services/workflows/json-repair.ts` 的容错解析）适合直接单测，不需要 DOM/Electron。
+
+## 14. 长命令（tsc / vite build / vitest）优先用后台进程轮询
+
+- 经验补充：用 `node 脚本.cjs` 里 `execSync('node node_modules/typescript/bin/tsc ...')` 时，外层执行会**提前拿回控制权**，而 node+tsc 其实还在后台跑——结果文件只停在预写的 `STARTED`，读不到真正结果，误判成失败。
+- 更稳的做法：**起后台进程**跑长命令，命令尾部自带成功标记（如 `; echo TSC_EXIT=$LASTEXITCODE`），再**轮询进程输出**，看到 `TSC_EXIT=0`（或 vitest 的 `passed`）才算过。tsc 全量约 140s，耐心轮询；没输出 ≠ 失败，别急着改代码。
+- 跑完记得停掉后台进程、删除临时脚本/日志。
