@@ -55,3 +55,5 @@ realistic-benchmark.mjs
 stress-test.mjs
 ci-validate.sh
 
+# 本地小说项目数据（运行时用户创作内容，非源码，不入库）
+novels/
