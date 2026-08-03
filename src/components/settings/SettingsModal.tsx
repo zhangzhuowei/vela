@@ -525,6 +525,11 @@ function ModelForm({
     ? '__custom__'
     : model.modelName
 
+  // 是否处于"手动输入"模式。除了用户主动切换（customModelName），
+  // 打开一条已存配置时，若模型名是预设列表之外的自定义值，也应直接进手动输入模式，
+  // 否则会落到下拉的"── 手动输入 ──"占位、看不见已保存的模型名（重开配置丢显示的 bug）。
+  const inCustom = customModelName || (presetModels.length > 0 && !isPresetValue && !!model.modelName)
+
   const handleTest = async () => {
     setTesting(true)
     setTestResult(null)
@@ -589,7 +594,7 @@ function ModelForm({
             <button
               type="button"
               onClick={() => {
-                if (customModelName) {
+                if (inCustom) {
                   // 切回预设列表
                   const first = presetModels[0]
                   setCustomModelName(false)
@@ -603,13 +608,13 @@ function ModelForm({
               className="text-xs transition-colors"
               style={{ color: 'var(--color-accent)' }}
             >
-              {customModelName ? t('models.presetModelSelect') : t('models.customModelInput')}
+              {inCustom ? t('models.presetModelSelect') : t('models.customModelInput')}
             </button>
           )}
         </div>
 
-        {/* 有预设模型 且 未切到手动输入 → 显示下拉 */}
-        {presetModels.length > 0 && !customModelName ? (
+        {/* 有预设模型 且 未处于手动输入模式 → 显示下拉 */}
+        {presetModels.length > 0 && !inCustom ? (
           <NativeSelect
             value={selectValue}
             onChange={(e) => handleModelSelect(e.target.value)}
