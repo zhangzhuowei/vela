@@ -81,17 +81,30 @@ export default function ArchFileViewer({ filePath, content: initialContent }: Pr
     }
   }, [initialContent])
 
+  // 卸载（切 Tab）时把编辑中的内容刷回 store：键入路径不再逐键写入，
+  // 切走再切回来仍能看到未保存的编辑
+  useEffect(() => {
+    return () => {
+      const tab = useEditorStore.getState().tabs.find(t => t.id === filePath)
+      if (tab && currentContentRef.current !== tab.content) {
+        useEditorStore.getState().syncTabContent(filePath, currentContentRef.current)
+      }
+    }
+  }, [filePath])
 
-  // 内容变化回调：更新 ref，不触发重渲染，避免 content prop 回传导致光标跳末尾
+
+  // 内容变化回调：更新 ref，不触发重渲染，避免 content prop 回传导致光标跳末尾。
+  // 只同步 dirty 标志、不逐键写 content（那会让订阅 tabs 的 EditorArea 按键级重渲染），
+  // 内容在保存/卸载时统一刷回 store
   const handleChange = useCallback((md: string) => {
     currentContentRef.current = md
     const dirty = md !== savedContentRef.current
     setIsDirty(dirty)
-    // 同步 editor-store 的 tab.dirty，供标题栏警示灯、Tab 圆点、关闭确认使用
     if (dirty) {
-      useEditorStore.getState().updateTabContent(filePath, md)
+      useEditorStore.getState().markTabDirty(filePath)
     } else {
-      useEditorStore.getState().syncTabContent(filePath, md)
+      // 撤销回到已保存基准：清除 dirty 标志
+      useEditorStore.getState().markTabSaved(filePath)
     }
   }, [filePath])
 
@@ -112,6 +125,8 @@ export default function ArchFileViewer({ filePath, content: initialContent }: Pr
         savedContentRef.current = md
         setIsDirty(false)
         useEditorStore.getState().markTabSaved(filePath)
+        // 键入路径不再逐键写 store，保存时把最终内容刷回，保证重开 Tab 看到的是新内容
+        useEditorStore.getState().syncTabContent(filePath, md)
       }
     } finally {
       setSaving(false)
@@ -135,6 +150,7 @@ export default function ArchFileViewer({ filePath, content: initialContent }: Pr
     setEditorContent(newContent)
     setIsDirty(false)
     useEditorStore.getState().markTabSaved(filePath)
+    useEditorStore.getState().syncTabContent(filePath, newContent)
     setLoading(false)
   }, [filePath])
 

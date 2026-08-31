@@ -5,6 +5,7 @@ import { useAgentStore } from '../../../stores/agent-store'
 import { useLayoutStore } from '../../../stores/layout-store'
 import AgentMessage from './AgentMessage'
 import AgentInputBox from './AgentInputBox'
+import WindowedList from '../../ui/WindowedList'
 import { formatRelativeTime } from '../../../utils/time'
 
 /**
@@ -13,8 +14,12 @@ import { formatRelativeTime } from '../../../utils/time'
  * - 有会话：消息列表 + 底部固定输入框
  */
 export default function AgentConversation() {
-  const { getActiveConversation, showHistory } = useAgentStore()
-  const activeConv = getActiveConversation()
+  // 精确订阅原始值：无 selector 的整 store 订阅会让本组件在每个流式批次都重渲染
+  const showHistory = useAgentStore(s => s.showHistory)
+  const isEmpty = useAgentStore(s => {
+    const conv = s.conversations.find(c => c.id === s.activeConversationId)
+    return !conv || conv.messages.length === 0
+  })
 
   // 历史面板模式
   if (showHistory) {
@@ -22,7 +27,7 @@ export default function AgentConversation() {
   }
 
   // 空状态（无活跃会话）
-  if (!activeConv || activeConv.messages.length === 0) {
+  if (isEmpty) {
     return <EmptyState />
   }
 
@@ -34,7 +39,8 @@ export default function AgentConversation() {
 
 function EmptyState() {
   const { t } = useTranslation('panels')
-  const { conversations, selectConversation } = useAgentStore()
+  const conversations = useAgentStore(s => s.conversations)
+  const selectConversation = useAgentStore(s => s.selectConversation)
   // 取最近 3 条历史会话（不包含当前空会话）
   const recentConvs = conversations
     .filter(c => c && c.messages.length > 0)
@@ -103,20 +109,21 @@ function EmptyState() {
 
 function ActiveConversation() {
   const { t } = useTranslation('panels')
-  const { getActiveConversation, generating } = useAgentStore()
-  const activeConv = getActiveConversation()
+  const messages = useAgentStore(s => s.conversations.find(c => c.id === s.activeConversationId)?.messages)
+  const generating = useAgentStore(s => s.generating)
   const scrollRef = useRef<HTMLDivElement>(null)
   const [isAtBottom, setIsAtBottom] = useState(true)
 
-  // 消息变化时自动滚动到底部
+  // 消息变化时自动滚动到底部。
+  // 流式期间用即时滚动：smooth 动画在每个批次互相打断，滚动抖动且叠加合成开销；
+  // 依赖用「条数 + 最后一条长度」原始值，避免 messages 数组引用变化带来的多余触发
+  const lastContentLen = messages?.length ? messages[messages.length - 1].content.length : 0
   useEffect(() => {
-    if (isAtBottom && scrollRef.current) {
-      scrollRef.current.scrollTo({
-        top: scrollRef.current.scrollHeight,
-        behavior: 'smooth',
-      })
+    const el = scrollRef.current
+    if (isAtBottom && el) {
+      el.scrollTop = el.scrollHeight
     }
-  }, [activeConv?.messages, generating, isAtBottom])
+  }, [messages?.length, lastContentLen, generating, isAtBottom])
 
   // 监听滚动位置判断是否在底部
   const handleScroll = () => {
@@ -134,7 +141,7 @@ function ActiveConversation() {
     })
   }
 
-  if (!activeConv) return null
+  if (!messages) return null
 
   return (
     <div className="flex flex-col h-full relative">
@@ -145,7 +152,7 @@ function ActiveConversation() {
         className="flex-1 overflow-y-auto px-4 py-4"
       >
         <div className="flex flex-col">
-          {activeConv.messages
+          {messages
             .filter(m => m.role !== 'system')
             .map(msg => (
               <AgentMessage key={msg.id} message={msg} />
@@ -240,7 +247,11 @@ function AgentToolbar() {
 
 function AgentHistoryPanel() {
   const { t } = useTranslation('panels')
-  const { conversations, activeConversationId, selectConversation, deleteConversation, setShowHistory } = useAgentStore()
+  const conversations = useAgentStore(s => s.conversations)
+  const activeConversationId = useAgentStore(s => s.activeConversationId)
+  const selectConversation = useAgentStore(s => s.selectConversation)
+  const deleteConversation = useAgentStore(s => s.deleteConversation)
+  const setShowHistory = useAgentStore(s => s.setShowHistory)
 
   // 按更新时间倒序排列
   const sorted = [...conversations].sort((a, b) => b.updatedAt - a.updatedAt)
@@ -266,23 +277,26 @@ function AgentHistoryPanel() {
         </button>
       </div>
 
-      {/* 会话列表 */}
+      {/* 会话列表（窗口化：会话很多时只渲染视口内的行） */}
       <div className="flex-1 overflow-y-auto px-2 py-2">
         {sorted.length === 0 ? (
           <div className="flex items-center justify-center h-24 text-xs" style={{ color: 'var(--color-text-muted)' }}>
             {t('agentConversation.noConversations')}
           </div>
         ) : (
-          sorted.map(conv => (
-            <RecentConversationItem
-              key={conv.id}
-              title={conv.title}
-              updatedAt={conv.updatedAt}
-              isActive={conv.id === activeConversationId}
-              onClick={() => selectConversation(conv.id)}
-              onDelete={() => deleteConversation(conv.id)}
-            />
-          ))
+          <WindowedList
+            items={sorted}
+            itemHeight={28}
+            renderItem={(conv) => (
+              <RecentConversationItem
+                title={conv.title}
+                updatedAt={conv.updatedAt}
+                isActive={conv.id === activeConversationId}
+                onClick={() => selectConversation(conv.id)}
+                onDelete={() => deleteConversation(conv.id)}
+              />
+            )}
+          />
         )}
       </div>
     </div>

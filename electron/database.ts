@@ -7,6 +7,7 @@
 import { createRequire } from 'node:module'
 import path from 'node:path'
 import fs from 'node:fs'
+import { closeAllConnections as closeAllLanceConnections } from './vector-store'
 
 const require = createRequire(import.meta.url)
 const Database = require('better-sqlite3') as typeof import('better-sqlite3')
@@ -24,6 +25,8 @@ export function initProjectDatabase(projectPath: string): void {
   projectDb = new Database(dbPath)
   projectDb.pragma('journal_mode = WAL')
   projectDb.pragma('foreign_keys = ON')
+  // 并发写碰撞（批量定稿写回 vs UI 保存）时自动等待重试，而非直接抛 SQLITE_BUSY
+  projectDb.pragma('busy_timeout = 5000')
 
   // 创建表结构
   createTables(projectDb)
@@ -34,12 +37,17 @@ export function initProjectDatabase(projectPath: string): void {
   console.log(`[Vela DB] 项目数据库已打开: ${dbPath}`)
 }
 
-/** 关闭项目数据库 */
+/**
+ * 关闭项目数据库。
+ * LanceDB 连接与 SQLite 同步关闭：此前切换/关闭项目只关 SQLite，
+ * LanceDB 连接残留在池中不释放句柄。
+ */
 export function closeProjectDatabase(): void {
   if (projectDb) {
     projectDb.close()
     projectDb = null
   }
+  closeAllLanceConnections()
 }
 
 /** 已执行的 schema 迁移版本号（用于幂等迁移） */
@@ -271,6 +279,7 @@ function createTables(db: BetterSqlite3.Database) {
       FOREIGN KEY (content_id) REFERENCES contents(id) ON DELETE RESTRICT
     );
     CREATE INDEX IF NOT EXISTS idx_drafts_chapter ON drafts(chapter_number);
+    CREATE INDEX IF NOT EXISTS idx_drafts_status_chapter ON drafts(status, chapter_number);
 
     -- ============================================================
     -- 6. revisions — 修稿（派生自 draft）
@@ -291,6 +300,7 @@ function createTables(db: BetterSqlite3.Database) {
       FOREIGN KEY (base_draft_id) REFERENCES drafts(id) ON DELETE CASCADE,
       FOREIGN KEY (content_id) REFERENCES contents(id) ON DELETE RESTRICT
     );
+    CREATE INDEX IF NOT EXISTS idx_revisions_base_draft ON revisions(base_draft_id);
 
     -- ============================================================
     -- 7. reviews — 审稿（派生自 draft）
@@ -304,6 +314,7 @@ function createTables(db: BetterSqlite3.Database) {
       FOREIGN KEY (base_draft_id) REFERENCES drafts(id) ON DELETE CASCADE,
       FOREIGN KEY (content_id) REFERENCES contents(id) ON DELETE RESTRICT
     );
+    CREATE INDEX IF NOT EXISTS idx_reviews_base_draft ON reviews(base_draft_id);
 
     -- ============================================================
     -- 8. post_process_runs — 后处理跑批实例
@@ -336,6 +347,7 @@ function createTables(db: BetterSqlite3.Database) {
       last_attempt_at TEXT DEFAULT '',
       FOREIGN KEY (run_id) REFERENCES post_process_runs(id) ON DELETE CASCADE
     );
+    CREATE INDEX IF NOT EXISTS idx_pp_steps_run ON post_process_steps(run_id);
 
     -- ============================================================
     -- 沿用表：LLM 调用记录
@@ -440,6 +452,7 @@ function createTables(db: BetterSqlite3.Database) {
       created_at TEXT DEFAULT (datetime('now'))
     );
     CREATE INDEX IF NOT EXISTS idx_canon_facts_category ON canon_facts(category);
+    CREATE INDEX IF NOT EXISTS idx_canon_facts_introduced ON canon_facts(introduced_at);
 
     -- 章节摘要（结构化）
     CREATE TABLE IF NOT EXISTS canon_chapter_summaries (

@@ -87,24 +87,26 @@ export const useDraftStore = create<DraftState>()((set, get) => ({
 
     set({ loading: true })
     try {
-      const blueprints = await ipc.invoke('db:blueprint-get-all')
+      // 一次取回全部草稿元数据再本地按章分组。
+      // 原实现按蓝图逐章 db:draft-list（N+1）：百章项目一次全量刷新
+      // 要打 100+ 次 IPC，批量连写时每章定稿后还会各刷一遍
+      const all = await ipc.invoke('db:draft-list-all')
       const newDraftsByChapter: DraftsByChapter = {}
 
-      for (const bp of blueprints) {
-        const chNum = bp.chapterNumber
-        const list = await ipc.invoke('db:draft-list', chNum)
-        if (!list || list.length === 0) continue
-
-        const metas: DraftMeta[] = list.map((m) => ({
+      for (const m of all) {
+        const meta: DraftMeta = {
           ...m,
           status: m.status as DraftStatus,
           source: m.source as DraftMeta['source'],
           fileName: `draft_v${m.version}.md`,
-          filePath: `vela://draft/${m.id}`
-        }))
+          filePath: `vela://draft/${m.id}`,
+        }
+        ;(newDraftsByChapter[m.chapterNumber] ??= []).push(meta)
+      }
 
-        metas.sort((a, b) => b.version - a.version)
-        newDraftsByChapter[chNum] = metas
+      // 各章按版本号排序（新 → 旧）
+      for (const list of Object.values(newDraftsByChapter)) {
+        list.sort((a, b) => b.version - a.version)
       }
 
       set({ draftsByChapter: newDraftsByChapter })

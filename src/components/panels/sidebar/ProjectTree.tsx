@@ -30,8 +30,11 @@ export default function ProjectTree() {
   const currentProject = useProjectStore(s => s.currentProject)
 
   // refreshFileTree / loadAllDrafts 在 refreshAll 内通过 getState() 调用
-  // ✅ 只订阅 activeRuns
-  const activeRuns = useWorkflowStore(s => s.activeRuns)
+  // ✅ 直接订阅状态指纹字符串：workflowKey 不含流式 result，
+  //    但订阅整个 activeRuns 仍会让本组件在每个流式批次重渲染整棵侧栏树
+  const workflowKey = useWorkflowStore(s =>
+    s.activeRuns.map(r => `${r.id}:${r.status}|${r.steps.map(st => st.status).join(',')}`).join(';')
+  )
   // ✅ 精确订阅，避免 loadAllDrafts 执行后引用变化触发 useCallback/useEffect 循环
   const draftsByChapter = useDraftStore(s => s.draftsByChapter)
 
@@ -63,7 +66,6 @@ export default function ProjectTree() {
 
   // 工作流步骤状态或整体状态变化时刷新侧边栏（适配多任务）
   // 合并为单一 effect + 防抖，避免一次步骤完成同时触发多次刷新
-  const workflowKey = activeRuns.map(r => `${r.id}:${r.status}|${r.steps.map(s => s.status).join(',')}`).join(';')
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   useEffect(() => {
     if (!currentProject) return

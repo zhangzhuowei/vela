@@ -15,7 +15,14 @@ import { useOutsideClick } from '../../../hooks/useOutsideClick'
  */
 export default function AgentHeader() {
   const { t } = useTranslation('panels')
-  const { createConversation, toggleHistory, showHistory, getActiveConversation } = useAgentStore()
+  // 精确订阅：isCurrentEmpty 折叠为布尔值，流式批次更新不再牵动标题栏重渲染
+  const createConversation = useAgentStore(s => s.createConversation)
+  const toggleHistory = useAgentStore(s => s.toggleHistory)
+  const showHistory = useAgentStore(s => s.showHistory)
+  const isCurrentEmpty = useAgentStore(s => {
+    const conv = s.conversations.find(c => c.id === s.activeConversationId)
+    return !conv || conv.messages.filter(m => m.role !== 'system').length === 0
+  })
   const toggleAIPanel = useLayoutStore(s => s.toggleAIPanel)
   const [showMore, setShowMore] = useState(false)
   const [subView, setSubView] = useState<'main' | 'mcp' | 'skills'>('main')
@@ -25,7 +32,8 @@ export default function AgentHeader() {
   useOutsideClick(moreRef, () => { setShowMore(false); setSubView('main') }, showMore)
 
   // MCP 状态
-  const { servers: mcpServers, tools: mcpTools } = useMCPStore()
+  const mcpServers = useMCPStore(s => s.servers)
+  const mcpTools = useMCPStore(s => s.tools)
   const connectedCount = mcpServers.filter(s => s.status === 'connected').length
 
   // Skill 列表
@@ -40,10 +48,6 @@ export default function AgentHeader() {
   const handleClose = () => {
     toggleAIPanel()
   }
-
-  // 当前会话为空（无消息）时禁止新建
-  const activeConv = getActiveConversation()
-  const isCurrentEmpty = !activeConv || activeConv.messages.filter(m => m.role !== 'system').length === 0
 
   return (
     <div

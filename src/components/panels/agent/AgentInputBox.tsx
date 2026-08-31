@@ -28,16 +28,21 @@ export default function AgentInputBox() {
   const { t } = useTranslation('panels')
   const [inputText, setInputText] = useState('')
   const textareaRef = useRef<HTMLTextAreaElement>(null)
-  const { generating, sendMessage, cancelGeneration, getActiveConversation, setMode, setModelId } = useAgentStore()
+  // 精确订阅：mode/modelId 取原始值，流式批次更新（conversations 引用变化）不再牵动输入框重渲染
+  const generating = useAgentStore(s => s.generating)
+  const sendMessage = useAgentStore(s => s.sendMessage)
+  const cancelGeneration = useAgentStore(s => s.cancelGeneration)
+  const setMode = useAgentStore(s => s.setMode)
+  const setModelId = useAgentStore(s => s.setModelId)
+  const currentMode = useAgentStore(s => s.conversations.find(c => c.id === s.activeConversationId)?.mode ?? 'planning')
+  const activeModelId = useAgentStore(s => s.conversations.find(c => c.id === s.activeConversationId)?.modelId ?? null)
   const models = useLLMStore(s => s.models)
   const defaultModelId = useLLMStore(s => s.defaultModelId)
 
   // 过滤出非仅限 embedding 专用的模型
   const chatModels = models.filter(m => !(m.purposes.length === 1 && m.purposes[0] === 'embedding'))
 
-  const activeConv = getActiveConversation()
-  const currentMode = activeConv?.mode ?? 'planning'
-  const currentModelId = activeConv?.modelId ?? defaultModelId
+  const currentModelId = activeModelId ?? defaultModelId
 
   // 找到当前模型信息
   const currentModel = models.find(m => m.id === currentModelId)

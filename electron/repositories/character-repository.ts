@@ -215,8 +215,11 @@ export class CharacterRepository {
      * 重命名角色（原地改主键 name，避免改名被当成新卡插入而产生重复）。
      * - oldName 与 newName 相同：无操作。
      * - 目标名已被别的卡占用：抛错，交由上层处理，绝不覆盖或制造重复。
-     * - 其余按名字引用的数据（cs_* 动态状态、人设图路径等）都在同一行上，
+     * - 角色卡自身按名字引用的数据（cs_* 动态状态、人设图路径等）都在同一行上，
      *   改主键即整行迁移，无需额外搬运。
+     * - 叙事一致性 canon 各表按名字引用该角色（状态表主键、时间线/剧情线/事实的
+     *   characters 数组、其他角色的关系键），必须在同一事务内一并迁移，
+     *   否则改名后 Canon 按新名查不到状态、写回又按新名另起一行，状态从此分裂。
      */
     static rename(oldName: string, newName: string): void {
         const db = getProjectDb()
@@ -230,9 +233,93 @@ export class CharacterRepository {
         const exists = db.prepare('SELECT 1 FROM characters WHERE name = ?').get(oldName)
         if (!exists) return
 
-        db.prepare(
-            `UPDATE characters SET name = ?, updated_at = datetime('now') WHERE name = ?`
-        ).run(newName, oldName)
+        const tx = db.transaction(() => {
+            db.prepare(
+                `UPDATE characters SET name = ?, updated_at = datetime('now') WHERE name = ?`
+            ).run(newName, oldName)
+            CharacterRepository.renameInCanon(db, oldName, newName)
+        })
+        tx()
+    }
+
+    /**
+     * 把 canon 各表中对角色名的引用从 oldName 迁移到 newName。
+     * 只迁移结构化引用（主键、JSON 数组成员、关系键）；
+     * 摘要/事实陈述等自由文本里的名字不做替换（文本替换易误伤同名子串）。
+     */
+    private static renameInCanon(db: NonNullable<ReturnType<typeof getProjectDb>>, oldName: string, newName: string): void {
+        // 1) 角色状态表：主键行迁移
+        type StateRow = {
+            character: string
+            location: string; power_level: string; physical_state: string; mental_state: string
+            key_items: string; current_goal: string; knowledge_json: string
+            relationships_json: string; recent_events: string; updated_at_chapter: number
+        }
+        const oldState = db.prepare('SELECT * FROM canon_character_state WHERE character = ?').get(oldName) as StateRow | undefined
+        if (oldState) {
+            const target = db.prepare('SELECT * FROM canon_character_state WHERE character = ?').get(newName) as StateRow | undefined
+            if (!target) {
+                db.prepare(
+                    `UPDATE canon_character_state SET character = ?, updated_at = datetime('now') WHERE character = ?`
+                ).run(newName, oldName)
+            } else {
+                // 两名并存（历史写回曾按新名另建过一行）：合并后删除旧名行。
+                // 标量字段以更新章较大的一方为准、空值从另一方补齐；知识取并集、关系合并
+                const parseArr = (s: string): string[] => { try { const v = JSON.parse(s || '[]'); return Array.isArray(v) ? v : [] } catch { return [] } }
+                const parseObj = (s: string): Record<string, string> => { try { const v = JSON.parse(s || '{}'); return v && typeof v === 'object' && !Array.isArray(v) ? v : {} } catch { return {} } }
+                const primary = (target.updated_at_chapter || 0) >= (oldState.updated_at_chapter || 0) ? target : oldState
+                const secondary = primary === target ? oldState : target
+                const pick = (f: keyof StateRow) => (primary[f] as string) || (secondary[f] as string) || ''
+                const knowledge = Array.from(new Set([...parseArr(secondary.knowledge_json), ...parseArr(primary.knowledge_json)]))
+                const relationships = { ...parseObj(secondary.relationships_json), ...parseObj(primary.relationships_json) }
+                db.prepare(`
+          UPDATE canon_character_state SET
+            location = ?, power_level = ?, physical_state = ?, mental_state = ?,
+            key_items = ?, current_goal = ?, knowledge_json = ?, relationships_json = ?,
+            recent_events = ?, updated_at_chapter = ?, updated_at = datetime('now')
+          WHERE character = ?
+        `).run(
+                    pick('location'), pick('power_level'), pick('physical_state'), pick('mental_state'),
+                    pick('key_items'), pick('current_goal'), JSON.stringify(knowledge), JSON.stringify(relationships),
+                    pick('recent_events'), Math.max(target.updated_at_chapter || 0, oldState.updated_at_chapter || 0),
+                    newName,
+                )
+                db.prepare('DELETE FROM canon_character_state WHERE character = ?').run(oldName)
+            }
+        }
+
+        // 2) characters JSON 数组成员替换（LIKE 预筛可能有误报，JS 内精确比对）
+        for (const table of ['canon_timeline_events', 'canon_plot_lines', 'canon_facts']) {
+            const rows = db.prepare(
+                `SELECT id, characters FROM ${table} WHERE characters LIKE ?`
+            ).all(`%${oldName}%`) as Array<{ id: number; characters: string }>
+            const upd = db.prepare(`UPDATE ${table} SET characters = ? WHERE id = ?`)
+            for (const row of rows) {
+                try {
+                    const arr = JSON.parse(row.characters || '[]')
+                    if (!Array.isArray(arr) || !arr.includes(oldName)) continue
+                    const next = Array.from(new Set(arr.map((n: string) => (n === oldName ? newName : n))))
+                    upd.run(JSON.stringify(next), row.id)
+                } catch { /* 单行 JSON 损坏不阻断改名 */ }
+            }
+        }
+
+        // 3) 其他角色关系映射中以 oldName 为键的条目
+        const relRows = db.prepare(
+            `SELECT character, relationships_json FROM canon_character_state WHERE relationships_json LIKE ?`
+        ).all(`%${oldName}%`) as Array<{ character: string; relationships_json: string }>
+        const updRel = db.prepare(`UPDATE canon_character_state SET relationships_json = ? WHERE character = ?`)
+        for (const row of relRows) {
+            try {
+                const rel = JSON.parse(row.relationships_json || '{}') as Record<string, string>
+                if (!rel || typeof rel !== 'object' || Array.isArray(rel) || !(oldName in rel)) continue
+                const moved = rel[oldName]
+                delete rel[oldName]
+                // 新名键已存在时保留既有值（来自更近的写回）
+                if (!(newName in rel)) rel[newName] = moved
+                updRel.run(JSON.stringify(rel), row.character)
+            } catch { /* 单行 JSON 损坏不阻断改名 */ }
+        }
     }
 
     /** 删除角色（连带清理其人设图磁盘文件） */

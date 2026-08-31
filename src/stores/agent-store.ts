@@ -357,6 +357,25 @@ export const useAgentStore = create<AgentState>()((set, get) => ({
       }))
     }
 
+    // 流式 chunk 批量落盘：逐 token set() 会让订阅会话的整棵组件树
+    // 按 token 级重渲染（长回复时明显掉帧）。攒 80ms 再一次性追加，
+    // 与工作流面板已有的 120ms 节流同一思路
+    let pendingChunk = ''
+    let chunkFlushTimer: ReturnType<typeof setTimeout> | null = null
+    const flushPendingChunk = () => {
+      chunkFlushTimer = null
+      if (!pendingChunk) return
+      const buffered = pendingChunk
+      pendingChunk = ''
+      updateAssistantMsg(m => ({ ...m, content: m.content + buffered }))
+    }
+    // 终态（完成/报错/异常)前必须清掉缓冲：终态会整体覆写 content，
+    // 迟到的 flush 定时器不能再把残余片段追加到定稿文本后面
+    const discardPendingChunk = () => {
+      if (chunkFlushTimer) { clearTimeout(chunkFlushTimer); chunkFlushTimer = null }
+      pendingChunk = ''
+    }
+
     try {
       const llmStore = useLLMStore.getState()
       const currentConv = get().conversations.find(c => c.id === convId)!
@@ -440,10 +459,8 @@ export const useAgentStore = create<AgentState>()((set, get) => ({
               .replace(/<\/?tool_result[^>]*>/g, '')
               .trim()
             if (!cleaned) return
-            updateAssistantMsg(m => ({
-              ...m,
-              content: m.content + cleaned,
-            }))
+            pendingChunk += cleaned
+            if (!chunkFlushTimer) chunkFlushTimer = setTimeout(flushPendingChunk, 80)
           },
           onToolCallStart: (toolCall) => {
             updateAssistantMsg(m => ({
@@ -474,6 +491,7 @@ export const useAgentStore = create<AgentState>()((set, get) => ({
             })
           },
           onDone: (fullText, toolCalls, artifacts) => {
+            discardPendingChunk()
             // 最终文本全量清洗，去除所有形式的 tool_call / tool_result 标签
             const cleanedText = fullText
               .replace(/<tool_call>[\s\S]*?<\/tool_call>/g, '')
@@ -498,6 +516,7 @@ export const useAgentStore = create<AgentState>()((set, get) => ({
             }))
           },
           onError: (error) => {
+            discardPendingChunk()
             updateAssistantMsg(m => ({
               ...m,
               content: i18n.t('agent.generationFailed', { ns: 'stores', error }),
@@ -508,7 +527,10 @@ export const useAgentStore = create<AgentState>()((set, get) => ({
         },
         abortController.signal,
       )
+      // 循环正常返回（含用户中止）：把缓冲里最后一段刷出去，避免结尾丢字
+      flushPendingChunk()
     } catch (error) {
+      discardPendingChunk()
       updateAssistantMsg(m => ({
         ...m,
         content: i18n.t('agent.generationError', { ns: 'stores', error: String(error) }),

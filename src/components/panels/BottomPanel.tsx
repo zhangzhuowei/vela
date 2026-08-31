@@ -14,7 +14,10 @@ export default function BottomPanel() {
   const bottomPanelOpen = useLayoutStore(s => s.bottomPanelOpen)
   const bottomTab = useLayoutStore(s => s.bottomTab)
   const toggleBottomPanel = useLayoutStore(s => s.toggleBottomPanel)
-  const activeRuns = useWorkflowStore(s => s.activeRuns)
+  // 折叠为原始值订阅：流式期间 activeRuns 引用高频变化，面板壳只关心运行状态与数量
+  const hasRunning = useWorkflowStore(s => s.activeRuns.some(r => r.status === 'running'))
+  const hasWaiting = useWorkflowStore(s => s.activeRuns.some(r => r.status === 'waiting'))
+  const activeCount = useWorkflowStore(s => s.activeRuns.length)
 
   const TAB_LABELS: Record<string, string> = {
     tasks: t('bottomPanel.tabs.tasks'),
@@ -39,9 +42,6 @@ export default function BottomPanel() {
 
   const activeTab = bottomTab || 'tasks'
   const label = TAB_LABELS[activeTab] ?? activeTab
-  // 任何活跃任务运行中
-  const hasRunning = activeRuns.some(r => r.status === 'running')
-  const hasWaiting = activeRuns.some(r => r.status === 'waiting')
 
   return (
     <div
@@ -76,12 +76,12 @@ export default function BottomPanel() {
             <span className="w-1.5 h-1.5 rounded-full animate-pulse" style={{ backgroundColor: 'var(--color-warning)' }} />
           )}
           {/* 活跃任务数徽章 */}
-          {activeTab === 'tasks' && activeRuns.length > 0 && (
+          {activeTab === 'tasks' && activeCount > 0 && (
             <span
               className="text-[0.68rem] font-mono px-1 rounded"
               style={{ backgroundColor: 'rgba(var(--color-accent-rgb), 0.12)', color: 'var(--color-accent)' }}
             >
-              {activeRuns.length}
+              {activeCount}
             </span>
           )}
         </div>
@@ -112,8 +112,6 @@ function TaskRunView() {
   const waitingRuns = useWorkflowStore(s => s.waitingRuns)
   const cancelWorkflow = useWorkflowStore(s => s.cancelWorkflow)
   const confirmContinue = useWorkflowStore(s => s.confirmContinue)
-
-  console.log('[BottomPanel] TaskRunView render: activeRuns=', activeRuns.map(r => r.id.slice(0,8) + ':' + r.status + ':' + r.steps.map(s=>s.status).join('/')))
 
   if (activeRuns.length === 0 && history.length === 0) {
     return (
@@ -219,8 +217,6 @@ function ActiveRunPanel({
   const progress = totalCount > 0 ? Math.round((completedCount / totalCount) * 100) : 0
   const nextStepName = run.steps[waitingAfterStepIndex + 1]?.name
   const isActive = run.status === 'running' || run.status === 'waiting'
-
-  console.log('[BottomPanel] ActiveRunPanel render: run.status=', run.status, 'steps=', run.steps.map(s => s.status).join(','))
 
   return (
     <div>

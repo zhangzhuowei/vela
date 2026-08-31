@@ -49,9 +49,6 @@ export class ReviewChapterCommand extends BaseWorkflowCommand<string> {
       contextSummary = '（知识库检索不可用）'
     }
 
-    const characterState = await this.readCharacterStates()
-    const worldBuilding = await this.readWorldBuilding()
-
     const template = getPromptTemplate('consistency_check')
     if (!template) throw new Error('未找到审稿模板')
 
@@ -59,12 +56,17 @@ export class ReviewChapterCommand extends BaseWorkflowCommand<string> {
 
     // ==========================================
     // [Canon] 注入叙事一致性上下文 — 审稿员交叉验证事实基线
+    // Canon 的合并人物状态与正史设定是角色卡/世界观的超集，注入成功时
+    // 模板槽位只留指引文本，不再把同一份内容在 prompt 里重复一遍；
+    // 仅在 Canon 构造失败时回退为直读角色卡与世界观（各多一次 IPC）。
     // ==========================================
-    let promptBuilder: ReviewPromptBuilder;
+    const promptBuilder = new ReviewPromptBuilder(template)
+    let characterState = '（已并入「已确立事实基线」· 当前人物状态）'
+    let worldBuilding = '（已并入「已确立事实基线」· 正史设定）'
     try {
       const [core, allCharacters] = await Promise.all([
-        ipc.invoke("db:project-core-get").catch(() => null as null | { premise?: string; charactersArch?: string; worldbuilding?: string; synopsis?: string }),
-        ipc.invoke("db:character-get-all").catch(() => [] as Array<Record<string, unknown>>),
+        ipc.invoke("db:project-core-get").catch(() => null),
+        ipc.invoke("db:character-get-all").catch(() => []),
       ]);
       const canon = await buildCanonContext({
         chapterNumber: this.params.chapterNumber,
@@ -75,9 +77,9 @@ export class ReviewChapterCommand extends BaseWorkflowCommand<string> {
           synopsis: core?.synopsis || "",
         },
         characters: (allCharacters || []).map(c => ({
-          name: c.name as string,
-          role: c.role as string,
-          currentState: c.currentState as { location?: string; powerLevel?: string; physicalState?: string; mentalState?: string; keyItems?: string; recentEvents?: string; updatedAtChapter?: number } | undefined,
+          name: c.name,
+          role: c.role,
+          currentState: c.currentState,
         })),
         chapterGoal: `第${this.params.chapterNumber}章审稿`,
         previousEnding: "",
@@ -85,12 +87,12 @@ export class ReviewChapterCommand extends BaseWorkflowCommand<string> {
         writingStyle: project.novelConfig.writingStyle || "",
         globalGuidance: project.novelConfig.globalGuidance || "",
       });
-      promptBuilder = new ReviewPromptBuilder(template);
       promptBuilder.withCanonContext(renderCanonContext(canon));
       callbacks.log(`  🛡️ [Canon] 审稿已注入事实基线（时间线 ${canon.timeline.length} / 角色 ${canon.characterStates.length}）`);
     } catch (e) {
-      promptBuilder = new ReviewPromptBuilder(template);
-      callbacks.log(`  ⚠️ [Canon] 审稿上下文构造失败：${String(e)}`);
+      characterState = await this.readCharacterStates()
+      worldBuilding = await this.readWorldBuilding()
+      callbacks.log(`  ⚠️ [Canon] 审稿上下文构造失败，已回退为直读角色卡/世界观：${String(e)}`);
     }
 
     promptBuilder

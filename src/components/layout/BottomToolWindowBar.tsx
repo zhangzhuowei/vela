@@ -12,7 +12,9 @@ export default function BottomToolWindowBar() {
   const { t } = useTranslation('layout')
   const bottomTab = useLayoutStore(s => s.bottomTab)
   const setBottomTab = useLayoutStore(s => s.setBottomTab)
-  const activeRuns = useWorkflowStore(s => s.activeRuns)
+  // 折叠为布尔订阅：流式期间 activeRuns 引用高频变化，工具条只关心运行/等待状态
+  const hasRunning = useWorkflowStore(s => s.activeRuns.some(r => r.status === 'running'))
+  const hasWaiting = useWorkflowStore(s => s.activeRuns.some(r => r.status === 'waiting'))
 
   // Bottom tabs
   const bottomTabs: Array<{ id: BottomTab; icon: typeof Zap; label: string }> = [
@@ -34,8 +36,6 @@ export default function BottomToolWindowBar() {
       {bottomTabs.map(({ id, icon: Icon, label }) => {
         const isActive = bottomTab === id
         // 任务Tab：任何工作流运行中时显示脉冲小点
-        const hasRunning = activeRuns.some(r => r.status === 'running')
-        const hasWaiting = activeRuns.some(r => r.status === 'waiting')
         const showPulse = id === 'tasks' && (hasRunning || hasWaiting)
 
         return (

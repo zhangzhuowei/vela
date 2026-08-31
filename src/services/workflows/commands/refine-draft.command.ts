@@ -50,6 +50,9 @@ export class RefineDraftCommand extends BaseWorkflowCommand<string> {
       .withGlobalSummary(this.params.shortSummary || '')
       .withShortSummary(this.params.shortSummary || '')
       .withWordNumber(project.novelConfig.wordsPerChapter)
+      // 模板正文引用 {{writing_style}} 但此前从未注入（一直残留字面占位符，
+      // 文风只能靠 Canon 渲染间接带入；Canon 渲染去重后此处必须显式注入）
+      .withWritingStyle(project.novelConfig.writingStyle || '')
       .withUserRefinePrompt(userPromptBlock)
 
     // ==========================================

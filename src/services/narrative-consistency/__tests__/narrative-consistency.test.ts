@@ -331,7 +331,9 @@ describe('CanonContext 注入顺序（强约束：固定优先级）', () => {
     })
     const rendered = renderCanonContext(canon)
 
-    // 顺序校验：每个块标题应按指定顺序出现
+    // 顺序校验：每个块标题应按指定顺序出现。
+    // 上一章结尾/本章目标/RAG/文风/全局指导是调用方任务上下文，
+    // 已由各命令模板的专属槽位承载，不再重复渲染进 Canon 文本
     const expectedOrder = [
       '正史设定',
       '人物群像',
@@ -340,11 +342,6 @@ describe('CanonContext 注入顺序（强约束：固定优先级）', () => {
       '最近章节摘要',
       '未结剧情线',
       '关键事实条目',
-      '上一章结尾',
-      '本章写作目标',
-      '知识库参考',
-      '文风要求',
-      '全局行文指导',
       '硬性约束',
     ]
     let lastIdx = -1
@@ -352,6 +349,9 @@ describe('CanonContext 注入顺序（强约束：固定优先级）', () => {
       const idx = rendered.indexOf(title)
       expect(idx).toBeGreaterThan(lastIdx)
       lastIdx = idx
+    }
+    for (const removed of ['上一章结尾', '本章写作目标', '知识库参考', '文风要求', '全局行文指导']) {
+      expect(rendered).not.toContain(removed)
     }
   })
 

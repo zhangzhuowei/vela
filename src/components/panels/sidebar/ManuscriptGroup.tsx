@@ -7,9 +7,9 @@ import { ChevronRight, ChevronDown, FileText, FolderOpen, Copy, PenTool } from '
 import { useTranslation } from 'react-i18next'
 import type { FileNode } from '../../../shared/ipc-channels'
 import { ipc } from '../../../services/ipc-client'
-import { useProjectStore } from '../../../stores/project-store'
 
 import { showSidebarMenu, openChapterFile } from './SidebarShared'
+import WindowedList from '../../ui/WindowedList'
 
 // ===== 章节标题缓存 =====
 
@@ -26,31 +26,9 @@ export function clearChapterTitleCache(filePath?: string) {
 }
 
 /**
- * 优先从蓝图 JSON 读取章节标题，fallback 到文件首行
- *
- * @param filePath    manuscript 文件路径
- * @param fallback    兜底显示名（如 "第1章"）
- * @param chapterNumber 章节号（用于定位蓝图文件）
+ * 兜底标题：读取正文首行（仅在蓝图无标题时使用）
  */
-async function readChapterTitle(filePath: string, fallback: string, chapterNumber?: number): Promise<string> {
-  if (chapterTitleCache.has(filePath)) return chapterTitleCache.get(filePath)!
-
-  // 优先从蓝图 JSON 读取标题
-  if (chapterNumber) {
-    try {
-      const project = useProjectStore.getState().currentProject
-      if (project) {
-        const bpResult = await ipc.invoke('db:blueprint-get', chapterNumber)
-        if (bpResult) {
-          const display = `第${chapterNumber}章 ${bpResult.title}`
-          chapterTitleCache.set(filePath, display)
-          return display
-        }
-      }
-    } catch { /* 蓝图读取失败时 fallback 到文件首行 */ }
-  }
-
-  // fallback: 读取正文首行
+async function readTitleFromContent(filePath: string, fallback: string): Promise<string> {
   let fileContent = ''
   if (filePath.startsWith('vela://')) {
     const { readVelaContent } = await import('../../../services/vela-protocol')
@@ -77,30 +55,61 @@ export default function ManuscriptGroup({ files }: { files: FileNode[]; projectP
   // 文件路径 → 显示名称的映射（异步加载）
   const [titleMap, setTitleMap] = useState<Record<string, string>>({})
 
-  // 每次 files 变化时异步读取各文件标题（命中缓存的路径直接跳过 IPC）
+  // files 变化时异步补齐标题。
+  // 蓝图标题一次取回全部：原实现每个文件各打一次 db:blueprint-get，
+  // 百章项目挂载一次侧栏就是上百次 IPC；正文首行只作为无蓝图时的兜底。
+  // 依赖只挂路径指纹：files 数组在父组件每次渲染都是新引用，titleMap
+  // 进依赖会导致每次写入 state 后 effect 立即重跑（流式期间反复空转）
   const filesDep = files.map(f => f.path).join(',')
   useEffect(() => {
     if (files.length === 0) return
     let cancelled = false
     const load = async () => {
-      // 只读取当前 state 中还没有的路径（增量更新，避免重复 IPC 调用）
-      const missing = files.filter(f => !f.name.includes('_notes') && !titleMap[f.path])
-      if (missing.length === 0) return
+      const chapterFiles = files.filter(f => !f.name.includes('_notes'))
+      const missing = chapterFiles.filter(f => !chapterTitleCache.has(f.path))
       const entries: Record<string, string> = {}
-      await Promise.all(
-        missing.map(async (f) => {
-          const rawName = f.name.replace(/\.[^.]+$/, '')
-          const chMatch = rawName.match(/^chapter_(\d+)$/)
-          const fallback = chMatch ? `第${parseInt(chMatch[1], 10)}章` : rawName
-          const chNum = chMatch ? parseInt(chMatch[1], 10) : undefined
-          entries[f.path] = await readChapterTitle(f.path, fallback, chNum)
-        })
-      )
-      if (!cancelled) setTitleMap(prev => ({ ...prev, ...entries }))
+
+      if (missing.length > 0) {
+        let bpTitleByChapter = new Map<number, string>()
+        try {
+          const bps = await ipc.invoke('db:blueprint-get-all')
+          bpTitleByChapter = new Map(
+            (bps || []).filter(b => b?.title).map(b => [b.chapterNumber, `第${b.chapterNumber}章 ${b.title}`])
+          )
+        } catch { /* 蓝图读取失败时全部走正文首行兜底 */ }
+
+        await Promise.all(
+          missing.map(async (f) => {
+            const rawName = f.name.replace(/\.[^.]+$/, '')
+            const chMatch = rawName.match(/^chapter_(\d+)$/)
+            const chNum = chMatch ? parseInt(chMatch[1], 10) : undefined
+            const fallback = chNum ? `第${chNum}章` : rawName
+            const fromBp = chNum != null ? bpTitleByChapter.get(chNum) : undefined
+            if (fromBp) {
+              chapterTitleCache.set(f.path, fromBp)
+              entries[f.path] = fromBp
+            } else {
+              entries[f.path] = await readTitleFromContent(f.path, fallback)
+            }
+          })
+        )
+      }
+
+      // 命中常驻缓存但尚未进本次挂载 state 的路径一并回填
+      for (const f of chapterFiles) {
+        if (!entries[f.path] && chapterTitleCache.has(f.path)) {
+          entries[f.path] = chapterTitleCache.get(f.path)!
+        }
+      }
+
+      if (!cancelled && Object.keys(entries).length > 0) {
+        setTitleMap(prev => ({ ...prev, ...entries }))
+      }
     }
     load()
     return () => { cancelled = true }
-  }, [files, filesDep, titleMap])
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [filesDep])
 
   const getDisplay = (f: FileNode) => {
     if (titleMap[f.path]) return titleMap[f.path]
@@ -138,38 +147,41 @@ export default function ManuscriptGroup({ files }: { files: FileNode[]; projectP
               {t('manuscript.noFinalizedChapters')}
             </div>
           ) : (
-            chapterFiles.map(f => {
-              const displayName = getDisplay(f)
-              return (
-                <div
-                  key={f.path}
-                  className="tree-item gap-1.5 cursor-pointer"
-                  style={{ paddingLeft: 30 }}
-                  onClick={() => openChapterFile(f.path, displayName)}
-                  onContextMenu={e => showSidebarMenu([
-                    {
-                      key: 'open',
-                      label: t('manuscript.openChapter'),
-                      icon: <FolderOpen size={13} />,
-                      onClick: () => openChapterFile(f.path, displayName),
-                    },
-                    { key: 'div1', type: 'divider' as const },
-                    {
-                      key: 'copy-path',
-                      label: t('manuscript.copyPath'),
-                      icon: <Copy size={13} />,
-                      onClick: () => navigator.clipboard.writeText(f.path).catch(() => { }),
-                    },
-                  ], e)}
-                  title={`${t('manuscript.clickToOpen')} — ${displayName}`}
-                >
-                  <FileText size={11} style={{ color: 'var(--color-text-muted)', flexShrink: 0 }} />
-                  <span className="text-sm truncate" style={{ color: 'var(--color-text-secondary)' }}>
-                    {displayName}
-                  </span>
-                </div>
-              )
-            })
+            <WindowedList
+              items={chapterFiles}
+              itemHeight={26}
+              renderItem={(f) => {
+                const displayName = getDisplay(f)
+                return (
+                  <div
+                    className="tree-item gap-1.5 cursor-pointer"
+                    style={{ paddingLeft: 30 }}
+                    onClick={() => openChapterFile(f.path, displayName)}
+                    onContextMenu={e => showSidebarMenu([
+                      {
+                        key: 'open',
+                        label: t('manuscript.openChapter'),
+                        icon: <FolderOpen size={13} />,
+                        onClick: () => openChapterFile(f.path, displayName),
+                      },
+                      { key: 'div1', type: 'divider' as const },
+                      {
+                        key: 'copy-path',
+                        label: t('manuscript.copyPath'),
+                        icon: <Copy size={13} />,
+                        onClick: () => navigator.clipboard.writeText(f.path).catch(() => { }),
+                      },
+                    ], e)}
+                    title={`${t('manuscript.clickToOpen')} — ${displayName}`}
+                  >
+                    <FileText size={11} style={{ color: 'var(--color-text-muted)', flexShrink: 0 }} />
+                    <span className="text-sm truncate" style={{ color: 'var(--color-text-secondary)' }}>
+                      {displayName}
+                    </span>
+                  </div>
+                )
+              }}
+            />
           )}
         </div>
       )}

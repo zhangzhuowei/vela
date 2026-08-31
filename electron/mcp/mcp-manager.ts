@@ -81,11 +81,21 @@ interface MCPServerRuntime {
   buffer: string
   /** 请求 ID 计数器 */
   nextRequestId: number
-  /** 待响应的请求回调 */
+  /** 待响应的请求回调（含超时定时器，结算时必须清除） */
   pendingRequests: Map<number, {
     resolve: (result: unknown) => void
     reject: (error: Error) => void
+    timer: NodeJS.Timeout
   }>
+}
+
+/** 拒绝并清空全部挂起请求（进程退出/断开连接时调用，避免调用方干等超时） */
+function rejectAllPending(runtime: MCPServerRuntime, reason: string): void {
+  for (const pending of runtime.pendingRequests.values()) {
+    clearTimeout(pending.timer)
+    pending.reject(new Error(reason))
+  }
+  runtime.pendingRequests.clear()
 }
 
 // ===== MCP Manager 实现 =====
@@ -218,11 +228,16 @@ class MCPManagerImpl {
       console.warn(`[MCP:${runtime.config.id}] stderr:`, data.toString())
     })
 
-    // 监听进程退出
+    // 监听进程退出：立即拒绝挂起请求（否则调用方要干等满 10 秒超时），
+    // 并清空该服务器的工具/资源，通知渲染进程刷新
     proc.on('exit', (code) => {
       console.log(`[MCP:${runtime.config.id}] 进程退出，code=${code}`)
       runtime.status = 'disconnected'
+      rejectAllPending(runtime, `MCP 服务器 ${runtime.config.id} 已退出（code=${code}）`)
+      runtime.tools = []
+      runtime.resources = []
       this.notifyStatusChange(runtime.config.id, 'disconnected')
+      this.notifyToolsChange()
     })
 
     proc.on('error', (error) => {
@@ -258,6 +273,7 @@ class MCPManagerImpl {
       const pending = runtime.pendingRequests.get(msg.id as number)
       if (pending) {
         runtime.pendingRequests.delete(msg.id as number)
+        clearTimeout(pending.timer)
         if ('error' in msg) {
           const err = msg.error as { message?: string }
           pending.reject(new Error(err?.message ?? 'MCP error'))
@@ -273,7 +289,16 @@ class MCPManagerImpl {
   private sendRequest(runtime: MCPServerRuntime, method: string, params?: unknown): Promise<unknown> {
     return new Promise((resolve, reject) => {
       const id = runtime.nextRequestId++
-      runtime.pendingRequests.set(id, { resolve, reject })
+
+      // 超时定时器随请求结算清除（原实现成功后不清，高频工具调用会堆积空转定时器）
+      const timer = setTimeout(() => {
+        if (runtime.pendingRequests.has(id)) {
+          runtime.pendingRequests.delete(id)
+          reject(new Error(`MCP 请求超时: ${method}`))
+        }
+      }, 10000)
+
+      runtime.pendingRequests.set(id, { resolve, reject, timer })
 
       const msg = JSON.stringify({
         jsonrpc: '2.0',
@@ -283,14 +308,6 @@ class MCPManagerImpl {
       })
 
       runtime.process?.stdin?.write(msg + '\n')
-
-      // 超时 10 秒
-      setTimeout(() => {
-        if (runtime.pendingRequests.has(id)) {
-          runtime.pendingRequests.delete(id)
-          reject(new Error(`MCP 请求超时: ${method}`))
-        }
-      }, 10000)
     })
   }
 
@@ -374,12 +391,27 @@ class MCPManagerImpl {
     const runtime = this.servers.get(serverId)
     if (!runtime) return
 
-    runtime.process?.kill()
-    runtime.pendingRequests.forEach(p => p.reject(new Error('连接已断开')))
-    runtime.pendingRequests.clear()
+    this.killProcessTree(runtime.process)
+    rejectAllPending(runtime, '连接已断开')
     this.servers.delete(serverId)
     this.notifyStatusChange(serverId, 'disconnected')
     this.notifyToolsChange()
+  }
+
+  /**
+   * 终止 MCP 子进程（Windows 按进程树终止）。
+   * Windows 上 kill() 只杀直接子进程，MCP server 若又拉起了自己的子进程
+   * （如 npx → node），孙子进程会残留成孤儿，改用 taskkill /T 整树清理。
+   */
+  private killProcessTree(proc?: ChildProcess): void {
+    if (!proc || proc.killed || proc.pid == null) return
+    try {
+      if (process.platform === 'win32') {
+        spawn('taskkill', ['/pid', String(proc.pid), '/T', '/F'], { stdio: 'ignore' })
+      } else {
+        proc.kill()
+      }
+    } catch { /* 进程可能已退出 */ }
   }
 
   /** 断开所有连接 */

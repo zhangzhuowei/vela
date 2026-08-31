@@ -7,6 +7,8 @@ import {
   DIR_PROMPTS
 } from '../../../shared/project-paths'
 import type { ChapterInfo } from '../chapter-workflow'
+import type { CharacterData } from '../../../../electron/repositories/character-repository'
+import type { ProjectCoreData } from '../../../../electron/repositories/project-core-repository'
 import {
   buildCanonContext,
   renderCanonContext,
@@ -25,12 +27,15 @@ export class GenerateDraftCommand extends BaseWorkflowCommand {
 
     callbacks.log('拼装章节上下文 (强类型注入中)...')
 
-    const architecture = await this.readArchitecture(project.path)
+    // 核心设定与角色卡各读一次，供架构拼装、Canon 构建、状态档案、口癖上下文复用
+    //（原实现同一次写稿中 db:project-core-get 与 db:character-get-all 各要往返 2~3 次）
+    const core = await ipc.invoke('db:project-core-get')
+    const architecture = this.assembleArchitecture(core)
     const projectPrompts = await this.readProjectPrompts(project.path)
     const mergedGuidance = [project.novelConfig.globalGuidance || '', projectPrompts].filter(Boolean).join('\n\n')
 
-    const characterState = await this.readCharacterStates(project.path)
-    const allCharacters = await ipc.invoke('db:character-get-all').catch(() => [] as Array<{ name: string; role: string; currentState?: { location?: string; powerLevel?: string; physicalState?: string; mentalState?: string; keyItems?: string; recentEvents?: string; updatedAtChapter?: number } }>)
+    const allCharacters: CharacterData[] = await ipc.invoke('db:character-get-all').catch(() => [])
+    const characterState = this.formatCharacterStateArchive(allCharacters)
     let futureBlueprintsStr = '（无后续蓝图）'
     try {
       const { loadDirectoryBlueprints } = await import('../directory-workflow')
@@ -49,18 +54,15 @@ export class GenerateDraftCommand extends BaseWorkflowCommand {
     let canonRendered = ''
     let canonForValidation: import('../../narrative-consistency').CanonContext | null = null
     try {
-      const core = await ipc.invoke('db:project-core-get').catch(() => null as null | { premise?: string; charactersArch?: string; worldbuilding?: string; synopsis?: string })
-      // 拆解 architecture 字符串回填到结构化字段（architecture 由 readArchitecture 按 premise/charactersArch/worldbuilding/synopsis 顺序拼装）
-      const archParts = (architecture || '').split(/\n\n---\n\n/)
       canonForValidation = await buildCanonContext({
         chapterNumber: this.chapterInfo.chapterNumber,
         architecture: {
-          premise: core?.premise ?? archParts[0] ?? '',
-          charactersArch: core?.charactersArch ?? archParts[1] ?? '',
-          worldbuilding: core?.worldbuilding ?? archParts[1] ?? '',
-          synopsis: core?.synopsis ?? archParts[3] ?? '',
+          premise: core?.premise ?? '',
+          charactersArch: core?.charactersArch ?? '',
+          worldbuilding: core?.worldbuilding ?? '',
+          synopsis: core?.synopsis ?? '',
         },
-        characters: (allCharacters || []).map(c => ({
+        characters: allCharacters.map(c => ({
           name: c.name,
           role: c.role,
           currentState: c.currentState,
@@ -98,21 +100,23 @@ export class GenerateDraftCommand extends BaseWorkflowCommand {
       .withNovelConfig(project.novelConfig)
       // 单章目标字数优先于全局「每章字数」
       .withWordNumber(targetWords)
+      // 本章任务三件套：首章与后续章节模板都引用这三个变量。
+      //（此前只在非首章分支注入，首章 prompt 里残留字面 {{chapter_info}} 等占位符，
+      // 模型看不到本章任务、后续预告与作者微操）
+      .withChapterInfo(this.chapterInfo)
+      .withFutureBlueprints(futureBlueprintsStr)
+      .withUserGuidance(this.chapterInfo.userGuidance?.trim() || '（无微操指导）')
 
     if (!isFirstChapter) {
-      // 从蓝图 JSON 的 notes 字段读取章节要点时间线（按序拼装，利于前缀缓存）
-      const chapterTimeline = await this.readChapterNotesTimeline(project.path, this.chapterInfo.chapterNumber)
+      // 从蓝图 JSON 的 notes 字段读取章节要点时间线（一次取回全部蓝图，避免逐章 IPC）
+      const { readChapterNotesTimeline } = await import('../workflow-utils')
+      const chapterTimeline = await readChapterNotesTimeline(this.chapterInfo.chapterNumber)
       callbacks.log(`  📋 已加载章节要点时间线（${chapterTimeline.length} 字）`)
 
-      let previousEnding = ''
-      try {
-        const prevNum = this.chapterInfo.chapterNumber - 1
-        const meta = await ipc.invoke('db:draft-get-finalized', prevNum)
-        if (meta) {
-          const full = await ipc.invoke('db:draft-get-full', meta.id)
-          if (full?.content) previousEnding = full.content.slice(-1000)
-        }
-      } catch { /* 忽略 */ }
+      // 近 3 章定稿正文一次并行读回：上一章结尾与反雷同速览共用同一份数据
+      //（原实现串行逐章读，且上一章全文要读两遍）
+      const recentContents = await this.readRecentFinalizedContents(this.chapterInfo.chapterNumber, 3)
+      const previousEnding = (recentContents.get(this.chapterInfo.chapterNumber - 1) || '').slice(-1000)
 
       let filteredContext = ''
       try {
@@ -131,29 +135,28 @@ export class GenerateDraftCommand extends BaseWorkflowCommand {
       }
 
       const foreshadowText = await this.buildForeshadowingContext(this.chapterInfo.chapterNumber)
-      const antiRepText = await this.buildAntiRepetitionContext(this.chapterInfo.chapterNumber)
-      const voiceText = await this.buildCharacterVoiceContext(this.chapterInfo.characters)
+      const antiRepText = this.buildAntiRepetitionContext(recentContents)
+      const voiceText = this.buildCharacterVoiceContext(this.chapterInfo.characters, allCharacters)
 
       promptBuilder
         // ---- 缓存命中区续（要点时间线按序追加，前缀对齐）----
         .withGlobalSummary(chapterTimeline)
-        .withCharacterStates(characterState)
+        // 角色状态已并入 Canon 上下文（canon 合并态是角色卡的超集）；
+        // 仅在 Canon 构造失败时回退为角色卡档案，避免同一份状态在 prompt 里出现两遍
+        .withCharacterStates(canonRendered ? '（见上方 Canon 上下文 · 当前人物状态）' : characterState)
         // ---- 缓存失效区（逐章变化）----
         .withPreviousEnding(previousEnding || '（无前文）')
-        .withChapterInfo(this.chapterInfo)
-        .withFutureBlueprints(futureBlueprintsStr)
         .withFilteredContext(filteredContext)
         .withForeshadowing(foreshadowText)
         .withAntiRepetition(antiRepText)
         .withCharacterVoices(voiceText)
         .withShortSummary('')
-        .withUserGuidance(this.chapterInfo.userGuidance?.trim() || '（无微操指导）')
 
-      // [Canon] 二次注入：在 RAG 与上一章结尾就绪后，把它们写回 Canon 并重渲染
+      // [Canon] RAG 与上一章结尾就绪后回填到 Canon 对象，供生成后一致性 Gate 使用。
+      // 渲染文本不再携带这两项（模板已有专属槽位），无需重渲染
       if (canonForValidation) {
         canonForValidation.previousEnding = previousEnding || '（无前文）'
         canonForValidation.ragContext = filteredContext || '（无 RAG 检索结果）'
-        canonRendered = renderCanonContext(canonForValidation)
       }
     }
 
@@ -242,11 +245,16 @@ export class GenerateDraftCommand extends BaseWorkflowCommand {
     context.data.mergedGuidance = mergedGuidance
     context.data.shortSummary = ''
 
-    useProjectStore.getState().refreshFileTree()
+    // 新草稿只影响本章：只刷新本章草稿列表，不做全库重载。
+    // 批量静默连写时原实现每章都要全量 loadAllDrafts + refreshFileTree，
+    // IPC 次数随章节数平方级增长
     try {
       const { useDraftStore } = await import('../../../stores/draft-store')
-      await useDraftStore.getState().loadAllDrafts()
+      await useDraftStore.getState().loadChapterDrafts(this.chapterInfo.chapterNumber)
     } catch { /* 忽略 */ }
+    if (!this.silent) {
+      useProjectStore.getState().refreshFileTree()
+    }
 
     if (!this.silent) {
       try {
@@ -353,47 +361,55 @@ ${result}
   }
 
   /**
-   * 跨章反雷同：提炼最近 N 章的开场句与断章句，供本章规避雷同的起笔/转场/断章。
+   * 一次并行读回最近 windowSize 章的定稿正文。
+   * 上一章结尾与反雷同速览共用这份数据，避免同一章正文经 IPC 读两遍。
    */
-  private async buildAntiRepetitionContext(currentChapter: number, windowSize = 3): Promise<string> {
-    const lines: string[] = []
-    for (let i = currentChapter - 1; i >= Math.max(1, currentChapter - windowSize); i--) {
+  private async readRecentFinalizedContents(currentChapter: number, windowSize: number): Promise<Map<number, string>> {
+    const result = new Map<number, string>()
+    const nums: number[] = []
+    for (let i = Math.max(1, currentChapter - windowSize); i < currentChapter; i++) nums.push(i)
+    await Promise.all(nums.map(async (n) => {
       try {
-        const meta = await ipc.invoke('db:draft-get-finalized', i)
-        if (!meta) continue
+        const meta = await ipc.invoke('db:draft-get-finalized', n)
+        if (!meta) return
         const full = await ipc.invoke('db:draft-get-full', meta.id)
         const content = full?.content?.trim()
-        if (!content) continue
+        if (content) result.set(n, content)
+      } catch { /* 忽略单章读取失败 */ }
+    }))
+    return result
+  }
+
+  /**
+   * 跨章反雷同：提炼最近数章的开场句与断章句，供本章规避雷同的起笔/转场/断章。
+   */
+  private buildAntiRepetitionContext(recentContents: Map<number, string>): string {
+    const lines = Array.from(recentContents.keys())
+      .sort((a, b) => a - b) // 由早到近
+      .map((i) => {
+        const content = recentContents.get(i) as string
         const opening = content.slice(0, 55).replace(/\s+/g, ' ')
         const closing = content.slice(-45).replace(/\s+/g, ' ')
-        lines.push(`- 第${i}章 开场：「${opening}…」｜断章：「…${closing}」`)
-      } catch { /* 忽略单章读取失败 */ }
-    }
+        return `- 第${i}章 开场：「${opening}…」｜断章：「…${closing}」`
+      })
     if (lines.length === 0) return '（暂无往期章节可参考）'
-    return lines.reverse().join('\n') // 由早到近
+    return lines.join('\n')
   }
 
   /** 出场角色说话风格：从角色卡取本章出场角色中已填写口癖的，注入以保对白辨识度 */
-  private async buildCharacterVoiceContext(names: string[]): Promise<string> {
+  private buildCharacterVoiceContext(names: string[], allChars: CharacterData[]): string {
     if (!names || names.length === 0) return '（未指定出场角色）'
-    try {
-      const allChars = await ipc.invoke('db:character-get-all')
-      const nameSet = new Set(names.map((n) => n.trim()).filter(Boolean))
-      const lines = allChars
-        .filter((c) => nameSet.has(c.name) && (c.speechStyle || '').trim())
-        .map((c) => `- ${c.name}：${(c.speechStyle || '').trim()}`)
-      return lines.length > 0
-        ? lines.join('\n')
-        : '（出场角色暂无说话风格档案，请自行赋予各角色有辨识度、彼此区分的对白）'
-    } catch {
-      return '（角色说话风格读取失败）'
-    }
+    const nameSet = new Set(names.map((n) => n.trim()).filter(Boolean))
+    const lines = allChars
+      .filter((c) => nameSet.has(c.name) && (c.speechStyle || '').trim())
+      .map((c) => `- ${c.name}：${(c.speechStyle || '').trim()}`)
+    return lines.length > 0
+      ? lines.join('\n')
+      : '（出场角色暂无说话风格档案，请自行赋予各角色有辨识度、彼此区分的对白）'
   }
 
-  // --- 抽取自原文件的辅助方法 ---
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
-  private async readArchitecture(_projectPath: string): Promise<string> {
-    const core = await ipc.invoke('db:project-core-get')
+  /** 把项目核心设定四段拼装为全书架构文本（premise/charactersArch/worldbuilding/synopsis 顺序） */
+  private assembleArchitecture(core: ProjectCoreData | null): string {
     const parts: string[] = []
     if (core?.premise) parts.push(core.premise.trim())
     if (core?.charactersArch) parts.push(core.charactersArch.trim())
@@ -418,63 +434,24 @@ ${result}
     } catch { return '' }
   }
 
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
-  private async readCharacterStates(_projectPath: string): Promise<string> {
-    try {
-      const allChars = await ipc.invoke('db:character-get-all')
-      const states: string[] = []
-      for (const card of allChars) {
-        if (card.name && card.currentState) {
-          const cs = card.currentState
-          states.push(
-            `${card.name}（${card.role || '未知'}）| ` +
-            `境界：${cs.powerLevel || '未知'} | ` +
-            `位置：${cs.location || '未知'} | ` +
-            `身体：${cs.physicalState || '正常'} | ` +
-            `心理：${cs.mentalState || '正常'} | ` +
-            `道具：${cs.keyItems || '无'} | ` +
-            `已知：${cs.knownInfo || '—'} | ` +
-            `最近：第${cs.updatedAtChapter || 0}章 ${cs.recentEvents || ''}`
-          )
-        }
+  /** 把角色卡格式化为角色状态档案文本（Canon 构造失败时的回退注入源） */
+  private formatCharacterStateArchive(allChars: CharacterData[]): string {
+    const states: string[] = []
+    for (const card of allChars) {
+      if (card.name && card.currentState) {
+        const cs = card.currentState
+        states.push(
+          `${card.name}（${card.role || '未知'}）| ` +
+          `境界：${cs.powerLevel || '未知'} | ` +
+          `位置：${cs.location || '未知'} | ` +
+          `身体：${cs.physicalState || '正常'} | ` +
+          `心理：${cs.mentalState || '正常'} | ` +
+          `道具：${cs.keyItems || '无'} | ` +
+          `已知：${cs.knownInfo || '—'} | ` +
+          `最近：第${cs.updatedAtChapter || 0}章 ${cs.recentEvents || ''}`
+        )
       }
-      return states.length > 0 ? `【角色状态档案】\n${states.join('\n')}` : '（暂无角色状态档案）'
-    } catch { return '（角色状态档案读取失败）' }
-  }
-
-  /**
-   * 从蓝图 JSON 的 notes 字段读取章节要点时间线。
-   * 近 5 章完整收录；更早期仅保留标题行，控制总量 ≤ 3000 字。
-   * 按序拼装保证前缀稳定，最大化 LLM 上下文缓存命中。
-   */
-  private async readChapterNotesTimeline(_projectPath: string, currentChapter: number): Promise<string> {
-    const FULL_WINDOW = 5  // 近 N 章完整收录
-    const MAX_CHARS = 3000 // 总量上限
-    const lines: string[] = []
-
-    for (let i = 1; i < currentChapter; i++) {
-      try {
-        const bp = await ipc.invoke('db:blueprint-get', i)
-        if (!bp) continue
-        const isRecent = i >= currentChapter - FULL_WINDOW
-
-        if (isRecent && bp.notes?.trim()) {
-          // 近 N 章：完整收录要点
-          lines.push(`【第${i}章 ${bp.title || ''}】\n${bp.notes.trim()}`)
-        } else {
-          // 远期章节：仅保留标题行（节省 Token）
-          lines.push(`【第${i}章 ${bp.title || ''}】`)
-        }
-      } catch { /* 忽略单章读取失败 */ }
     }
-
-    // Token 预算控制：超限时从最早的完整要点开始精简
-    let result = lines.join('\n\n')
-    if (result.length > MAX_CHARS) {
-      // 保留近章完整内容，远期章节已经是标题行了
-      result = result.slice(-MAX_CHARS)
-    }
-
-    return result || '（无章节要点）'
+    return states.length > 0 ? `【角色状态档案】\n${states.join('\n')}` : '（暂无角色状态档案）'
   }
 }

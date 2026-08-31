@@ -88,14 +88,22 @@ export default function DraftEditor({ filePath, content }: Props) {
 
   const status: DraftStatus = meta?.status ?? 'draft'
   const isReadonly = status === 'finalized' || status === 'archived'
+  // 临时解锁：定稿章节默认只读，但允许作者临时解锁做少量文本修正（如角色名统一）。
+  // 仅影响本组件的 UI 门控（可编辑性/保存按钮），不修改草稿的 status 字段，
+  // 锁回去后行为与从未解锁完全一致。
+  const [tempUnlocked, setTempUnlocked] = useState(false)
+  const effectiveReadonly = isReadonly && !tempUnlocked
 
-  // 检查是否有相关章节工作流正在运行
-  // ✅ 只订阅 activeRuns，不订阅 globalLogs 等高频更新字段
-  const activeRuns = useWorkflowStore(s => s.activeRuns)
-  const activeChapterRun = activeRuns.find(r =>
-    r.type === 'chapter_creation' && meta && (r.title.includes(`第${meta.chapterNumber}章`) || r.title.includes(`第 ${meta.chapterNumber} 章`))
+  // 检查是否有相关章节工作流正在运行。
+  // ✅ 折叠为布尔 selector：流式期间 activeRuns 引用约每 120ms 换一次，
+  //    订阅整表会让编辑器壳跟着每个流式批次空转重渲染
+  const chapterNumber = meta?.chapterNumber
+  const isChapterBusy = useWorkflowStore(s =>
+    chapterNumber != null && s.activeRuns.some(r =>
+      r.type === 'chapter_creation' &&
+      (r.title.includes(`第${chapterNumber}章`) || r.title.includes(`第 ${chapterNumber} 章`))
+    )
   )
-  const isChapterBusy = !!activeChapterRun
 
   const [saving, setSaving] = useState(false)
   const [confirmAction, setConfirmAction] = useState<'refine' | 'review' | 'deaify' | null>(null)
@@ -121,6 +129,18 @@ export default function DraftEditor({ filePath, content }: Props) {
   const [showImages, setShowImages] = useState(false)
   const isDirty = useEditorStore(s => s.tabs.find(t => t.filePath === filePath)?.dirty ?? false)
   const currentBodyRef = useRef(content)
+
+  // 键入热路径不再逐键把全文写入 store（那会让 EditorArea 整树按键级重渲染），
+  // 内容由 currentBodyRef 自持；卸载（如切换 Tab）时刷回 store，
+  // 保证切走再切回来仍能看到未保存的编辑
+  useEffect(() => {
+    return () => {
+      const tab = useEditorStore.getState().tabs.find(t => t.filePath === filePath)
+      if (tab && tab.dirty && currentBodyRef.current !== tab.content) {
+        useEditorStore.getState().syncTabContent(tab.id, currentBodyRef.current)
+      }
+    }
+  }, [filePath])
 
   const currentProject = useProjectStore(s => s.currentProject)
 
@@ -250,7 +270,7 @@ export default function DraftEditor({ filePath, content }: Props) {
    * 避免出现"报告无事发生、正文里却仍有半角标点"的误导。
    */
   const doNormalizePunctuation = () => {
-    if (isReadonly || isChapterBusy) return
+    if (effectiveReadonly || isChapterBusy) return
     const source = currentBodyRef.current
     const result = normalizeChinesePunctuation(source)
 
@@ -276,7 +296,9 @@ export default function DraftEditor({ filePath, content }: Props) {
   /** 采纳标点规范化结果（在 diff 弹窗中确认后） */
   const applyPunctuation = (text: string) => {
     currentBodyRef.current = text
-    useEditorStore.getState().updateTabContent(filePath, text)
+    const tab = useEditorStore.getState().tabs.find(t => t.filePath === filePath)
+    // 外部推送必须写入 content：编辑器靠 content prop 变化感知并刷新正文
+    if (tab) useEditorStore.getState().updateTabContent(tab.id, text)
     setPunctPreview(null)
     toast.success('标点已规范化，确认后请保存')
   }
@@ -423,6 +445,51 @@ export default function DraftEditor({ filePath, content }: Props) {
             </span>
           )}
         </div>
+
+        {/* 右侧：临时解锁态（已定稿但作者要做少量文本修正）——只给编辑/保存/重新锁定，不出现 AI 操作与再定稿 */}
+        {isReadonly && tempUnlocked && (
+          <div className="flex items-center gap-1.5 flex-shrink-0">
+            {charCount > 0 && (
+              <span className="text-xs tabular-nums mr-1" style={{ color: 'var(--color-text-muted)' }}>
+                {charCount.toLocaleString()} {t('draftEditor.chars')}
+              </span>
+            )}
+            {isDirty && (
+              <span
+                className="w-1.5 h-1.5 rounded-full flex-shrink-0 mr-0.5"
+                style={{ backgroundColor: 'var(--color-warning)' }}
+                title={t('draftEditor.unsavedTooltip')}
+              />
+            )}
+            {isDirty && (
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => doSave(currentBodyRef.current)}
+                disabled={saving}
+                title={t('draftEditor.saveTooltip')}
+              >
+                <Save size={12} />
+                {saving ? t('draftEditor.saving') : t('draftEditor.save')}
+              </Button>
+            )}
+            <span
+              className="text-[0.7rem] px-1.5 py-0.5 rounded flex-shrink-0"
+              style={{ backgroundColor: 'var(--color-hover)', color: 'var(--color-warning)' }}
+              title="定稿状态未变，仅临时允许在编辑器内直接修改文本（如统一人名等小改）"
+            >
+              临时解锁编辑中
+            </span>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => setTempUnlocked(false)}
+              title="改完后点这里恢复只读，不影响定稿状态"
+            >
+              重新锁定
+            </Button>
+          </div>
+        )}
 
         {/* 右侧：字数 + 状态 + 待合并 + AI操作 + 定稿 */}
         {!isReadonly && (
@@ -580,7 +647,7 @@ export default function DraftEditor({ filePath, content }: Props) {
         )}
 
         {/* 已定稿/归档显示只读提示 */}
-        {isReadonly && (
+        {isReadonly && !tempUnlocked && (
           <div className="flex items-center gap-2 flex-shrink-0">
             {charCount > 0 && (
               <span className="text-xs tabular-nums" style={{ color: 'var(--color-text-muted)' }}>
@@ -590,6 +657,17 @@ export default function DraftEditor({ filePath, content }: Props) {
             <span className="text-xs" style={{ color: 'var(--color-text-muted)' }}>
               {status === 'finalized' ? t('draftEditor.finalizedReadonly') : t('draftEditor.archivedReadonly')}
             </span>
+            {/* 临时解锁编辑（仅定稿态提供；不改变 status，只放开本组件内的编辑/保存门控） */}
+            {status === 'finalized' && (
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setTempUnlocked(true)}
+                title="临时解锁做少量文本修正（如统一人名）。不会改变本章的定稿状态，也不会重新触发后处理"
+              >
+                临时解锁编辑
+              </Button>
+            )}
             {/* 配图（只读态仍可为章节配图） */}
             <Button
               variant="outline"
@@ -643,12 +721,15 @@ export default function DraftEditor({ filePath, content }: Props) {
           mode="prose"
           content={content}
           filePath={filePath}
-          editable={!isReadonly && !isChapterBusy}
+          editable={!effectiveReadonly && !isChapterBusy}
           hideStatusBar
           onCharCountChange={setCharCount}
           onChange={(text) => {
             currentBodyRef.current = text
-            useEditorStore.getState().updateTabContent(filePath, text)
+            // 只翻 dirty 标志（已 dirty 时零 store 写入），内容在保存/卸载时刷回。
+            // 按 filePath 解析 tab id：个别入口（Agent 打开的章节）id 与 filePath 不同
+            const tab = useEditorStore.getState().tabs.find(t => t.filePath === filePath)
+            if (tab) useEditorStore.getState().markTabDirty(tab.id)
           }}
           onSave={(text) => doSave(text)}
         />

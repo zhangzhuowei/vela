@@ -43,6 +43,12 @@ interface EditorState {
    */
   updateTabContent: (tabId: string, content: string) => void
   /**
+   * 仅标记 Tab 为未保存，不写入 content。
+   * 键入热路径专用：逐键把全文写入 store 会让订阅 tabs 的组件树按键级重渲染，
+   * 编辑中的内容由编辑器组件自持（ref），在保存/卸载时经 syncTabContent 刷回。
+   */
+  markTabDirty: (tabId: string) => void
+  /**
    * 静默同步 Tab 内容（不标记 dirty，也不清除 dirty）
    * 用于「AI 生成完成后刷新」、「打开文件刷新」等非用户编辑场景。
    */
@@ -115,6 +121,15 @@ export const useEditorStore = create<EditorState>()((set, get) => ({
     }))
   },
 
+  markTabDirty: (tabId) => {
+    // 已是 dirty 时直接返回，不触发任何 store 更新（键入热路径每键都会调到这里）
+    const target = get().tabs.find((t) => t.id === tabId)
+    if (!target || target.dirty) return
+    set((s) => ({
+      tabs: s.tabs.map((t) => t.id === tabId ? { ...t, dirty: true } : t),
+    }))
+  },
+
   // 静默刷新内容（不改变 dirty 标记，用于 AI 生成后刷新、打开文件同步等场景）
   syncTabContent: (tabId, content) => {
     set((s) => ({
@@ -124,6 +139,8 @@ export const useEditorStore = create<EditorState>()((set, get) => ({
 
   // 标记 Tab 已保存 —— 清除 dirty 标记，使标题栏警示灯和 Tab 圆点消失
   markTabSaved: (tabId) => {
+    const target = get().tabs.find((t) => t.id === tabId)
+    if (!target || !target.dirty) return
     set((s) => ({
       tabs: s.tabs.map((t) => t.id === tabId ? { ...t, dirty: false } : t),
     }))

@@ -15,7 +15,7 @@ interface Props {
 
 export default function ConfirmCard({ toolCall }: Props) {
   const { t } = useTranslation('panels')
-  const { resolveToolConfirmation } = useAgentStore()
+  const resolveToolConfirmation = useAgentStore(s => s.resolveToolConfirmation)
   const { id, toolName, arguments: args } = toolCall
 
   // 生成操作描述

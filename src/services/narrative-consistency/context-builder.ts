@@ -17,6 +17,7 @@
  */
 import type { CanonContext, TimelineEvent, CharacterStateSnapshot, PlotLine, Fact, ChapterSummary } from './types'
 import { canonStore } from './canon-store'
+import { isActualDeathMention } from './validator'
 
 /** 构建入参 */
 export interface BuildCanonContextParams {
@@ -52,7 +53,12 @@ export interface BuildCanonContextParams {
   writingStyle: string
   /** 全局行文指导 */
   globalGuidance: string
-  /** 时间线窗口：返回到多少章之前的所有事件（默认 = chapterNumber - 1） */
+  /**
+   * 时间线渲染窗口：近 N 章的事件完整渲染进 prompt（默认 10）。
+   * 更早章节的事件只保留死亡等不可逆事件的压缩行——远期日常事件由
+   * 章节要点时间线与 canon 章节摘要兜底，逐条渲染只会随连载无界膨胀。
+   * 校验（Gate/validator）始终使用全量时间线，不受此窗口影响。
+   */
   timelineWindow?: number
   /** 最近章节摘要数量（默认 3） */
   recentSummaryCount?: number
@@ -84,14 +90,48 @@ function escapeTemplateVars(text: string): string {
     .slice(0, 500)
 }
 
-/** 把时间线事件格式化为简洁文本 */
-function formatTimeline(events: TimelineEvent[]): string {
+/** 时间线渲染窗口默认值：近 N 章完整渲染 */
+export const DEFAULT_RENDER_TIMELINE_WINDOW = 10
+/** 时间线渲染字符上限，超出时保近弃远（约 4k token） */
+const MAX_TIMELINE_RENDER_CHARS = 6000
+
+/** 单条时间线事件的渲染行 */
+function formatTimelineEvent(e: TimelineEvent): string {
+  return `[第${e.chapterNumber}章·#${e.sequence}] ${e.timeFlow === 'flashback' ? '[闪回] ' : ''}` +
+    `${(e.characters || []).join('、') || '（无角色）'} 在「${e.location || '未知地点'}」：` +
+    `${escapeTemplateVars(e.summary)}${e.impact ? `（影响：${escapeTemplateVars(e.impact)}）` : ''}`
+}
+
+/**
+ * 把时间线事件格式化为简洁文本（分层渲染）。
+ *
+ * 全量逐条渲染会随连载无界膨胀（每章约 5~15 条事件，写到 300 章时
+ * 光时间线就有十几万字进 prompt）。分层策略：
+ *   - 近 windowChapters 章：完整渲染（衔接与短期连续性靠它）
+ *   - 更早章节：只保留死亡等不可逆事件（模型绝不能推翻的硬事实），
+ *     其余远期事件由章节要点时间线与 canon 章节摘要兜底
+ * 校验器拿到的 ctx.timeline 仍是全量，此处只影响 prompt 文本。
+ */
+function formatTimeline(events: TimelineEvent[], currentChapter: number, windowChapters: number): string {
   if (events.length === 0) return ''
-  return events
-    .map(e => `[第${e.chapterNumber}章·#${e.sequence}] ${e.timeFlow === 'flashback' ? '[闪回] ' : ''}` +
-      `${(e.characters || []).join('、') || '（无角色）'} 在「${e.location || '未知地点'}」：` +
-      `${escapeTemplateVars(e.summary)}${e.impact ? `（影响：${escapeTemplateVars(e.impact)}）` : ''}`)
-    .join('\n')
+  const windowStart = currentChapter - windowChapters
+  const recent = events.filter(e => e.chapterNumber >= windowStart)
+  const older = events.filter(e => e.chapterNumber < windowStart)
+
+  const lines: string[] = []
+  const irreversible = older.filter(e => isActualDeathMention(e.summary || '') || isActualDeathMention(e.impact || ''))
+  if (irreversible.length > 0) {
+    lines.push('[更早章节的不可逆事件（不可推翻；其余远期事件见章节摘要，不再逐条列出）]')
+    lines.push(...irreversible.map(formatTimelineEvent))
+  }
+  lines.push(...recent.map(formatTimelineEvent))
+
+  let result = lines.join('\n')
+  if (result.length > MAX_TIMELINE_RENDER_CHARS) {
+    // 超限时从头部截断：优先保住近章事件（列表尾部）
+    result = result.slice(-MAX_TIMELINE_RENDER_CHARS)
+  }
+  return result
 }
 
 /** 把角色当前状态格式化为文本 */
@@ -149,12 +189,14 @@ function formatRecentSummaries(summaries: ChapterSummary[]): string {
  * 任何字段读取失败都必须用安全默认值（空字符串/空数组），确保主流程不被打断。
  */
 export async function buildCanonContext(params: BuildCanonContextParams): Promise<CanonContext> {
-  const timelineWindow = params.timelineWindow ?? Math.max(0, params.chapterNumber - 1)
+  const renderTimelineWindow = params.timelineWindow ?? DEFAULT_RENDER_TIMELINE_WINDOW
   const recentSummaryCount = params.recentSummaryCount ?? 3
 
-  // 并行读取所有 Canon Store 数据 + 角色卡（角色卡从参数传入，避免重复 IPC）
+  // 并行读取所有 Canon Store 数据 + 角色卡（角色卡从参数传入，避免重复 IPC）。
+  // 时间线与事实取全量：校验器需要完整历史（如"第 20 章已死的角色不得在
+  // 第 150 章复活"）；prompt 膨胀在渲染侧用窗口控制，不在取数侧截断
   const [timeline, summaries, plotLines, facts, canonCharStates] = await Promise.all([
-    canonStore.getTimeline(timelineWindow),
+    canonStore.getTimeline(Math.max(0, params.chapterNumber - 1)),
     canonStore.getRecentSummaries(recentSummaryCount),
     canonStore.getActivePlotLines(),
     canonStore.getFacts(),
@@ -193,6 +235,7 @@ export async function buildCanonContext(params: BuildCanonContextParams): Promis
       chapterNumber: params.chapterNumber,
       builtAt: new Date().toISOString(),
       ragSources: countRagSources(params.ragContext),
+      renderTimelineWindow,
     },
   }
 }
@@ -255,22 +298,25 @@ function countRagSources(ragContext: string): number {
 /**
  * 把 CanonContext 渲染为单段 prompt 文本（按指定顺序）
  *
- * 顺序固定：正史设定 → 人物状态 → 时间线 → 章节摘要 → 未结剧情 → 本章目标 → RAG → 风格 → 全局指导 → 硬性约束
+ * 顺序固定：正史设定 → 人物状态 → 时间线 → 章节摘要 → 未结剧情 → 事实条目 → 硬性约束
+ *
+ * 只渲染 Canon 专属的「事实基线」。上一章结尾、本章目标、RAG、文风、全局指导
+ * 这五项是调用方传入的任务上下文，各命令的模板均有专属槽位承载，此处不再重复
+ * 渲染（此前同一份内容会在同一个 prompt 里出现两遍，每次写稿浪费数千 token）。
+ * 这些字段仍保留在 CanonContext 对象上，供一致性校验（Gate/validator）使用。
  */
 export function renderCanonContext(ctx: CanonContext): string {
   const blocks: Array<{ title: string; content: string }> = [
     { title: '【正史设定（不可违背）】', content: ctx.worldRules },
     { title: '【人物群像（静态设定）】', content: ctx.characterArch },
     { title: '【当前人物状态（最高优先级 · 生成时不得推翻）】', content: formatCharacterStates(ctx.characterStates) },
-    { title: '【已发生事件时间线（严格单向 · 按章节+顺序排列）】', content: formatTimeline(ctx.timeline) },
+    {
+      title: '【已发生事件时间线（严格单向 · 按章节+顺序排列）】',
+      content: formatTimeline(ctx.timeline, ctx.meta.chapterNumber, ctx.meta.renderTimelineWindow ?? DEFAULT_RENDER_TIMELINE_WINDOW),
+    },
     { title: '【最近章节摘要】', content: ctx.recentChapterSummaries },
     { title: '【未结剧情线（必须在写作时考虑推进或避免冲突）】', content: formatOpenPlotLines(ctx.openPlotLines) },
     { title: '【关键事实条目（不可推翻）】', content: formatFacts(ctx.knownFacts) },
-    { title: '【上一章结尾（必须自然衔接）】', content: ctx.previousEnding },
-    { title: '【本章写作目标】', content: ctx.chapterGoal },
-    { title: '【知识库参考（最低优先级 · 仅当与上述 canon 冲突时以 canon 为准）】', content: ctx.ragContext },
-    { title: '【文风要求】', content: ctx.writingStyle },
-    { title: '【全局行文指导】', content: ctx.globalGuidance },
     { title: '【硬性约束（必须严格遵守）】', content: ctx.hardConstraints },
   ]
 

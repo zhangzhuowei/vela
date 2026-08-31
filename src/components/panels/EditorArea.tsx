@@ -44,6 +44,17 @@ function ProseEditorWrapper({
   // 追踪当前编辑器内容，供保存按钮使用（不触发重渲染）
   const currentContentRef = useRef(tab.content ?? '')
 
+  // 键入时只翻 dirty 标志、不逐键写 store；卸载（切 Tab）时把内容刷回，
+  // 保证切走再切回来仍能看到未保存的编辑
+  useEffect(() => {
+    return () => {
+      const latest = useEditorStore.getState().tabs.find(t => t.id === tab.id)
+      if (latest && latest.dirty && currentContentRef.current !== latest.content) {
+        useEditorStore.getState().syncTabContent(latest.id, currentContentRef.current)
+      }
+    }
+  }, [tab.id])
+
   const handleSave = async (text: string) => {
     setSaving(true)
     try {
@@ -110,8 +121,8 @@ function ProseEditorWrapper({
           onChange={(text) => {
             // 同步 ref，供保存按钮使用
             currentContentRef.current = text
-            // 标记 tab.dirty
-            useEditorStore.getState().updateTabContent(tab.id, text)
+            // 只翻 dirty 标志（已 dirty 时零 store 写入），内容在保存/卸载时刷回
+            useEditorStore.getState().markTabDirty(tab.id)
           }}
           onSave={(text) => handleSave(text)}
         />

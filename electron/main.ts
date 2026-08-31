@@ -1,6 +1,8 @@
 import { app, BrowserWindow } from 'electron'
 import { registerIPCHandlers } from './ipc-handlers'
 import { registerMCPHandlers } from './mcp/mcp-ipc-bridge'
+import { mcpManager } from './mcp/mcp-manager'
+import { closeProjectDatabase } from './database'
 
 import { fileURLToPath } from 'node:url'
 import path from 'node:path'
@@ -61,6 +63,13 @@ app.on('window-all-closed', () => {
     app.quit()
     win = null
   }
+})
+
+// 退出前统一释放资源：断开全部 MCP 子进程（否则 node/python 子进程残留成孤儿）、
+// 关闭 SQLite 与 LanceDB 连接（释放句柄，WAL 正常收尾）
+app.on('before-quit', () => {
+  mcpManager.disconnectAll().catch(() => { /* 退出路径，尽力而为 */ })
+  try { closeProjectDatabase() } catch { /* 忽略 */ }
 })
 
 // macOS: 点击 dock 图标重新创建窗口

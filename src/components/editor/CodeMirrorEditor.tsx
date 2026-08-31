@@ -49,6 +49,27 @@ export default function CodeMirrorEditor({
   const [editorContent, setEditorContent] = useState(content)
   const hasEmittedInitialCount = useRef(false)
 
+  // 键入路径的字数回调做节流：字数展示不需要键级精度，
+  // 逐键 setState 会让父组件（DraftEditor 工具栏等）每个按键整体重渲染
+  const onCharCountChangeRef = useRef(onCharCountChange)
+  onCharCountChangeRef.current = onCharCountChange
+  const charCountTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const pendingCharCountRef = useRef<number | null>(null)
+  const scheduleCharCount = useCallback((count: number) => {
+    pendingCharCountRef.current = count
+    if (charCountTimerRef.current != null) return
+    charCountTimerRef.current = setTimeout(() => {
+      charCountTimerRef.current = null
+      if (pendingCharCountRef.current != null) {
+        onCharCountChangeRef.current?.(pendingCharCountRef.current)
+        pendingCharCountRef.current = null
+      }
+    }, 300)
+  }, [])
+  useEffect(() => () => {
+    if (charCountTimerRef.current != null) clearTimeout(charCountTimerRef.current)
+  }, [])
+
   // 更新内容
   useEffect(() => {
     // 首次挂载时主动汇报一次字数
@@ -87,11 +108,10 @@ export default function CodeMirrorEditor({
       lastEmittedContentRef.current = newText
       onChange?.(newText)
 
-      const cnt = countWords(newText)
-      onCharCountChange?.(cnt)
+      scheduleCharCount(countWords(newText))
     }
 
-    if (v.selectionSet || v.docChanged || v.geometryChanged) {
+      if (v.selectionSet || v.docChanged || v.geometryChanged) {
       const sel = v.state.selection.main
       if (sel.empty || sel.to - sel.from < 1) {
         setBubbleOpen(false)
@@ -104,7 +124,7 @@ export default function CodeMirrorEditor({
         }
       }
     }
-  }, [onChange, onCharCountChange, aiResult])
+  }, [onChange, scheduleCharCount, aiResult])
 
   // 监听滚动与缩放，实时更新 Bubble Menu 坐标
   useEffect(() => {

@@ -127,6 +127,8 @@ export interface CanonContext {
     chapterNumber: number
     builtAt: string
     ragSources: number
+    /** 渲染进 prompt 的时间线窗口（近 N 章完整渲染，更早只保留不可逆事件） */
+    renderTimelineWindow?: number
   }
 }
 

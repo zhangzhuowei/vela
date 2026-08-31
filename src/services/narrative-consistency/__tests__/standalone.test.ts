@@ -274,6 +274,7 @@ test('集成 4: renderCanonContext 应按指定顺序注入各块', () => {
   })
   const rendered = renderCanonContext(canon)
 
+  // 任务上下文五块（上一章结尾/本章目标/RAG/文风/全局指导）由模板槽位承载，不再渲染进 Canon
   const expectedOrder = [
     '正史设定',
     '人物群像',
@@ -282,11 +283,6 @@ test('集成 4: renderCanonContext 应按指定顺序注入各块', () => {
     '最近章节摘要',
     '未结剧情线',
     '关键事实条目',
-    '上一章结尾',
-    '本章写作目标',
-    '知识库参考',
-    '文风要求',
-    '全局行文指导',
     '硬性约束',
   ]
   let lastIdx = -1
@@ -294,6 +290,9 @@ test('集成 4: renderCanonContext 应按指定顺序注入各块', () => {
     const idx = rendered.indexOf(title)
     assert.ok(idx > lastIdx, `Block "${title}" should appear after previous block (idx ${idx} > lastIdx ${lastIdx})`)
     lastIdx = idx
+  }
+  for (const removed of ['上一章结尾', '本章写作目标', '知识库参考', '文风要求', '全局行文指导']) {
+    assert.ok(!rendered.includes(removed), `Block "${removed}" should no longer be rendered`)
   }
 })
 

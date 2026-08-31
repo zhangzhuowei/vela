@@ -222,7 +222,7 @@ const DEATH_FALSE_POSITIVES = new Set([
   '置之死地', '死于非命', '生死', '死活',
 ])
 
-function isActualDeathMention(text: string): boolean {
+export function isActualDeathMention(text: string): boolean {
   if (!text) return false
   // 必须包含一个 DEATH_PHRASES 短语
   const hasPhrase = DEATH_PHRASES.some(p => text.includes(p))

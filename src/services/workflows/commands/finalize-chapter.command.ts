@@ -418,6 +418,7 @@ export class FinalizeChapterCommand extends BaseWorkflowCommand<void> {
     // [Gate v2] 叙事一致性强制门禁 — 必须在任何定稿写入之前通过
     // ==========================================
     let gatedContent = refinedDraftText
+    let blockedReason: string | null = null
     try {
       const [core, allCharacters] = await Promise.all([
         ipc.invoke('db:project-core-get').catch(() => null),
@@ -450,8 +451,12 @@ export class FinalizeChapterCommand extends BaseWorkflowCommand<void> {
       })
       callbacks.log('  [Gate] ' + gateResult.verdict + ': ' + gateResult.report)
       if (gateResult.verdict === 'BLOCK') {
-        callbacks.log('  [Gate] BLOCKED - HIGH conflicts. Please refine and retry.')
-        return
+        // 不能在这里直接 return：静默返回会让工作流步骤显示成功、
+        // 批量管线继续输出「已定稿」，而章节实际未定稿，下一章才因
+        // 前置校验失败报错，问题被掩盖到错误的位置
+        blockedReason = gateResult.blockingReasons?.length
+          ? gateResult.blockingReasons.join('；')
+          : gateResult.report
       }
       if (gateResult.verdict === 'REPAIR' && gateResult.repairedContent) {
         gatedContent = gateResult.repairedContent
@@ -460,6 +465,12 @@ export class FinalizeChapterCommand extends BaseWorkflowCommand<void> {
     } catch (e) {
       callbacks.log('  [Gate] error: ' + String(e))
       throw new Error(`叙事一致性 Gate 执行失败，定稿已中止：${String(e)}`)
+    }
+    if (blockedReason) {
+      throw new Error(
+        `第${this.params.chapterNumber}章被叙事一致性 Gate 阻止定稿（存在 HIGH 级冲突）：${blockedReason}。` +
+        '章节保持未定稿状态，请修复冲突后重新定稿'
+      )
     }
 
     await ipc.invoke('db:draft-update-content', dbDraft.id, gatedContent, gatedContent.length)

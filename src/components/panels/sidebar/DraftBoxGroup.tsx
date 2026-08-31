@@ -1,8 +1,13 @@
 /**
  * DraftBoxGroup — 草稿箱折叠组（含章节分组和单条草稿条目）
+ *
+ * 章节与草稿被拍平成单层行列表交给 WindowedList 做窗口化渲染：
+ * 百章项目展开草稿箱不再一次性构建"章节数 × 版本数"个 DOM 节点。
+ * 章节标题改为一次取回全部蓝图（原实现每个章节分组挂载时各打一次
+ * db:blueprint-get，窗口化后行会随滚动反复挂载，逐章 IPC 会被放大）。
  */
 
-import { useState, useEffect } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { ChevronRight, ChevronDown, CheckCircle2, Circle, FileText, FolderOpen, Copy, Trash2, FilePen } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import type { DraftMeta } from '../../../stores/draft-store'
@@ -12,6 +17,21 @@ import { confirm } from '../../ui/Confirm'
 import { DRAFT_STATUS_LABEL, DRAFT_STATUS_COLOR } from '../../../shared/draft-status'
 import { showSidebarMenu } from './SidebarShared'
 import { ipc } from '../../../services/ipc-client'
+import WindowedList from '../../ui/WindowedList'
+
+// ===== 拍平后的行描述 =====
+
+type DraftRow =
+  | { kind: 'chapter'; chapterNumber: number; title: string; activeCount: number; hasFinalized: boolean; open: boolean }
+  | { kind: 'draft'; draft: DraftMeta; chapterTitle: string; archived: boolean }
+  | { kind: 'archived-toggle'; chapterNumber: number; count: number; shown: boolean }
+
+/** 行高（px）：chapter 行用 .tree-item 的 26；draft 行 3+16+3；toggle 行紧凑单行 */
+const ROW_HEIGHT: Record<DraftRow['kind'], number> = {
+  'chapter': 26,
+  'draft': 22,
+  'archived-toggle': 20,
+}
 
 // ===== 草稿箱折叠组 =====
 
@@ -22,6 +42,24 @@ export default function DraftBoxGroup({
 }) {
   const { t } = useTranslation('panels')
   const [open, setOpen] = useState(true)
+  // 记"被收起"的章节：新章节默认展开
+  const [closedChapters, setClosedChapters] = useState<Set<number>>(new Set())
+  const [shownArchived, setShownArchived] = useState<Set<number>>(new Set())
+  // 章节号 → 蓝图标题（一次取回全部）
+  const [bpTitles, setBpTitles] = useState<Record<number, string>>({})
+
+  useEffect(() => {
+    let cancelled = false
+    ipc.invoke('db:blueprint-get-all').then(bps => {
+      if (cancelled || !Array.isArray(bps)) return
+      const map: Record<number, string> = {}
+      for (const bp of bps) {
+        if (bp?.title) map[bp.chapterNumber] = bp.title
+      }
+      setBpTitles(map)
+    }).catch(() => { })
+    return () => { cancelled = true }
+  }, [draftsByChapter])
 
   // 所有章节号排序
   const chapterNums = Object.keys(draftsByChapter)
@@ -32,6 +70,118 @@ export default function DraftBoxGroup({
   const activeChapterCount = chapterNums.filter(n =>
     (draftsByChapter[n] || []).some(d => d.status !== 'archived')
   ).length
+
+  /** 章节显示名（蓝图标题优先，其次草稿携带的章节标题） */
+  const displayTitleOf = (chapterNumber: number, drafts: DraftMeta[]): string => {
+    const baseTitle = bpTitles[chapterNumber] || drafts[0]?.chapterTitle || ''
+    if (!baseTitle) return `第${chapterNumber}章`
+    return baseTitle.startsWith(`第${chapterNumber}章`) ? baseTitle : `第${chapterNumber}章 ${baseTitle}`
+  }
+
+  // 拍平：章节行 + （展开时）活跃草稿行 + 归档切换行 + （显示时）归档草稿行
+  const rows = useMemo<DraftRow[]>(() => {
+    const list: DraftRow[] = []
+    for (const chNum of chapterNums) {
+      const drafts = draftsByChapter[chNum] || []
+      const activeDrafts = drafts.filter(d => d.status !== 'archived')
+      const archivedDrafts = drafts.filter(d => d.status === 'archived')
+      const chapterOpen = !closedChapters.has(chNum)
+      const title = displayTitleOf(chNum, drafts)
+
+      list.push({
+        kind: 'chapter',
+        chapterNumber: chNum,
+        title,
+        activeCount: activeDrafts.length,
+        hasFinalized: drafts.some(d => d.status === 'finalized'),
+        open: chapterOpen,
+      })
+      if (!chapterOpen) continue
+
+      for (const draft of activeDrafts) {
+        list.push({ kind: 'draft', draft, chapterTitle: title, archived: false })
+      }
+      if (archivedDrafts.length > 0) {
+        const shown = shownArchived.has(chNum)
+        list.push({ kind: 'archived-toggle', chapterNumber: chNum, count: archivedDrafts.length, shown })
+        if (shown) {
+          for (const draft of archivedDrafts) {
+            list.push({ kind: 'draft', draft, chapterTitle: title, archived: true })
+          }
+        }
+      }
+    }
+    return list
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [draftsByChapter, closedChapters, shownArchived, bpTitles])
+
+  const toggleChapter = (chapterNumber: number) => {
+    setClosedChapters(prev => {
+      const next = new Set(prev)
+      if (next.has(chapterNumber)) next.delete(chapterNumber)
+      else next.add(chapterNumber)
+      return next
+    })
+  }
+
+  const toggleArchived = (chapterNumber: number) => {
+    setShownArchived(prev => {
+      const next = new Set(prev)
+      if (next.has(chapterNumber)) next.delete(chapterNumber)
+      else next.add(chapterNumber)
+      return next
+    })
+  }
+
+  const renderRow = (row: DraftRow) => {
+    switch (row.kind) {
+      case 'chapter':
+        return (
+          <div
+            className="tree-item gap-1.5 cursor-pointer select-none"
+            style={{ paddingLeft: 26 }}
+            onClick={() => toggleChapter(row.chapterNumber)}
+            title={row.title}
+          >
+            {row.open
+              ? <ChevronDown size={10} style={{ color: 'var(--color-text-muted)', flexShrink: 0 }} />
+              : <ChevronRight size={10} style={{ color: 'var(--color-text-muted)', flexShrink: 0 }} />
+            }
+            {row.hasFinalized
+              ? <CheckCircle2 size={10} style={{ flexShrink: 0, color: 'var(--color-success)' }} />
+              : <Circle size={6} style={{ flexShrink: 0, fill: 'transparent', stroke: 'var(--color-text-muted)' }} />
+            }
+            <span className="text-sm flex-1 truncate" style={{ color: 'var(--color-text-secondary)' }}>
+              {row.title}
+            </span>
+            <span className="ml-auto text-[0.7rem] flex-shrink-0" style={{ color: 'var(--color-text-muted)' }}>
+              {t('drafts.draftsCount', { count: row.activeCount })}
+            </span>
+          </div>
+        )
+      case 'archived-toggle':
+        return (
+          <div
+            className="flex items-center gap-1 cursor-pointer select-none h-full"
+            style={{ paddingLeft: 54 }}
+            onClick={() => toggleArchived(row.chapterNumber)}
+          >
+            <span className="text-[0.7rem]" style={{ color: 'var(--color-text-muted)', opacity: 0.6 }}>
+              {row.shown ? t('drafts.hide') : t('drafts.archived', { count: row.count })}
+            </span>
+          </div>
+        )
+      case 'draft':
+        return (
+          <DraftItem
+            draft={row.draft}
+            chapterTitleText={row.chapterTitle}
+            archived={row.archived}
+            t={t}
+          />
+        )
+    }
+  }
 
   return (
     <div>
@@ -65,113 +215,12 @@ export default function DraftBoxGroup({
               {t('draftBox.noDrafts')}
             </div>
           ) : (
-            chapterNums.map(chNum => (
-              <DraftChapterGroup
-                key={chNum}
-                chapterNumber={chNum}
-                drafts={draftsByChapter[chNum] || []}
-                t={t}
-              />
-            ))
-          )}
-        </div>
-      )}
-    </div>
-  )
-}
-
-// ===== 单章草稿分组 =====
-
-function DraftChapterGroup({
-  chapterNumber,
-  drafts,
-  t,
-}: {
-  chapterNumber: number
-  drafts: DraftMeta[]
-  t: (key: string, opts?: Record<string, unknown>) => string
-}) {
-  const [open, setOpen] = useState(true)
-
-  // 将 archived 草稿折叠，只显示活跃草稿（非 archived）
-  const activeDrafts = drafts.filter(d => d.status !== 'archived')
-  const archivedDrafts = drafts.filter(d => d.status === 'archived')
-  const [showArchived, setShowArchived] = useState(false)
-  const [bpTitle, setBpTitle] = useState<string>('')
-
-  useEffect(() => {
-    let cancelled = false
-    ipc.invoke('db:blueprint-get', chapterNumber).then(bp => {
-      if (!cancelled && bp?.title) {
-        setBpTitle(bp.title)
-      }
-    }).catch(() => { })
-    return () => { cancelled = true }
-  }, [chapterNumber])
-
-  // 已定稿的草稿存在时，章节显示绿色标记
-  const hasFinalized = drafts.some(d => d.status === 'finalized')
-  const baseTitle = bpTitle || drafts[0]?.chapterTitle || ''
-  const displayTitle = baseTitle.startsWith(`第${chapterNumber}章`) ? baseTitle : (baseTitle ? `第${chapterNumber}章 ${baseTitle}` : `第${chapterNumber}章`)
-
-  return (
-    <div>
-      {/* 章节行 */}
-      <div
-        className="tree-item gap-1.5 cursor-pointer select-none"
-        style={{ paddingLeft: 26 }}
-        onClick={() => setOpen(v => !v)}
-        title={displayTitle}
-      >
-        {open
-          ? <ChevronDown size={10} style={{ color: 'var(--color-text-muted)', flexShrink: 0 }} />
-          : <ChevronRight size={10} style={{ color: 'var(--color-text-muted)', flexShrink: 0 }} />
-        }
-        {hasFinalized
-          ? <CheckCircle2 size={10} style={{ flexShrink: 0, color: 'var(--color-success)' }} />
-          : <Circle size={6} style={{ flexShrink: 0, fill: 'transparent', stroke: 'var(--color-text-muted)' }} />
-        }
-        <span className="text-sm flex-1 truncate" style={{ color: 'var(--color-text-secondary)' }}>
-          {displayTitle}
-        </span>
-        <span className="ml-auto text-[0.7rem] flex-shrink-0" style={{ color: 'var(--color-text-muted)' }}>
-          {t('drafts.draftsCount', { count: activeDrafts.length })}
-        </span>
-      </div>
-
-      {/* 草稿列表 */}
-      {open && (
-        <div>
-          {activeDrafts.map(draft => (
-            <DraftItem
-              key={draft.filePath}
-              draft={draft}
-              chapterTitleText={displayTitle}
-              t={t}
+            <WindowedList
+              items={rows}
+              itemHeight={(row) => ROW_HEIGHT[row.kind]}
+              renderItem={renderRow}
             />
-          ))}
-
-          {/* 显示归档草稿的切换按钮 */}
-          {archivedDrafts.length > 0 && (
-            <div
-              className="flex items-center gap-1 cursor-pointer select-none"
-              style={{ paddingLeft: 54 }}
-              onClick={() => setShowArchived(v => !v)}
-            >
-              <span className="text-[0.7rem]" style={{ color: 'var(--color-text-muted)', opacity: 0.6 }}>
-                {showArchived ? t('drafts.hide') : t('drafts.archived', { count: archivedDrafts.length })}
-              </span>
-            </div>
           )}
-          {showArchived && archivedDrafts.map(draft => (
-            <DraftItem
-              key={draft.filePath}
-              draft={draft}
-              chapterTitleText={displayTitle}
-              archived
-              t={t}
-            />
-          ))}
         </div>
       )}
     </div>

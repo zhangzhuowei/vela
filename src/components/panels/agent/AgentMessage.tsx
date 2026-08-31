@@ -6,6 +6,7 @@
  * - 助手消息：左侧 Markdown 风格渲染
  * - Tool 调用：ToolCallBlock / ConfirmCard / ArtifactCard
  */
+import { memo } from 'react'
 import type { AgentMessage as AgentMessageType } from '../../../stores/agent-store'
 import MarkdownContent, { StreamingCursor } from '../../ui/MarkdownContent'
 import ToolCallBlock from './ToolCallBlock'
@@ -17,7 +18,11 @@ interface Props {
   message: AgentMessageType
 }
 
-export default function AgentMessage({ message }: Props) {
+/**
+ * memo：流式期间 store 每个批次只重建正在生成的那条消息对象，
+ * 历史消息引用不变——不 memo 的话整个会话的历史气泡会跟着父组件一起重渲染
+ */
+function AgentMessage({ message }: Props) {
   const { role, content, streaming, toolCalls, artifacts } = message
 
   if (role === 'user') {
@@ -78,3 +83,5 @@ export default function AgentMessage({ message }: Props) {
     </div>
   )
 }
+
+export default memo(AgentMessage)

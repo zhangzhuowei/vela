@@ -14,10 +14,8 @@ export default function RightToolWindowBar() {
   const rightView = useLayoutStore(s => s.rightView)
   const toggleAIPanel = useLayoutStore(s => s.toggleAIPanel)
   const openRightPanel = useLayoutStore(s => s.openRightPanel)
-  const currentRun = useWorkflowStore((s) => s.currentRun)
-
-  /** 工作流活跃时给 AI 输出按钮显示脉冲 */
-  const showPulse = currentRun && (currentRun.status === 'running' || currentRun.status === 'waiting')
+  /** 工作流活跃时给 AI 输出按钮显示脉冲（布尔订阅：不随流式批次的对象引用变化重渲染） */
+  const showPulse = useWorkflowStore((s) => !!s.currentRun && (s.currentRun.status === 'running' || s.currentRun.status === 'waiting'))
 
   /** 点击按钮逻辑：
    *  - 如果面板关闭 → 打开并切到对应视图

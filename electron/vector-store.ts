@@ -9,6 +9,7 @@
  * 存储位置：{projectPath}/.vela/lancedb/
  */
 import * as lancedb from '@lancedb/lancedb'
+import { MatchQuery } from '@lancedb/lancedb'
 import { Field, FixedSizeList as ArrowFixedSizeList, Float32, Int32, Utf8, Schema as ArrowSchema } from 'apache-arrow'
 import fs from 'node:fs'
 import path from 'node:path'
@@ -63,6 +64,66 @@ export interface KBStats {
 const TABLE_NAME = 'chunks'
 const DOCS_TABLE_NAME = 'documents'
 
+/**
+ * FTS 分词配置：双字组 ngram。
+ *
+ * Tantivy 默认 simple 分词器按空白/标点切词，中文整句会被当成单个 token，
+ * 索引形同虚设——这也是旧实现只能退化为逐字 LIKE 全表扫描的原因。
+ * 双字组对中文给出正确的 BM25 召回与排序（实测「金丹」不会误中「金色的丹药」，
+ * 而逐字 LIKE 会）；对英文按字符二元组同样可用。
+ * 不存 token 位置（不需要短语查询），索引更小、构建更快。
+ */
+const FTS_INDEX_CONFIG = {
+  baseTokenizer: 'ngram' as const,
+  ngramMinLength: 2,
+  ngramMaxLength: 2,
+  prefixOnly: false,
+  withPosition: false,
+  lowercase: true,
+}
+
+/** FTS 索引方案版本：分词配置变更时 +1，存量库在下次检索/导入时自动按新方案重建 */
+const FTS_INDEX_VERSION = 2
+
+/** 已确认 FTS 索引为当前方案的项目（进程内缓存，避免每次检索都读盘） */
+const ftsEnsured = new Set<string>()
+
+function ftsMarkerPath(projectPath: string): string {
+  return path.join(projectPath, '.vela', 'fts-index-version')
+}
+
+/** 标记该项目的 FTS 索引已是当前方案（导入/重建后调用） */
+function markFtsCurrent(projectPath: string): void {
+  try {
+    fs.writeFileSync(ftsMarkerPath(projectPath), String(FTS_INDEX_VERSION))
+  } catch { /* 标记失败只影响下次多一遍重建检查 */ }
+  ftsEnsured.add(projectPath)
+}
+
+/**
+ * 存量库迁移：FTS 索引方案落后时按当前分词配置重建（replace 语义）。
+ * 幂等，检索与导入路径都会经过；版本一致时仅一次 Set 查询的开销。
+ */
+async function ensureFtsIndex(db: lancedb.Connection, projectPath: string): Promise<void> {
+  if (ftsEnsured.has(projectPath)) return
+  try {
+    const marker = ftsMarkerPath(projectPath)
+    const version = fs.existsSync(marker) ? parseInt(fs.readFileSync(marker, 'utf-8').trim(), 10) : 0
+    if (version === FTS_INDEX_VERSION) {
+      ftsEnsured.add(projectPath)
+      return
+    }
+  } catch { /* 标记读取失败按需要重建处理 */ }
+
+  const tableNames = await db.tableNames()
+  if (tableNames.includes(TABLE_NAME)) {
+    const table = await db.openTable(TABLE_NAME)
+    await table.createIndex('text', { config: lancedb.Index.fts(FTS_INDEX_CONFIG) })
+    console.log(`[Vela VectorStore] FTS 索引已按 v${FTS_INDEX_VERSION} 方案（ngram 双字组）重建`)
+  }
+  markFtsCurrent(projectPath)
+}
+
 // ===== 连接池（按项目路径缓存） =====
 
 const connectionPool = new Map<string, lancedb.Connection>()
@@ -82,10 +143,27 @@ export async function getConnection(projectPath: string): Promise<lancedb.Connec
   return db
 }
 
-/** 关闭指定项目的连接 */
+/**
+ * 关闭指定项目的连接。
+ * 必须调用底层 close() 释放文件句柄——只从池里删除引用的话，
+ * Windows 上旧项目的 .vela/lancedb 目录会一直被句柄锁住（无法删除/备份/同步），
+ * 且多项目切换后句柄随之堆积。
+ */
 export function closeConnection(projectPath: string): void {
   const dbPath = path.join(projectPath, '.vela', 'lancedb')
-  connectionPool.delete(dbPath)
+  const conn = connectionPool.get(dbPath)
+  if (conn) {
+    try { conn.close() } catch { /* close 幂等，二次关闭等异常忽略 */ }
+    connectionPool.delete(dbPath)
+  }
+}
+
+/** 关闭池中全部连接（切换项目 / 应用退出时调用） */
+export function closeAllConnections(): void {
+  for (const [dbPath, conn] of connectionPool) {
+    try { conn.close() } catch { /* 忽略 */ }
+    connectionPool.delete(dbPath)
+  }
 }
 
 // ===== 向量维度工具 =====
@@ -179,13 +257,18 @@ export async function addChunks(
       const existingSchema = await table.schema()
       const existingFieldNames = existingSchema.fields.map(f => f.name)
       const existingDim = schemaVectorDim(existingSchema)
-      // 检查旧表 schema 是否包含所有必要字段
-      const requiredFields = ['id', 'docId', 'fileName', 'text', 'chunkIndex', 'totalChunks', 'importedAt', 'chapterNumber', 'chapterTitle', 'vector']
-      const hasAllFields = requiredFields.every(f => existingFieldNames.includes(f))
+      // 检查旧表 schema 是否包含所有业务字段。
+      // vector 列单独判断：纯 FTS 模式（未配 Embedding）建表时刻意不含 vector 列，
+      // 若把它计入必填字段，每次导入都会误判"缺列"而走全表重建——
+      // 读全表→drop→重建的开销随知识库线性增长，主进程被同步拷贝卡死
+      const requiredFields = ['id', 'docId', 'fileName', 'text', 'chunkIndex', 'totalChunks', 'importedAt', 'chapterNumber', 'chapterTitle']
+      const hasBusinessFields = requiredFields.every(f => existingFieldNames.includes(f))
+      // 本批带向量但旧表无 vector 列（如刚配好 Embedding）：需重建一次补列
+      const needVectorColumn = incomingDim != null && !existingFieldNames.includes('vector')
       // 维度冲突：更换了 Embedding 模型，新旧向量维度不同（FixedSizeList 无法混存）
       const dimConflict = incomingDim != null && existingDim != null && incomingDim !== existingDim
 
-      if (hasAllFields && !dimConflict) {
+      if (hasBusinessFields && !needVectorColumn && !dimConflict) {
         await table.add(records)
       } else if (dimConflict) {
         // 换模型：旧向量与新模型不兼容，重建表、丢弃旧向量（保留文本，供按新模型重新回填）
@@ -248,14 +331,15 @@ export async function addChunks(
       await db.createTable(DOCS_TABLE_NAME, [docInfo])
     }
 
-    // 尝试创建 FTS 索引（如果尚不存在）
+    // 刷新 FTS 索引（ngram 中文分词；replace 语义覆盖旧索引，保证新导入的块可检索）
     try {
       const chunksTable = await db.openTable(TABLE_NAME)
       await chunksTable.createIndex('text', {
-        config: lancedb.Index.fts(),
+        config: lancedb.Index.fts(FTS_INDEX_CONFIG),
       })
-    } catch {
-      // FTS 索引可能已存在，忽略错误
+      markFtsCurrent(projectPath)
+    } catch (e) {
+      console.warn('[Vela VectorStore] FTS 索引创建失败（检索将走 LIKE 兜底）:', e)
     }
 
     return { success: true, chunkCount: chunks.length }
@@ -309,8 +393,101 @@ export async function search(
   return searchWithScope(projectPath, queryText, queryVector, topK)
 }
 
+/** 内部检索结果（带行 id，供两路结果融合去重） */
+interface RankedResult extends SearchResult {
+  id: string
+}
+
+/** FTS（BM25 · ngram 双字组）检索一路；分数按本组最大值归一化 */
+async function ftsSearch(
+  table: lancedb.Table,
+  query: string,
+  topK: number,
+  scopeFilter?: string,
+): Promise<RankedResult[]> {
+  let q = table.query().fullTextSearch(new MatchQuery(query, 'text')).limit(topK)
+  if (scopeFilter) q = q.where(scopeFilter)
+  const rows = await q.toArray()
+  const maxScore = rows.reduce((m: number, r: { _score?: number }) => Math.max(m, r._score ?? 0), 0) || 1
+  return rows.map((r: { id: string; text: string; fileName: string; _score?: number }) => ({
+    id: r.id,
+    text: r.text,
+    fileName: r.fileName,
+    score: (r._score ?? 0) / maxScore,
+  }))
+}
+
+/** 向量近邻检索一路 */
+async function vectorSearch(
+  table: lancedb.Table,
+  queryVector: number[],
+  topK: number,
+  scopeFilter?: string,
+): Promise<RankedResult[]> {
+  let query = table.search(queryVector).limit(topK)
+  if (scopeFilter) query = query.where(scopeFilter)
+  const rows = await query.toArray()
+  return rows.map((r: { id: string; text: string; fileName: string; _distance?: number }) => ({
+    id: r.id,
+    text: r.text,
+    fileName: r.fileName,
+    score: r._distance != null ? 1 / (1 + r._distance) : 0.5,
+  }))
+}
+
+/** RRF（倒数排名融合）合并两路排序结果，最终分数按最大值归一化 */
+function fuseByRrf(listA: RankedResult[], listB: RankedResult[], topK: number): SearchResult[] {
+  const K = 60
+  const fused = new Map<string, { result: RankedResult; score: number }>()
+  for (const list of [listA, listB]) {
+    list.forEach((r, rank) => {
+      const gain = 1 / (K + rank + 1)
+      const existing = fused.get(r.id)
+      if (existing) existing.score += gain
+      else fused.set(r.id, { result: r, score: gain })
+    })
+  }
+  const sorted = Array.from(fused.values()).sort((a, b) => b.score - a.score).slice(0, topK)
+  const maxScore = sorted[0]?.score || 1
+  return sorted.map(({ result, score }) => ({
+    text: result.text,
+    fileName: result.fileName,
+    score: score / maxScore,
+  }))
+}
+
+/** 旧逐字 LIKE 兜底（仅当 FTS 不可用：查询短于 2 字或索引异常） */
+async function likeFallbackSearch(
+  table: lancedb.Table,
+  queryText: string,
+  topK: number,
+  scopeFilter?: string,
+): Promise<SearchResult[]> {
+  try {
+    const escapedQuery = queryText.replace(/'/g, "''")
+    const likePattern = `%${escapedQuery.split('').join('%')}%`
+    let q = table.query().filter(`text LIKE '${likePattern}'`).limit(topK)
+    if (scopeFilter) q = q.where(scopeFilter)
+    const results = await q.toArray()
+    return results.map((r: { text: string; fileName: string }) => ({
+      text: r.text,
+      score: 0.5, // 无打分
+      fileName: r.fileName,
+    }))
+  } catch (e) {
+    console.warn('[Vela VectorStore] LIKE 兜底检索失败:', e)
+    return []
+  }
+}
+
 /**
  * 支持章节范围限定的检索入口
+ *
+ * 检索策略：
+ *   - FTS（BM25 · ngram 双字组）与向量近邻各取一路，两路都有结果时用 RRF 融合排序
+ *   - 仅一路可用时直接返回该路（分数分别为归一化 BM25 / 1/(1+距离)）
+ *   - FTS 不可用（查询短于 2 字构不成双字组、或索引异常）时退回旧的逐字 LIKE 兜底；
+ *     FTS 正常返回空则如实返回空——逐字 LIKE 的散字命中是垃圾参考，宁缺毋滥
  *
  * @param queryText 搜索关键词/语句
  * @param queryVector 查询向量（可选，有值时启用混合检索）
@@ -338,48 +515,45 @@ export async function searchWithScope(
       scopeFilter = `chapterNumber >= ${from} AND chapterNumber <= ${to}`
     }
 
-    // 如果有查询向量，先尝试混合检索
+    // 存量库迁移：确保 FTS 索引已按当前分词方案重建
+    try {
+      await ensureFtsIndex(db, projectPath)
+    } catch (e) {
+      console.warn('[Vela VectorStore] FTS 索引迁移失败，本次检索走兜底:', e)
+    }
+
+    const trimmed = (queryText || '').trim()
+
+    // FTS 一路：null 表示"这一路不可用"（区别于合法的空结果）
+    let ftsResults: RankedResult[] | null = null
+    if (trimmed.length >= 2) {
+      try {
+        ftsResults = await ftsSearch(table, trimmed, topK, scopeFilter)
+      } catch (e) {
+        console.warn('[Vela VectorStore] FTS 检索失败，回退 LIKE:', e)
+      }
+    }
+
+    // 向量一路
+    let vecResults: RankedResult[] = []
     if (queryVector && queryVector.length > 0) {
       try {
-        let query = table.search(queryVector).limit(topK)
-        if (scopeFilter) {
-          query = query.where(scopeFilter)
-        }
-        const results = await query.toArray()
-
-        if (results.length > 0) {
-          return results.map((r: { text: string; _distance?: number; fileName: string }) => ({
-            text: r.text,
-            score: r._distance != null ? 1 / (1 + r._distance) : 0.5,
-            fileName: r.fileName,
-          }))
-        }
-      } catch {
-        // 向量检索失败，降级到 FTS
-      }
+        vecResults = await vectorSearch(table, queryVector, topK, scopeFilter)
+      } catch { /* 向量检索失败，走 FTS / 兜底 */ }
     }
 
-    // FTS 检索 (Tantivy 不支持中文分词，改为 DataFusion LIKE 模糊匹配)
-    try {
-      const escapedQuery = queryText.replace(/'/g, "''")
-      // 将 "搜索" 转换为 "%搜%索%" 进行容错匹配
-      const likePattern = `%${escapedQuery.split('').join('%')}%`
-
-      let q = table.query().filter(`text LIKE '${likePattern}'`).limit(topK)
-      if (scopeFilter) {
-        q = q.where(scopeFilter)
-      }
-      const results = await q.toArray()
-
-      return results.map((r: { text: string; fileName: string }) => ({
-        text: r.text,
-        score: 0.5, // 普通匹配无打分
-        fileName: r.fileName,
-      }))
-    } catch (e) {
-      console.warn('[Vela VectorStore] 纯文本检索失败:', e)
-      return []
+    if (ftsResults && ftsResults.length > 0 && vecResults.length > 0) {
+      return fuseByRrf(ftsResults, vecResults, topK)
     }
+    if (vecResults.length > 0) {
+      return vecResults.slice(0, topK).map(({ text, fileName, score }) => ({ text, fileName, score }))
+    }
+    if (ftsResults) {
+      // FTS 可用：即使为空也如实返回，不再用逐字 LIKE 的散字命中充数
+      return ftsResults.slice(0, topK).map(({ text, fileName, score }) => ({ text, fileName, score }))
+    }
+
+    return likeFallbackSearch(table, trimmed, topK, scopeFilter)
   } catch (error) {
     console.error('[Vela VectorStore] 检索失败:', error)
     return []
@@ -550,8 +724,11 @@ export async function updateChunkVectors(
     const existingDim = schemaVectorDim(existingSchema)
     const updateDim = firstVectorDim(updates.map(u => u.vector))
 
-    // 维度一致（或无法判定）时走高效的逐行 update
-    if (hasVectorCol && (existingDim == null || updateDim == null || existingDim === updateDim)) {
+    // 小批量且维度一致（或无法判定）时走逐行 update；
+    // 大批量（全库回填可达数千条）逐行 update 是数千次串行小事务，
+    // 一次性重建反而更快，直接走下方覆写路径
+    const PER_ROW_UPDATE_LIMIT = 200
+    if (hasVectorCol && updates.length <= PER_ROW_UPDATE_LIMIT && (existingDim == null || updateDim == null || existingDim === updateDim)) {
       for (const update of updates) {
         try {
           await table.update({
@@ -590,10 +767,11 @@ export async function updateChunkVectors(
     await db.dropTable(TABLE_NAME)
     await db.createTable(TABLE_NAME, newData, { schema: buildChunkSchema(rebuildDim) })
 
-    // 重建 FTS 索引
+    // 重建 FTS 索引（ngram 中文分词）
     try {
       const newTable = await db.openTable(TABLE_NAME)
-      await newTable.createIndex('text', { config: lancedb.Index.fts() })
+      await newTable.createIndex('text', { config: lancedb.Index.fts(FTS_INDEX_CONFIG) })
+      markFtsCurrent(projectPath)
     } catch (e) {
       console.warn('[Vela VectorStore] 回填覆写后 FTS 重建失败:', e)
     }

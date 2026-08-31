@@ -20,7 +20,9 @@ export default function LeftToolWindowBar() {
   const bottomTab = useLayoutStore(s => s.bottomTab)
   const bottomPanelOpen = useLayoutStore(s => s.bottomPanelOpen)
   const setBottomTab = useLayoutStore(s => s.setBottomTab)
-  const currentRun = useWorkflowStore(s => s.currentRun)
+  // 折叠为布尔订阅：currentRun 对象在流式期间高频换引用，工具条只关心运行/等待状态
+  const hasLiveRun = useWorkflowStore(s => !!s.currentRun && (s.currentRun.status === 'running' || s.currentRun.status === 'waiting'))
+  const isWaitingRun = useWorkflowStore(s => s.currentRun?.status === 'waiting')
 
   // Side bar activities (Home excluded - rendered separately)
   const sidebarActivities: Array<{ id: SidebarView; icon: typeof FolderOpen; label: string }> = [
@@ -99,8 +101,7 @@ export default function LeftToolWindowBar() {
 
         {bottomTabs.map(({ id, icon: Icon, label }) => {
           const isActive = bottomPanelOpen && bottomTab === id
-          const showPulse = id === 'tasks' && currentRun &&
-            (currentRun.status === 'running' || currentRun.status === 'waiting')
+          const showPulse = id === 'tasks' && hasLiveRun
 
           return (
             <div key={id} className="relative w-full">
@@ -119,7 +120,7 @@ export default function LeftToolWindowBar() {
                 <span
                   className="absolute top-[4px] right-[4px] w-[5px] h-[5px] rounded-full animate-pulse pointer-events-none"
                   style={{
-                    backgroundColor: currentRun.status === 'waiting'
+                    backgroundColor: isWaitingRun
                       ? 'var(--color-warning)'
                       : 'var(--color-accent)',
                   }}

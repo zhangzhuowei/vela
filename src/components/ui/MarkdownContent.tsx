@@ -21,6 +21,12 @@ export default function MarkdownContent({ content, streaming }: MarkdownContentP
       {segments.map((seg, i) =>
         seg.type === 'think' ? (
           <ThinkingBlock key={`think-${i}`} content={seg.content} streaming={streaming && i === segments.length - 1} t={t} />
+        ) : streaming ? (
+          // 流式期间纯文本渲染：每个批次对全文做行级+内联 Markdown 解析并重建
+          // 全部节点，开销随回复长度线性增长；格式化留到 streaming 结束后一次完成
+          <p key={`md-plain-${i}`} className="my-0.5 leading-relaxed whitespace-pre-wrap">
+            {seg.content}
+          </p>
         ) : (
           <React.Fragment key={`md-${i}`}>
             {renderLines(seg.content.split('\n'), t)}
