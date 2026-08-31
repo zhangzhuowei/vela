@@ -327,7 +327,7 @@ function ConfigRow({ label, value }: { label: string; value: string }) {
   const { t } = useTranslation('dialogs')
   return (
     <div className="flex items-center gap-1 text-xs">
-      <span style={{ color: 'var(--color-text-muted)' }}>{label}：</span>
+      <span style={{ color: 'var(--color-text-muted)' }}>{label}{t('architectureConfirm.labelSeparator')}</span>
       <span style={{ color: 'var(--color-text)' }}>{value || t('architectureConfirm.emptyConfig')}</span>
     </div>
   )

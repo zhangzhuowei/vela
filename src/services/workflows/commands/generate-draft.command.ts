@@ -14,6 +14,7 @@ import {
   renderCanonContext,
   runConsistencyGate,
 } from '../../narrative-consistency'
+import i18n from '../../../i18n'
 
 export class GenerateDraftCommand extends BaseWorkflowCommand {
 
@@ -23,9 +24,9 @@ export class GenerateDraftCommand extends BaseWorkflowCommand {
 
   async execute({ context, callbacks }: CommandExecuteParams): Promise<string> {
     const project = useProjectStore.getState().currentProject
-    if (!project) throw new Error('未打开项目')
+    if (!project) throw new Error(i18n.t('common.noProject', { ns: 'commands' }))
 
-    callbacks.log('拼装章节上下文 (强类型注入中)...')
+    callbacks.log(i18n.t('generateDraft.assemblingContext', { ns: 'commands' }))
 
     // 核心设定与角色卡各读一次，供架构拼装、Canon 构建、状态档案、口癖上下文复用
     //（原实现同一次写稿中 db:project-core-get 与 db:character-get-all 各要往返 2~3 次）
@@ -44,7 +45,7 @@ export class GenerateDraftCommand extends BaseWorkflowCommand {
         b => b.chapterNumber > this.chapterInfo.chapterNumber && b.chapterNumber <= this.chapterInfo.chapterNumber + 5
       )
       if (futureBlueprintsArr.length > 0) {
-        futureBlueprintsStr = futureBlueprintsArr.map(b => `第${b.chapterNumber}章 ${b.title}：${b.keyEvents}`).join('\n')
+        futureBlueprintsStr = futureBlueprintsArr.map(b => i18n.t('generateDraft.futureBlueprintLine', { ns: 'commands', chapter: b.chapterNumber, title: b.title, events: b.keyEvents })).join('\n')
       }
     } catch { /* 忽略 */ }
 
@@ -74,9 +75,9 @@ export class GenerateDraftCommand extends BaseWorkflowCommand {
         globalGuidance: mergedGuidance,
       })
       canonRendered = renderCanonContext(canonForValidation)
-      callbacks.log(`  🛡️ 已注入 Canon 上下文（时间线 ${canonForValidation.timeline.length} 条 / 角色状态 ${canonForValidation.characterStates.length} 条 / 剧情线 ${canonForValidation.openPlotLines.length} 条）`)
+      callbacks.log(i18n.t('generateDraft.canonContextInjected', { ns: 'commands', timeline: canonForValidation.timeline.length, characters: canonForValidation.characterStates.length, plotLines: canonForValidation.openPlotLines.length }))
     } catch (e) {
-      callbacks.log(`  ⚠️ Canon 上下文构造失败，继续以基础上下文生成：${String(e)}`)
+      callbacks.log(i18n.t('generateDraft.canonContextFailed', { ns: 'commands', error: String(e) }))
     }
     // 目标字数：优先本章覆盖值，其次全局「每章字数」
     const targetWords = Number(this.chapterInfo.wordsTarget) || Number(project.novelConfig.wordsPerChapter) || 0
@@ -85,7 +86,7 @@ export class GenerateDraftCommand extends BaseWorkflowCommand {
     const isFirstChapter = this.chapterInfo.chapterNumber === 1
     const templateKey = isFirstChapter ? 'first_chapter_draft' : 'next_chapter_draft'
     const template = getPromptTemplate(templateKey)
-    if (!template) throw new Error(`未找到模板: ${templateKey}`)
+    if (!template) throw new Error(i18n.t('common.templateNotFound', { ns: 'commands', key: templateKey }))
 
     // ==========================================
     // Prompt 构建——按「稳定前缀 → 可变后缀」排列
@@ -120,18 +121,18 @@ export class GenerateDraftCommand extends BaseWorkflowCommand {
 
       let filteredContext = ''
       try {
-        callbacks.log('  🔍 检索知识库相关片段...')
+        callbacks.log(i18n.t('generateDraft.searchingKB', { ns: 'commands' }))
         let searchQuery = `${this.chapterInfo.title} ${this.chapterInfo.keyEvents} ${this.chapterInfo.characters.join(' ')}`
         if (this.chapterInfo.knowledgeQueryHint?.trim()) {
           searchQuery += ` ${this.chapterInfo.knowledgeQueryHint.trim()}`
-          callbacks.log(`  📌 追加用户检索关键词：${this.chapterInfo.knowledgeQueryHint.trim()}`)
+          callbacks.log(i18n.t('generateDraft.addedKeywords', { ns: 'commands', keywords: this.chapterInfo.knowledgeQueryHint.trim() }))
         }
         const results = await ipc.invoke('kb:search', searchQuery, 5)
         filteredContext = results.length > 0
-          ? results.map((r: { fileName: string; score: number; text: string }, i: number) => `[${i + 1}] (${r.fileName}, 相关度 ${(r.score * 100).toFixed(0)}%)\n${r.text}`).join('\n\n')
-          : '（知识库中无相关内容）'
+          ? results.map((r: { fileName: string; score: number; text: string }, i: number) => i18n.t('generateDraft.kbResultLine', { ns: 'commands', index: i + 1, file: r.fileName, score: (r.score * 100).toFixed(0), text: r.text })).join('\n\n')
+          : i18n.t('generateDraft.kbNoContent', { ns: 'commands' })
       } catch {
-        filteredContext = '（知识库检索不可用）'
+        filteredContext = i18n.t('generateDraft.kbUnavailable', { ns: 'commands' })
       }
 
       const foreshadowText = await this.buildForeshadowingContext(this.chapterInfo.chapterNumber)
@@ -170,10 +171,10 @@ export class GenerateDraftCommand extends BaseWorkflowCommand {
     const estimatedTokens = Math.ceil(prompt.length / 1.5)
     const TOKEN_BUDGET = 28000
     if (estimatedTokens > TOKEN_BUDGET) {
-      callbacks.log(`⚠️ Prompt 预估 ${estimatedTokens} tokens，超出预算 ${TOKEN_BUDGET}，请考虑精简上下文`)
+      callbacks.log(i18n.t('generateDraft.tokenBudgetWarning', { ns: 'commands', tokens: estimatedTokens, budget: TOKEN_BUDGET }))
     }
 
-    callbacks.log('调用 AI 生成章节草稿...')
+    callbacks.log(i18n.t('generateDraft.callingAI', { ns: 'commands' }))
 
     const draftText = await this.callLLMWithBuilder(promptBuilder, callbacks, undefined, undefined, this.modelId)
     let cleanDraftText = this.stripThinkingTags(draftText)
@@ -202,14 +203,14 @@ export class GenerateDraftCommand extends BaseWorkflowCommand {
         })
         callbacks.log(`  🛡️ [Gate] ${gateResult.verdict}: ${gateResult.report}`)
         if (gateResult.verdict === 'BLOCK') {
-          throw new Error(`生成草稿被叙事一致性 Gate 阻止：${gateResult.blockingReasons.join('；')}`)
+          throw new Error(i18n.t('generateDraft.gateBlocked', { ns: 'commands', reasons: gateResult.blockingReasons.join('；') }))
         }
         if (gateResult.verdict === 'REPAIR' && gateResult.repairedContent) {
           finalDraft = gateResult.repairedContent
-          callbacks.log(`  🛡️ [Canon] 自动修复 ${gateResult.repairAttempts} 轮后保存修复稿`)
+          callbacks.log(i18n.t('generateDraft.canonAutoRepair', { ns: 'commands', attempts: gateResult.repairAttempts }))
         }
         if (gateResult.issues.length === 0) {
-          callbacks.log(`  ✅ [Canon] 一致性检查通过`)
+          callbacks.log(i18n.t('generateDraft.canonCheckPassed', { ns: 'commands' }))
         }
         const remaining = gateResult.issues.map(i => i.issue)
         if (remaining.length > 0) context.data.consistencyWarnings = remaining
@@ -220,7 +221,7 @@ export class GenerateDraftCommand extends BaseWorkflowCommand {
           remaining: gateResult.issues.length,
         }
       } catch (e) {
-        callbacks.log(`  ❌ [Canon] Gate 异常：${String(e)}`)
+        callbacks.log(i18n.t('generateDraft.canonGateError', { ns: 'commands', error: String(e) }))
         throw e
       }
     }
@@ -427,7 +428,7 @@ ${result}
       for (const f of mdFiles) {
         const result = await ipc.invoke('fs:read-file', f.path)
         if (result.success && result.content.trim()) {
-          parts.push(`## 项目专属指导（${f.name.replace(/\.md$/, '')}）\n${result.content.trim()}`)
+          parts.push(`${i18n.t('generateDraft.projectGuidanceHeading', { ns: 'commands', name: f.name.replace(/\.md$/, '') })}\n${result.content.trim()}`)
         }
       }
       return parts.join('\n\n')

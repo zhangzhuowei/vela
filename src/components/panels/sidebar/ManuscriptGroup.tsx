@@ -7,6 +7,7 @@ import { ChevronRight, ChevronDown, FileText, FolderOpen, Copy, PenTool } from '
 import { useTranslation } from 'react-i18next'
 import type { FileNode } from '../../../shared/ipc-channels'
 import { ipc } from '../../../services/ipc-client'
+import i18n from '../../../i18n'
 
 import { showSidebarMenu, openChapterFile } from './SidebarShared'
 import WindowedList from '../../ui/WindowedList'
@@ -74,7 +75,10 @@ export default function ManuscriptGroup({ files }: { files: FileNode[]; projectP
         try {
           const bps = await ipc.invoke('db:blueprint-get-all')
           bpTitleByChapter = new Map(
-            (bps || []).filter(b => b?.title).map(b => [b.chapterNumber, `第${b.chapterNumber}章 ${b.title}`])
+            (bps || []).filter(b => b?.title).map(b => [
+              b.chapterNumber,
+              i18n.t('manuscript.chapterFormatWithTitle', { number: b.chapterNumber, title: b.title, ns: 'panels' }),
+            ])
           )
         } catch { /* 蓝图读取失败时全部走正文首行兜底 */ }
 
@@ -83,7 +87,7 @@ export default function ManuscriptGroup({ files }: { files: FileNode[]; projectP
             const rawName = f.name.replace(/\.[^.]+$/, '')
             const chMatch = rawName.match(/^chapter_(\d+)$/)
             const chNum = chMatch ? parseInt(chMatch[1], 10) : undefined
-            const fallback = chNum ? `第${chNum}章` : rawName
+            const fallback = chNum != null ? i18n.t('manuscript.chapterFormat', { number: chNum, ns: 'panels' }) : rawName
             const fromBp = chNum != null ? bpTitleByChapter.get(chNum) : undefined
             if (fromBp) {
               chapterTitleCache.set(f.path, fromBp)
@@ -115,7 +119,7 @@ export default function ManuscriptGroup({ files }: { files: FileNode[]; projectP
     if (titleMap[f.path]) return titleMap[f.path]
     const rawName = f.name.replace(/\.[^.]+$/, '')
     const chMatch = rawName.match(/^chapter_(\d+)$/)
-    return chMatch ? `第${parseInt(chMatch[1], 10)}章` : rawName
+    return chMatch ? i18n.t('manuscript.chapterFormat', { number: parseInt(chMatch[1], 10), ns: 'panels' }) : rawName
   }
 
   // 只显示正文章节（过滤掉旧的 _notes 文件）

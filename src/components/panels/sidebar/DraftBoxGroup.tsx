@@ -71,11 +71,12 @@ export default function DraftBoxGroup({
     (draftsByChapter[n] || []).some(d => d.status !== 'archived')
   ).length
 
-  /** 章节显示名（蓝图标题优先，其次草稿携带的章节标题） */
+  /** 章节显示名（蓝图标题优先，其次草稿携带的章节标题；前缀走 i18n） */
   const displayTitleOf = (chapterNumber: number, drafts: DraftMeta[]): string => {
+    const chapterPrefix = t('manuscript.chapterFormat', { number: chapterNumber })
     const baseTitle = bpTitles[chapterNumber] || drafts[0]?.chapterTitle || ''
-    if (!baseTitle) return `第${chapterNumber}章`
-    return baseTitle.startsWith(`第${chapterNumber}章`) ? baseTitle : `第${chapterNumber}章 ${baseTitle}`
+    if (!baseTitle) return chapterPrefix
+    return baseTitle.startsWith(chapterPrefix) ? baseTitle : `${chapterPrefix} ${baseTitle}`
   }
 
   // 拍平：章节行 + （展开时）活跃草稿行 + 归档切换行 + （显示时）归档草稿行

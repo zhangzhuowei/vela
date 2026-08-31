@@ -3,6 +3,7 @@ import { useLLMStore } from '../../../stores/llm-store'
 import { globalEventBus, EventPayloadMap } from '../../../shared/event-bus'
 import type { BasePromptBuilder } from '../../prompts/prompt-builder'
 import { parseJSONWithRepair } from '../json-repair'
+import i18n from '../../../i18n'
 
 export interface CommandExecuteParams {
   step: unknown
@@ -155,7 +156,7 @@ export abstract class BaseWorkflowCommand<TResult = string> {
     modelId?: string
   ): Promise<string> {
     const llmStore = useLLMStore.getState()
-    if (!modelId && !llmStore.defaultModelId) throw new Error('未配置默认 AI 模型')
+    if (!modelId && !llmStore.defaultModelId) throw new Error(i18n.t('base.noDefaultModel', { ns: 'commands' }))
 
     callbacks.setProgress(10)
 
@@ -175,7 +176,7 @@ export abstract class BaseWorkflowCommand<TResult = string> {
             clearInterval(cancelCheckTimer!)
             cancelCheckTimer = null
             llmStore.cancelGeneration(streamRequestId).catch(() => {})
-            reject(new Error('工作流已取消'))
+            reject(new Error(i18n.t('base.workflowCancelled', { ns: 'commands' })))
           }
         }, 200)
       }
@@ -203,7 +204,7 @@ export abstract class BaseWorkflowCommand<TResult = string> {
             cleanup()
             // 取消后不 resolve，让 reject 生效
             if (context?.cancelled) {
-              reject(new Error('工作流已取消'))
+              reject(new Error(i18n.t('base.workflowCancelled', { ns: 'commands' })))
               return
             }
             this.logCall(effectiveModelId, startedAt, true, usage)
@@ -215,7 +216,7 @@ export abstract class BaseWorkflowCommand<TResult = string> {
           onError: (err) => {
             cleanup()
             this.logCall(effectiveModelId, startedAt, false, undefined, err)
-            reject(new Error(err || '流式生成失败'))
+            reject(new Error(err || i18n.t('base.streamFailed', { ns: 'commands' })))
           }
         },
         modelId,
@@ -226,7 +227,7 @@ export abstract class BaseWorkflowCommand<TResult = string> {
         if (context?.cancelled) {
           llmStore.cancelGeneration(reqId).catch(() => {})
           cleanup()
-          reject(new Error('工作流已取消'))
+          reject(new Error(i18n.t('base.workflowCancelled', { ns: 'commands' })))
         }
       }).catch(err => {
         cleanup()
@@ -278,7 +279,7 @@ export abstract class BaseWorkflowCommand<TResult = string> {
       
       return parseJSONWithRepair<T>(cleanText)
     } catch {
-      throw new Error(`AI 返回的数据格式乱码，无法解析为有效层级结构。尝试解析内容末端: ${text.slice(-100)}`)
+      throw new Error(i18n.t('base.jsonParseError', { ns: 'commands', tail: text.slice(-100) }))
     }
   }
 

@@ -425,7 +425,7 @@ export const useWorkflowStore = create<WorkflowState>()((set, get) => ({
   },
 
   addLog: (level, message) => {
-    const entry = { time: new Date().toLocaleTimeString('zh-CN'), level, message }
+    const entry = { time: new Date().toLocaleTimeString(i18n.language), level, message }
     set((s) => ({
       globalLogs: [...s.globalLogs, entry].slice(-500), // 保留最近 500 条
     }))
@@ -481,7 +481,7 @@ function appendStepLogById(
       const steps = [...r.steps]
       steps[stepIndex] = {
         ...steps[stepIndex],
-        logs: [...steps[stepIndex].logs, `[${new Date().toLocaleTimeString('zh-CN')}] ${message}`],
+        logs: [...steps[stepIndex].logs, `[${new Date().toLocaleTimeString(i18n.language)}] ${message}`],
       }
       return { ...r, steps }
     })

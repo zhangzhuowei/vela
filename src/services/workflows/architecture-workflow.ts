@@ -5,6 +5,7 @@ import { getPromptTemplate } from '../prompt-templates'
 import { ipc } from '../ipc-client'
 import type { NovelConfig } from '../../shared/ipc-channels'
 import type { CharacterData } from '../../../electron/repositories/character-repository'
+import i18n from '../../i18n'
 
 import { runPostProcessPipeline, type PostProcessStep, stripThinkingTags, mergePreservedCharacterAssets } from './workflow-utils'
 import { parseJSONLenient } from './json-repair'
@@ -126,6 +127,8 @@ async function extractCardsFromChunk(
   return { cards, truncated }
 }
 
+const t = (key: string, opts?: Record<string, unknown>) => i18n.t(key, { ns: 'commands', ...opts })
+
 // ==========================================
 // 1. 类型定义
 // ==========================================
@@ -157,15 +160,15 @@ export interface ConfigGenerationWorkflowParams {
 
 export function createArchitectureWorkflow(params: ArchitectureWorkflowParams = {}): WorkflowDefinition {
   const sel = params.selectedSteps ?? ['premise', 'characters', 'worldbuilding', 'synopsis']
-  const stepDesc = (key: string, defaultDesc: string) => sel.includes(key as never) ? defaultDesc : `（跳过，保留已有内容）`
+  const stepDesc = (key: string, defaultKey: string) => sel.includes(key as never) ? t(defaultKey) : t('workflowDefs.stepSkipDesc')
   // 闭包捕获逐步指导，executor 中注入到 context.data
   const guidance = params.stepGuidance || {}
 
   const allSteps = [
     {
-      name: '故事前提',
+      name: t('workflowDefs.stepPremise'),
       key: 'premise',
-      description: stepDesc('premise', '提炼故事前提与核心卖点'),
+      description: stepDesc('premise', 'workflowDefs.stepPremiseDesc'),
       executor: async (step: unknown, context: WorkflowContext, callbacks: StepCallbacks) => {
         context.data.stepGuidance = guidance
         const { GenerateCoreSeedCommand } = await import('./commands/architecture.command')
@@ -173,9 +176,9 @@ export function createArchitectureWorkflow(params: ArchitectureWorkflowParams = 
       },
     },
     {
-      name: '角色图谱',
+      name: t('workflowDefs.stepCharacters'),
       key: 'characters',
-      description: stepDesc('characters', '构建核心角色关系网与角色弧光'),
+      description: stepDesc('characters', 'workflowDefs.stepCharactersDesc'),
       executor: async (step: unknown, context: WorkflowContext, callbacks: StepCallbacks) => {
         context.data.stepGuidance = guidance
         const { GenerateCharactersCommand } = await import('./commands/architecture.command')
@@ -183,9 +186,9 @@ export function createArchitectureWorkflow(params: ArchitectureWorkflowParams = 
       },
     },
     {
-      name: '世界观',
+      name: t('workflowDefs.stepWorldbuilding'),
       key: 'worldbuilding',
-      description: stepDesc('worldbuilding', '构建自带冲突引擎的世界观矩阵'),
+      description: stepDesc('worldbuilding', 'workflowDefs.stepWorldbuildingDesc'),
       executor: async (step: unknown, context: WorkflowContext, callbacks: StepCallbacks) => {
         context.data.stepGuidance = guidance
         const { GenerateWorldBuildingCommand } = await import('./commands/architecture.command')
@@ -193,9 +196,9 @@ export function createArchitectureWorkflow(params: ArchitectureWorkflowParams = 
       },
     },
     {
-      name: '情节大纲',
+      name: t('workflowDefs.stepSynopsis'),
       key: 'synopsis',
-      description: stepDesc('synopsis', '整合所有碎片，按选定结构模式生成情节大纲'),
+      description: stepDesc('synopsis', 'workflowDefs.stepSynopsisDesc'),
       executor: async (step: unknown, context: WorkflowContext, callbacks: StepCallbacks) => {
         context.data.stepGuidance = guidance
         const { GeneratePlotArchitectureCommand } = await import('./commands/architecture.command')
@@ -208,20 +211,20 @@ export function createArchitectureWorkflow(params: ArchitectureWorkflowParams = 
 
   return {
     type: 'architecture_generation',
-    title: '🏗️ 生成故事架构',
+    title: t('workflowDefs.architectureTitle'),
     steps: finalSteps,
-    onComplete: { mode: 'silent', message: '🏗️ 故事架构已生成完成！前往侧边栏「故事架构」查看' },
+    onComplete: { mode: 'silent', message: t('workflowDefs.architectureCompletedMessage') },
   }
 }
 
 export function createConfigGenerationWorkflow(params: ConfigGenerationWorkflowParams): WorkflowDefinition {
   return {
     type: 'config_generation',
-    title: '🧠 AI 生成小说配置',
+    title: t('workflowDefs.configGenTitle'),
     steps: [
       {
-        name: '智能分析并填充配置',
-        description: `根据创作脑洞生成小说配置（全书规划约 ${params.totalChapters} 章）`,
+        name: t('workflowDefs.configGenStepName'),
+        description: t('workflowDefs.configGenStepDesc', { chapters: params.totalChapters }),
         executor: async (step, context, callbacks) => {
           const { GenerateConfigCommand } = await import('./commands/architecture.command')
           const cmd = new GenerateConfigCommand(params.idea, params.totalChapters, params.wordsPerChapter, params.onGenerated)
@@ -229,7 +232,7 @@ export function createConfigGenerationWorkflow(params: ConfigGenerationWorkflowP
         },
       },
     ],
-    onComplete: { mode: 'silent', message: '✅ 小说配置已自动生成完毕，请查阅确认。' },
+    onComplete: { mode: 'silent', message: t('workflowDefs.configGenCompleted') },
   }
 }
 
@@ -245,49 +248,33 @@ export function getPlotStructureGuide(structure: string, totalChapters: number):
 
   switch (structure) {
     case 'heros_journey':
-      return `【英雄之旅·十二阶段】（严格按以下阶段组织大纲）\n建议章节分配：全书共 ${totalChapters} 章...` // 为了简洁截断，后台已由架构掌控
+      return t('workflowDefs.guideHerosJourney', { total: totalChapters })
     case 'save_the_cat':
-      return `【节拍表·十五拍】（严格按以下节拍组织大纲）\n建议章节分配：全书共 ${totalChapters} 章...`
+      return t('workflowDefs.guideSaveTheCat', { total: totalChapters })
     case 'kishotenketsu':
-      return `【起承转合·四段式】（严格按以下四段组织大纲）
-建议章节分配：全书共 ${totalChapters} 章
-起（约第1章~第${ch25}章，占总篇幅约25%）：介绍世界、角色和日常，建立读者认同
-承（约第${ch25 + 1}章~第${ch50}章，占总篇幅约25%）：延续与深化，展现角色关系和冲突苗头
-转（约第${ch50 + 1}章~第${ch75}章，占总篇幅约25%）：核心转折，出人意料的变化打破既有格局
-合（约第${ch75 + 1}章~第${totalChapters}章，占总篇幅约25%）：收束所有线索，揭示主题，给出结局`
+      return t('workflowDefs.guideKishotenketsu', {
+        total: totalChapters, ch25, ch25Next: ch25 + 1,
+        ch50, ch50Next: ch50 + 1, ch75, ch75Next: ch75 + 1,
+      })
     case 'multi_thread':
-      return `【多线叙事】（按多条故事线并行推进的方式组织大纲）
-建议章节分配：全书共 ${totalChapters} 章
-需要明确以下要素：
-1. 主线数量：设定2-4条独立又交织的故事线，每条有独立主角或视角
-2. 交汇节点：每条线在第${ch25}章、第${ch50}章、第${ch75}章左右安排交汇碰撞
-3. 节奏编排：各线交替出现的节奏，避免某条线长期消失
-4. 最终合流：在第${ch75}章前后所有线索开始汇聚，走向统一高潮`
+      return t('workflowDefs.guideMultiThread', { total: totalChapters, ch25, ch50, ch75 })
     case 'freeform':
-      return `【自由结构】（不限定特定叙事框架，根据故事内容自然编排）
-全书共 ${totalChapters} 章。
-请根据故事类型和内容特点自行设计最合适的叙事节奏。
-核心原则：
-1. 保证每10-20章有一个小高潮或悬念释放点
-2. 全书应有清晰的开篇建置（前10-15%）和收尾段落（后10-15%）
-3. 中段避免节奏单一，适时安排转折点
-4. 允许插叙、倒叙、片段式叙事等灵活手法`
+      return t('workflowDefs.guideFreeform', { total: totalChapters })
     case 'three_act':
     default:
-      return `【三幕结构】（严格按以下结构组织大纲）
-建议章节分配：全书共 ${totalChapters} 章
-第一幕：建置（约第1章~第${ch20}章，占总篇幅约20%）
-第二幕：对抗与发展（约第${ch20 + 1}章~第${ch75}章，占总篇幅约55%）
-第三幕：高潮与结局（约第${ch75 + 1}章~第${totalChapters}章，占总篇幅约25%）`
+      return t('workflowDefs.guideThreeAct', {
+        total: totalChapters, ch20, ch20Next: ch20 + 1,
+        ch75, ch75Next: ch75 + 1,
+      })
   }
 }
 
 export function getNarrativePOVLabel(pov: string): string {
   const labels: Record<string, string> = {
-    first_person: '第一人称',
-    third_limited: '第三人称有限视角',
-    third_omniscient: '第三人称全知视角',
-    multi_pov: '多视角轮换',
+    first_person: t('workflowDefs.povFirstPerson'),
+    third_limited: t('workflowDefs.povThirdLimited'),
+    third_omniscient: t('workflowDefs.povThirdOmniscient'),
+    multi_pov: t('workflowDefs.povMultiPov'),
   }
   return labels[pov] || pov
 }
@@ -302,7 +289,7 @@ export function createCharacterExtractSteps(_projectPath: string, characterDynam
   return [
     {
       key: 'extract_character_cards',
-      label: '📇 提取初始角色卡',
+      label: t('workflowDefs.charExtractLabel'),
       critical: true,
       executor: async (cb) => {
         // 角色图谱可能包含数十个角色，一次性要求 LLM 输出全部 JSON 必然撞上单次输出上限
@@ -371,14 +358,14 @@ export function runArchCharacterExtract(projectPath: string, characterDynamicsCo
   import('../../stores/workflow-store').then(async ({ useWorkflowStore }) => {
     await useWorkflowStore.getState().startWorkflow({
       type: 'post_process',
-      title: '📋 后处理：角色卡提取',
+      title: t('workflowDefs.charExtractTitle'),
       steps: [
         {
-          name: '提取角色卡片',
-          description: '从角色图谱中提取并生成角色卡片数据',
+          name: t('workflowDefs.charExtractStepName'),
+          description: t('workflowDefs.charExtractStepDesc'),
           executor: async (_step, _ctx, callbacks) => {
             const { globalEventBus } = await import('../../shared/event-bus')
-            const archStatus = await runPostProcessPipeline(projectPath, ARCH_CHARACTER_SCOPE, '架构-角色图谱', steps, callbacks)
+            const archStatus = await runPostProcessPipeline(projectPath, ARCH_CHARACTER_SCOPE, t('workflowDefs.sourceLabelArchCharacters'), steps, callbacks)
             if (archStatus.allCriticalPassed) {
               // 角色卡提取成功 → 通过 EventBus 通知 ProjectService 刷新
               globalEventBus.emit('ARCH_POSTPROCESS_UPDATED', {})
@@ -398,20 +385,20 @@ export function runArchCharacterExtract(projectPath: string, characterDynamicsCo
 
 export async function repairArchCharacterCards(projectPath: string): Promise<void> {
   const core = await ipc.invoke('db:project-core-get')
-  if (!core?.charactersArch || core.charactersArch.length < 50) throw new Error('无法提取角色卡')
+  if (!core?.charactersArch || core.charactersArch.length < 50) throw new Error(t('workflowDefs.charExtractFailed'))
 
   const project = useProjectStore.getState().currentProject
-  if (!project) throw new Error('未打开项目')
+  if (!project) throw new Error(t('common.noProject'))
 
   const steps = createCharacterExtractSteps(projectPath, core.charactersArch, project.novelConfig.genre)
   const { useWorkflowStore } = await import('../../stores/workflow-store')
   await useWorkflowStore.getState().startWorkflow({
     type: 'post_process',
-    title: '🔧 修复：角色卡提取',
+    title: t('workflowDefs.charRepairTitle'),
     steps: [
       {
-        name: '重试角色卡提取',
-        description: '重试失败的角色卡提取步骤',
+        name: t('workflowDefs.charRepairStepName'),
+        description: t('workflowDefs.charRepairStepDesc'),
         executor: async (_step, _ctx, callbacks) => {
           const { globalEventBus } = await import('../../shared/event-bus')
           const archStatus = await runPostProcessPipeline(projectPath, ARCH_CHARACTER_SCOPE, '架构-角色图谱', steps, callbacks, { onlyFailed: true })

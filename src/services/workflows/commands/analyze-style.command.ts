@@ -3,6 +3,9 @@ import { useProjectStore } from '../../../stores/project-store'
 import { getPromptTemplate } from '../../prompt-templates'
 import { BasePromptBuilder } from '../../prompts/prompt-builder'
 import { ipc } from '../../ipc-client'
+import i18n from '../../../i18n'
+
+const t = (key: string, opts?: Record<string, unknown>) => i18n.t(key, { ns: 'commands', ...opts })
 
 
 /**
@@ -22,7 +25,7 @@ export class AnalyzeWritingStyleCommand extends BaseWorkflowCommand<string> {
 
   async execute({ callbacks }: CommandExecuteParams): Promise<string> {
     const project = useProjectStore.getState().currentProject
-    if (!project) throw new Error('未打开项目')
+    if (!project) throw new Error(t('common.noProject'))
 
     let sampleText = ''
 
@@ -32,7 +35,7 @@ export class AnalyzeWritingStyleCommand extends BaseWorkflowCommand<string> {
       sampleText = this.sampleText.trim().slice(0, 12000)
     } else {
       // 来源 B：采样本项目最近 5 章定稿正文
-      callbacks.log('📖 正在采样已有章节正文...')
+      callbacks.log(t('analyzeStyle.samplingChapters'))
       const sampleTexts: string[] = []
       try {
         const maxChap = await ipc.invoke('db:draft-get-max-finalized-chapter')
@@ -51,28 +54,28 @@ export class AnalyzeWritingStyleCommand extends BaseWorkflowCommand<string> {
             }
           }
         }
-        callbacks.log(`  已采样 ${sampleTexts.length} 章正文`)
+        callbacks.log(t('analyzeStyle.sampledChapters', { count: sampleTexts.length }))
       } catch {
-        callbacks.log('⚠️ 提取定稿内容失败')
+        callbacks.log(t('analyzeStyle.extractFailed'))
         return ''
       }
 
       if (sampleTexts.length === 0) {
-        callbacks.log('⚠️ 采样文本为空，跳过文风分析')
+        callbacks.log(t('analyzeStyle.emptySample'))
         return ''
       }
       sampleText = sampleTexts.join('\n\n---\n\n')
     }
 
     const template = getPromptTemplate('analyze_writing_style')
-    if (!template) throw new Error('未找到文风分析模板')
+    if (!template) throw new Error(t('analyzeStyle.templateNotFound'))
 
     const prompt = new BasePromptBuilder(template)
       // 使用 protected variables 需要通过子类或反射，这里在 build 前手动设置
       ; (prompt as unknown as { variables: { sample_text: string } }).variables = { sample_text: sampleText }
     const finalPrompt = prompt.build()
 
-    callbacks.log('🎨 调用 AI 提炼文风特征...')
+    callbacks.log(t('analyzeStyle.callingAI'))
     const result = await this.callLLM(
       finalPrompt,
       template.systemRole || '你是一位资深的文学评论家和网文研究者。',
@@ -81,7 +84,7 @@ export class AnalyzeWritingStyleCommand extends BaseWorkflowCommand<string> {
 
     const cleanResult = this.stripThinkingTags(result).trim()
     if (!cleanResult) {
-      callbacks.log('⚠️ 文风分析返回空结果')
+      callbacks.log(t('analyzeStyle.emptyResult'))
       return ''
     }
 
@@ -89,7 +92,7 @@ export class AnalyzeWritingStyleCommand extends BaseWorkflowCommand<string> {
     const { updateNovelConfig, saveProject } = useProjectStore.getState()
     updateNovelConfig({ styleReference: cleanResult })
     await saveProject()
-    callbacks.log('✅ 文风指纹已保存（写稿时会自动注入）')
+    callbacks.log(t('analyzeStyle.saved'))
 
     return cleanResult
   }
