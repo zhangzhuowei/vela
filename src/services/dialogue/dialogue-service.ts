@@ -197,12 +197,24 @@ export async function generateTurn(params: {
   })
 }
 
-/** 收场蒸馏：返回草稿文本，不落库（由调用方确认后 commitScene） */
+export type DistillCallbacks = {
+  onChunk: (chunk: string) => void
+  onDone: (draft: string) => void
+  onError: (error: string) => void
+}
+
+/**
+ * 收场蒸馏（流式）：返回 requestId 供取消；草稿经 onDone 交付，不落库
+ * （由调用方确认后 commitScene）。modelId 缺省用默认生成模型。
+ */
 export async function distillScene(params: {
   scene: SceneData
   chapterTitle: string
   chapterGoal: string
+  modelId?: string
+  callbacks: DistillCallbacks
 }): Promise<string> {
+  const { callbacks } = params
   const turns = await ipc.invoke('db:scene-turn-list', params.scene.id)
   if (turns.length === 0) throw new Error('本场还没有对话，不能收场')
   const references = await retrieveReferences(
@@ -220,17 +232,34 @@ export async function distillScene(params: {
     turns: turns.map((t) => ({ role: t.role, content: t.content })),
     references,
   })
-  const res = await useLLMStore.getState().generate(messages)
-  if (!res.success) throw new Error(res.error || '蒸馏失败')
-  const { prose } = splitProseAndState(res.content)
-  if (!prose.trim()) throw new Error('蒸馏没有写出正文')
-  return prose.trim()
+  return useLLMStore.getState().generateStream(
+    messages,
+    {
+      onChunk: callbacks.onChunk,
+      onDone: (fullText) => {
+        const { prose } = splitProseAndState(fullText)
+        if (!prose.trim()) {
+          callbacks.onError('蒸馏没有写出正文')
+          return
+        }
+        callbacks.onDone(prose.trim())
+      },
+      onError: callbacks.onError,
+    },
+    params.modelId
+  )
 }
 
 /** 收场落盘 */
 export async function commitScene(sceneId: number, body: string): Promise<void> {
   const res = await ipc.invoke('db:scene-commit', sceneId, body)
   if (!res.success) throw new Error(res.error || '收场失败')
+}
+
+/** 汇稿预览：拼接本章全部已收场正文，只读不落库 */
+export async function previewChapterBody(chapterNumber: number): Promise<string> {
+  const scenes = await ipc.invoke('db:scene-list', chapterNumber)
+  return assembleChapterBody(scenes)
 }
 
 /** 汇稿：本章全部已收场正文拼接后写入草稿箱，返回新草稿 id */

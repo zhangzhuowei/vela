@@ -8,6 +8,7 @@
  * 生效优先级（模板解析）：项目自定义 > 全局自定义 > 启用的 Mod > 内置。
  */
 import { ipc } from './ipc-client'
+import { randomUUID } from '../utils/id'
 
 export interface WritingMod {
   id: string
@@ -308,6 +309,67 @@ export async function rollbackMod(id: string, toVersion: number): Promise<Writin
   return saveMod({
     ...target.snapshot,
     id,
+  })
+}
+
+// ===== 导入 / 导出 =====
+
+/** 导出为可分享的 JSON 文本（不带本机版本历史） */
+export function exportModToJson(mod: WritingMod): string {
+  return JSON.stringify(
+    {
+      // 标记文件类型，导入侧校验用
+      kind: 'vela-mod',
+      name: mod.name,
+      description: mod.description,
+      templates: mod.templates,
+      guidanceAppend: mod.guidanceAppend,
+      tags: mod.tags ?? [],
+    },
+    null,
+    2
+  )
+}
+
+/** 解析导入 JSON（纯函数可测）：宽松归一，name 必须存在 */
+export function parseModImport(
+  json: string
+): Pick<WritingMod, 'name' | 'description' | 'templates' | 'guidanceAppend' | 'tags'> | null {
+  try {
+    const raw = JSON.parse(json)
+    if (!raw || typeof raw !== 'object') return null
+    const name = String(raw.name ?? '').trim()
+    if (!name) return null
+    const templates: Record<string, string> = {}
+    if (raw.templates && typeof raw.templates === 'object' && !Array.isArray(raw.templates)) {
+      for (const [k, v] of Object.entries(raw.templates)) {
+        if (typeof v === 'string' && v.trim()) templates[k] = v
+      }
+    }
+    const tags = Array.isArray(raw.tags)
+      ? raw.tags.filter((t: unknown): t is string => typeof t === 'string' && t.trim() !== '')
+      : []
+    return {
+      name,
+      description: String(raw.description ?? ''),
+      templates,
+      guidanceAppend: typeof raw.guidanceAppend === 'string' ? raw.guidanceAppend : '',
+      tags,
+    }
+  } catch {
+    return null
+  }
+}
+
+/** 导入 Mod：始终新建（新 id、v1），避免覆盖本机同名 Mod */
+export async function importModFromJson(json: string): Promise<WritingMod | null> {
+  const parsed = parseModImport(json)
+  if (!parsed) return null
+  const nameTaken = listMods().some((m) => m.name === parsed.name)
+  return saveMod({
+    id: randomUUID(),
+    ...parsed,
+    name: nameTaken ? `${parsed.name}（导入）` : parsed.name,
   })
 }
 

@@ -48,6 +48,12 @@
     "generating": "生成中…",
     "sceneGoal": "场目标",
     "stop": "停止",
+    "distillModelDefault": "蒸馏：默认模型",
+    "distillModelTooltip": "收场蒸馏单独用哪个模型（比如控场用便宜模型、蒸馏用好模型）",
+    "quickDirectives": ["继续推进", "加深情绪", "放慢节奏", "切换场景", "收束本场"],
+    "assemblePreviewTitle": "汇稿预览",
+    "assemblePreviewStats": "{{scenes}} 场 · 约 {{words}} 字",
+    "assembleConfirm": "确认汇入草稿箱",
     "undoTurn": "撤回上一轮",
     "undoTurnTooltip": "删除本场最后一条记录（角色状态不回滚，可在右侧手动修正）",
     "stateEditHint": "可直接修改，失焦自动保存"

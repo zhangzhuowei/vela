@@ -48,6 +48,12 @@
     "generating": "Generating…",
     "sceneGoal": "Scene goal",
     "stop": "Stop",
+    "distillModelDefault": "Distill: default model",
+    "distillModelTooltip": "Model used for scene distillation (e.g. cheap model for directing, strong model for distilling)",
+    "quickDirectives": ["Push forward", "Deepen emotion", "Slow down", "Change scene", "Wrap up scene"],
+    "assemblePreviewTitle": "Assembly preview",
+    "assemblePreviewStats": "{{scenes}} scenes · ~{{words}} chars",
+    "assembleConfirm": "Confirm to draft box",
     "undoTurn": "Undo last turn",
     "undoTurnTooltip": "Delete the last record of this scene (states are not rolled back; edit them on the right)",
     "stateEditHint": "Editable — saves on blur"

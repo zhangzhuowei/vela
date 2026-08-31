@@ -15,7 +15,9 @@ import {
   commitScene,
   distillScene,
   generateTurn,
+  previewChapterBody,
 } from '../../services/dialogue/dialogue-service'
+import { NativeSelect } from '../ui/NativeSelect'
 import { Button } from '../ui/Button'
 import { Input } from '../ui/Input'
 import type { SceneData, SceneTurnData } from '../../../electron/repositories/scene-repository'
@@ -39,6 +41,11 @@ export default function DialogueEditor({ chapterNumber }: { chapterNumber: numbe
   const [notice, setNotice] = useState('')
   const [goalDraft, setGoalDraft] = useState('')
   const [activeRequestId, setActiveRequestId] = useState<string | null>(null)
+  // 蒸馏专用模型（'' = 跟随默认生成模型），本机记忆
+  const [distillModelId, setDistillModelId] = useState(() => localStorage.getItem('vela-distill-model') ?? '')
+  const llmModels = useLLMStore((s) => s.models)
+  // 汇稿预览（非 null 时显示确认弹层）
+  const [assemblePreview, setAssemblePreview] = useState<string | null>(null)
   const scrollRef = useRef<HTMLDivElement>(null)
 
   const scene = scenes.find((s) => s.id === sceneId) ?? null
@@ -141,6 +148,40 @@ export default function DialogueEditor({ chapterNumber }: { chapterNumber: numbe
     if (activeRequestId) void useLLMStore.getState().cancelGeneration(activeRequestId)
   }
 
+  // 蒸馏（流式）：草稿区实时增长，完成后替换为剥离状态块的干净稿
+  const handleDistill = () => {
+    if (!scene) return
+    setBusy(true)
+    setError('')
+    setDistillDraft('')
+    void distillScene({
+      scene,
+      chapterTitle,
+      chapterGoal,
+      modelId: distillModelId || undefined,
+      callbacks: {
+        onChunk: (chunk) => setDistillDraft((prev) => (prev ?? '') + chunk),
+        onDone: (draft) => {
+          setDistillDraft(draft)
+          setBusy(false)
+          setActiveRequestId(null)
+        },
+        onError: (msg) => {
+          setDistillDraft(null)
+          setError(msg)
+          setBusy(false)
+          setActiveRequestId(null)
+        },
+      },
+    })
+      .then((requestId) => setActiveRequestId(requestId || null))
+      .catch((err) => {
+        setDistillDraft(null)
+        setError(err instanceof Error ? err.message : String(err))
+        setBusy(false)
+      })
+  }
+
   const handleUndoTurn = () => {
     if (!scene || turns.length === 0) return
     void run(async () => {
@@ -234,8 +275,7 @@ export default function DialogueEditor({ chapterNumber }: { chapterNumber: numbe
             title={t('dialogue.assembleTooltip')}
             onClick={() =>
               void run(async () => {
-                await assembleToDraft(chapterNumber)
-                setNotice(t('dialogue.assembleDone'))
+                setAssemblePreview(await previewChapterBody(chapterNumber))
               })
             }
           >
@@ -327,6 +367,7 @@ export default function DialogueEditor({ chapterNumber }: { chapterNumber: numbe
                     className="config-input h-48"
                     style={{ fontFamily: 'var(--font-writing)', fontSize: 13, lineHeight: 1.7 }}
                     value={distillDraft}
+                    disabled={busy}
                     onChange={(e) => setDistillDraft(e.target.value)}
                   />
                 </div>
@@ -349,6 +390,26 @@ export default function DialogueEditor({ chapterNumber }: { chapterNumber: numbe
               )}
             </div>
             <div className="space-y-2 p-3" style={{ borderTop: '1px solid var(--color-border)' }}>
+              {/* 控场快捷板：点击填入输入框，可继续编辑 */}
+              {scene.status === 'open' && (
+                <div className="flex flex-wrap gap-1.5">
+                  {(t('dialogue.quickDirectives', { returnObjects: true }) as string[]).map((preset) => (
+                    <button
+                      key={preset}
+                      className="rounded-full px-2.5 py-1 text-[0.68rem] transition-colors hover:bg-[var(--color-accent)] hover:text-white"
+                      style={{
+                        border: '1px solid var(--color-border)',
+                        backgroundColor: 'var(--color-hover)',
+                        color: 'var(--color-text-secondary)',
+                      }}
+                      disabled={busy}
+                      onClick={() => setInput((prev) => (prev.trim() ? `${prev} ${preset}` : preset))}
+                    >
+                      {preset}
+                    </button>
+                  ))}
+                </div>
+              )}
               <textarea
                 className="config-input h-16"
                 placeholder={t('dialogue.inputPlaceholder')}
@@ -392,18 +453,34 @@ export default function DialogueEditor({ chapterNumber }: { chapterNumber: numbe
                   <Undo2 size={12} /> {t('dialogue.undoTurn')}
                 </Button>
                 {scene.status === 'open' && distillDraft === null && (
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    disabled={busy || turns.length === 0}
-                    onClick={() =>
-                      void run(async () => {
-                        setDistillDraft(await distillScene({ scene, chapterTitle, chapterGoal }))
-                      })
-                    }
-                  >
-                    {t('dialogue.distill')}
-                  </Button>
+                  <>
+                    <NativeSelect
+                      className="w-36"
+                      title={t('dialogue.distillModelTooltip')}
+                      value={distillModelId}
+                      onChange={(e) => {
+                        setDistillModelId(e.target.value)
+                        localStorage.setItem('vela-distill-model', e.target.value)
+                      }}
+                    >
+                      <option value="">{t('dialogue.distillModelDefault')}</option>
+                      {llmModels
+                        .filter((m) => m.purposes.some((p) => p === 'generation' || p === 'refinement'))
+                        .map((m) => (
+                          <option key={m.id} value={m.id}>
+                            {m.name}
+                          </option>
+                        ))}
+                    </NativeSelect>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      disabled={busy || turns.length === 0}
+                      onClick={handleDistill}
+                    >
+                      {t('dialogue.distill')}
+                    </Button>
+                  </>
                 )}
                 {scene.status === 'open' && distillDraft !== null && (
                   <>
@@ -421,16 +498,7 @@ export default function DialogueEditor({ chapterNumber }: { chapterNumber: numbe
                     >
                       {t('dialogue.commit')}
                     </Button>
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      disabled={busy}
-                      onClick={() =>
-                        void run(async () => {
-                          setDistillDraft(await distillScene({ scene, chapterTitle, chapterGoal }))
-                        })
-                      }
-                    >
+                    <Button variant="outline" size="sm" disabled={busy} onClick={handleDistill}>
                       {t('dialogue.redistill')}
                     </Button>
                     <Button variant="ghost" size="sm" disabled={busy} onClick={() => setDistillDraft(null)}>
@@ -508,6 +576,61 @@ export default function DialogueEditor({ chapterNumber }: { chapterNumber: numbe
           ))}
         </div>
       </aside>
+
+      {/* 汇稿预览确认弹层 */}
+      {assemblePreview !== null && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center p-8"
+          style={{ backgroundColor: 'var(--color-backdrop)', backdropFilter: 'blur(4px)' }}
+          onClick={(e) => e.target === e.currentTarget && setAssemblePreview(null)}
+        >
+          <div
+            className="flex max-h-[85vh] w-full max-w-2xl flex-col overflow-hidden rounded-2xl"
+            style={{ backgroundColor: 'var(--color-bg)', border: '1px solid var(--color-border)' }}
+          >
+            <div
+              className="flex items-center justify-between px-5 py-3"
+              style={{ borderBottom: '1px solid var(--color-border)' }}
+            >
+              <span className="text-sm font-semibold">{t('dialogue.assemblePreviewTitle')}</span>
+              <span className="text-xs" style={{ color: 'var(--color-text-muted)' }}>
+                {t('dialogue.assemblePreviewStats', {
+                  scenes: scenes.filter((s) => s.status === 'distilled').length,
+                  words: assemblePreview.replace(/\s/g, '').length,
+                })}
+              </span>
+            </div>
+            <div
+              className="min-h-0 flex-1 overflow-y-auto whitespace-pre-wrap px-6 py-4 text-sm leading-7"
+              style={{ fontFamily: 'var(--font-writing)' }}
+            >
+              {assemblePreview}
+            </div>
+            <div
+              className="flex items-center justify-end gap-2 px-5 py-3"
+              style={{ borderTop: '1px solid var(--color-border)' }}
+            >
+              <Button variant="ghost" size="sm" disabled={busy} onClick={() => setAssemblePreview(null)}>
+                {t('dialogue.cancelPreview')}
+              </Button>
+              <Button
+                variant="ai"
+                size="sm"
+                disabled={busy}
+                onClick={() =>
+                  void run(async () => {
+                    await assembleToDraft(chapterNumber)
+                    setAssemblePreview(null)
+                    setNotice(t('dialogue.assembleDone'))
+                  })
+                }
+              >
+                {t('dialogue.assembleConfirm')}
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }

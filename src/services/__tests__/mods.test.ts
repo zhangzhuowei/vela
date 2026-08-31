@@ -1,9 +1,11 @@
 import { describe, expect, it } from 'vitest'
 import {
   collectTags,
+  exportModToJson,
   filterModsByTag,
   mergeModGuidance,
   normalizeEnabledEntries,
+  parseModImport,
   pickModSnapshot,
   resolveModTemplate,
   type ModVersion,
@@ -99,6 +101,41 @@ describe('mod enable entries and version pinning', () => {
     // 钉住的版本在历史里找不到时回退当前版
     expect(pickModSnapshot({ id: 'a', version: 99 }, current, history)?.guidanceAppend).toBe('v3内容')
     expect(pickModSnapshot({ id: 'a', version: 2 }, undefined, history)).toBeUndefined()
+  })
+})
+
+describe('mod import/export', () => {
+  it('round-trips export → import parse', () => {
+    const source = mod('x', {
+      name: '破甲向',
+      description: '尺度规则',
+      templates: { dialogue_scene: '覆盖内容' },
+      guidanceAppend: '【破甲写法】…',
+      tags: ['尺度'],
+    })
+    const parsed = parseModImport(exportModToJson(source))
+    expect(parsed).toEqual({
+      name: '破甲向',
+      description: '尺度规则',
+      templates: { dialogue_scene: '覆盖内容' },
+      guidanceAppend: '【破甲写法】…',
+      tags: ['尺度'],
+    })
+  })
+
+  it('rejects invalid payloads and normalizes junk fields', () => {
+    expect(parseModImport('not json')).toBeNull()
+    expect(parseModImport('{"description":"没有名字"}')).toBeNull()
+    const parsed = parseModImport(
+      JSON.stringify({ name: ' N ', templates: { a: '', b: 'ok', c: 42 }, tags: ['t', '', 3], guidanceAppend: 7 })
+    )
+    expect(parsed).toEqual({
+      name: 'N',
+      description: '',
+      templates: { b: 'ok' },
+      guidanceAppend: '',
+      tags: ['t'],
+    })
   })
 })
 

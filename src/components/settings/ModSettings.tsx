@@ -4,14 +4,16 @@
  * Mod = 可切换的写作改装包：提示词模板覆盖 + 行文指导追加。
  * 全局存放，按当前打开的书启用，可叠加（列表内启用顺序越靠后优先级越高）。
  */
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
-import { ChevronDown, ChevronRight, History, Plus, RotateCcw, Trash2 } from 'lucide-react'
+import { ChevronDown, ChevronRight, Download, History, Plus, RotateCcw, Trash2, Upload } from 'lucide-react'
 import {
   collectTags,
   deleteMod,
+  exportModToJson,
   filterModsByTag,
   getEnabledModIds,
+  importModFromJson,
   listMods,
   loadModHistory,
   loadMods,
@@ -40,6 +42,7 @@ export default function ModSettings() {
   const [filterTag, setFilterTag] = useState<string | null>(null)
   const [manageTags, setManageTags] = useState(false)
   const [tagEdits, setTagEdits] = useState<Record<string, string>>({})
+  const importInputRef = useRef<HTMLInputElement>(null)
 
   const refresh = () => {
     setMods(listMods())
@@ -95,6 +98,36 @@ export default function ModSettings() {
         >
           <Plus size={13} /> {t('mods.create')}
         </Button>
+        <Button
+          variant="outline"
+          size="sm"
+          className="flex-shrink-0 whitespace-nowrap"
+          disabled={busy}
+          title={t('mods.importTooltip')}
+          onClick={() => importInputRef.current?.click()}
+        >
+          <Upload size={13} /> {t('mods.import')}
+        </Button>
+        <input
+          ref={importInputRef}
+          type="file"
+          accept=".json,application/json"
+          className="hidden"
+          onChange={(e) => {
+            const file = e.target.files?.[0]
+            e.target.value = ''
+            if (!file) return
+            void (async () => {
+              setBusy(true)
+              setCreateError('')
+              const imported = await importModFromJson(await file.text())
+              setBusy(false)
+              refresh()
+              if (imported) setExpandedId(imported.id)
+              else setCreateError(t('mods.importFailed'))
+            })()
+          }}
+        />
       </div>
       {createError && (
         <p className="text-xs" style={{ color: 'var(--color-error)' }}>
@@ -509,6 +542,23 @@ function ModItem({
           <div className="flex items-center gap-2">
             <Button variant="outline" size="sm" disabled={busy} onClick={() => void handleSave()}>
               {t('mods.save')}
+            </Button>
+            <Button
+              variant="ghost"
+              size="sm"
+              disabled={busy}
+              title={t('mods.exportTooltip')}
+              onClick={() => {
+                const blob = new Blob([exportModToJson(mod)], { type: 'application/json' })
+                const url = URL.createObjectURL(blob)
+                const a = document.createElement('a')
+                a.href = url
+                a.download = `${mod.name}.vela-mod.json`
+                a.click()
+                URL.revokeObjectURL(url)
+              }}
+            >
+              <Download size={12} /> {t('mods.export')}
             </Button>
             <Button variant="ghost" size="sm" disabled={busy} onClick={() => void handleDelete()}>
               <Trash2 size={12} /> {t('mods.delete')}
