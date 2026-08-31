@@ -132,6 +132,36 @@ describe('dialogue-prompts', () => {
     expect(messages[0].content).toContain('（无）')
   })
 
+  it('injects a target length note when given', () => {
+    const messages = buildSceneMessages({
+      config,
+      characters: [],
+      workingState: {},
+      chapterTitle: '第1章',
+      chapterGoal: '',
+      sceneTitle: '夜谈',
+      sceneGoal: '',
+      turns: [],
+      targetLength: 800,
+    })
+    expect(messages[0].content).toContain('800')
+    expect(messages[0].content).toContain('本轮篇幅')
+  })
+
+  it('omits the length note when not given', () => {
+    const messages = buildSceneMessages({
+      config,
+      characters: [],
+      workingState: {},
+      chapterTitle: '第1章',
+      chapterGoal: '',
+      sceneTitle: '夜谈',
+      sceneGoal: '',
+      turns: [],
+    })
+    expect(messages[0].content).not.toContain('本轮篇幅')
+  })
+
   it('keeps the state protocol suffix even without references', () => {
     const messages = buildSceneMessages({
       config,
@@ -165,6 +195,34 @@ describe('dialogue-prompts', () => {
     const transcript = messages[1].content
     expect(transcript).toContain('控场：靠近一点')
     expect(transcript).toContain('草稿：她没有躲开。')
+  })
+
+  it('injects a distill target length when given', () => {
+    const messages = buildDistillMessages({
+      config,
+      characterNames: [],
+      chapterTitle: '第1章',
+      chapterGoal: '',
+      sceneTitle: '夜谈',
+      sceneGoal: '',
+      turns: [{ role: 'user', content: '靠近' }],
+      targetLength: 3000,
+    })
+    expect(messages[0].content).toContain('3000')
+    expect(messages[0].content).toContain('蒸馏篇幅')
+  })
+
+  it('omits distill length note when not given', () => {
+    const messages = buildDistillMessages({
+      config,
+      characterNames: [],
+      chapterTitle: '第1章',
+      chapterGoal: '',
+      sceneTitle: '夜谈',
+      sceneGoal: '',
+      turns: [{ role: 'user', content: '靠近' }],
+    })
+    expect(messages[0].content).not.toContain('蒸馏篇幅')
   })
 
   it('injects references into the distill system prompt too', () => {

@@ -8,6 +8,7 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { PanelRightClose, PanelRightOpen, Plus, RefreshCw, Send, Square, Trash2, Undo2 } from 'lucide-react'
 import { ipc } from '../../services/ipc-client'
+import { useDraftStore } from '../../stores/draft-store'
 import { useLLMStore } from '../../stores/llm-store'
 import { useProjectStore } from '../../stores/project-store'
 import {
@@ -43,6 +44,10 @@ export default function DialogueEditor({ chapterNumber }: { chapterNumber: numbe
   const [activeRequestId, setActiveRequestId] = useState<string | null>(null)
   // 蒸馏专用模型（'' = 跟随默认生成模型），本机记忆
   const [distillModelId, setDistillModelId] = useState(() => localStorage.getItem('vela-distill-model') ?? '')
+  // 每轮目标字数（0 = 不限），本机记忆
+  const [turnLength, setTurnLength] = useState(() => Number(localStorage.getItem('vela-dialogue-turn-length')) || 0)
+  // 蒸馏目标字数（0 = 忠实草稿体量），本机记忆
+  const [distillLength, setDistillLength] = useState(() => Number(localStorage.getItem('vela-distill-length')) || 0)
   const llmModels = useLLMStore((s) => s.models)
   // 汇稿预览（非 null 时显示确认弹层）
   const [assemblePreview, setAssemblePreview] = useState<string | null>(null)
@@ -134,8 +139,11 @@ export default function DialogueEditor({ chapterNumber }: { chapterNumber: numbe
       chapterGoal,
       userInput: text,
       retry,
+      targetLength: turnLength || undefined,
       callbacks: {
         onChunk: (chunk) => setStreaming((prev) => prev + chunk),
+        onRequest: (requestId) => setActiveRequestId(requestId || null),
+        onRoundEnd: (proseSoFar) => setStreaming(proseSoFar + '\n\n'),
         onDone: (nextTurns, nextState) => {
           setTurns(nextTurns)
           setWorkingState(nextState)
@@ -169,6 +177,7 @@ export default function DialogueEditor({ chapterNumber }: { chapterNumber: numbe
       chapterTitle,
       chapterGoal,
       modelId: distillModelId || undefined,
+      targetLength: distillLength || undefined,
       callbacks: {
         onChunk: (chunk) => setDistillDraft((prev) => (prev ?? '') + chunk),
         onDone: (draft) => {
@@ -440,6 +449,23 @@ export default function DialogueEditor({ chapterNumber }: { chapterNumber: numbe
                 >
                   <Send size={12} /> {t('dialogue.send')}
                 </Button>
+                <NativeSelect
+                  className="w-28"
+                  title={t('dialogue.turnLengthTooltip')}
+                  value={String(turnLength)}
+                  onChange={(e) => {
+                    const v = Number(e.target.value)
+                    setTurnLength(v)
+                    localStorage.setItem('vela-dialogue-turn-length', String(v))
+                  }}
+                >
+                  <option value="0">{t('dialogue.turnLengthFree')}</option>
+                  {[300, 500, 800, 1200, 2000].map((n) => (
+                    <option key={n} value={n}>
+                      {t('dialogue.turnLengthOption', { n })}
+                    </option>
+                  ))}
+                </NativeSelect>
                 {busy && activeRequestId && (
                   <Button variant="destructive" size="sm" onClick={handleStop}>
                     <Square size={12} /> {t('dialogue.stop')}
@@ -483,6 +509,23 @@ export default function DialogueEditor({ chapterNumber }: { chapterNumber: numbe
                             {m.name}
                           </option>
                         ))}
+                    </NativeSelect>
+                    <NativeSelect
+                      className="w-32"
+                      title={t('dialogue.distillLengthTooltip')}
+                      value={String(distillLength)}
+                      onChange={(e) => {
+                        const v = Number(e.target.value)
+                        setDistillLength(v)
+                        localStorage.setItem('vela-distill-length', String(v))
+                      }}
+                    >
+                      <option value="0">{t('dialogue.distillLengthFree')}</option>
+                      {[1000, 2000, 3000, 4000, 6000].map((n) => (
+                        <option key={n} value={n}>
+                          {t('dialogue.distillLengthOption', { n })}
+                        </option>
+                      ))}
                     </NativeSelect>
                     <Button
                       variant="outline"
@@ -561,16 +604,22 @@ export default function DialogueEditor({ chapterNumber }: { chapterNumber: numbe
               —
             </p>
           )}
-          {Object.entries(workingState).map(([name, fields]) => (
+          {Object.entries(workingState).map(([name, fields]) => {
+            // 标准六字段始终显示（空值也给输入框，便于手动补），模型自创字段附加在后
+            const STANDARD = ['location', 'physicalState', 'mentalState', 'keyItems', 'recentEvents', 'knownInfo']
+            const keys = [...STANDARD, ...Object.keys(fields).filter((k) => !STANDARD.includes(k))]
+            return (
             <div
               key={name}
               className="rounded-lg p-2"
               style={{ border: '1px solid var(--color-border)' }}
             >
               <div className="mb-1 text-xs font-semibold">{name}</div>
-              {Object.entries(fields).map(([k, v]) => (
+              {keys.map((k) => {
+                const v = fields[k] ?? ''
+                return (
                 <label key={k} className="mb-1 block text-[0.68rem]" style={{ color: 'var(--color-text-muted)' }}>
-                  {k}
+                  {t(`dialogue.stateFields.${k}`, { defaultValue: k })}
                   <textarea
                     className="config-input mt-0.5 min-h-0 resize-none py-1 text-[0.7rem] leading-4"
                     rows={Math.min(4, Math.max(1, Math.ceil(v.length / 16)))}
@@ -584,9 +633,11 @@ export default function DialogueEditor({ chapterNumber }: { chapterNumber: numbe
                     onBlur={() => saveWorkingState(workingState)}
                   />
                 </label>
-              ))}
+                )
+              })}
             </div>
-          ))}
+            )
+          })}
         </div>
       </aside>
       )}
@@ -635,6 +686,8 @@ export default function DialogueEditor({ chapterNumber }: { chapterNumber: numbe
                   void run(async () => {
                     await assembleToDraft(chapterNumber)
                     setAssemblePreview(null)
+                    // 刷新侧栏草稿箱，否则新草稿不可见
+                    await useDraftStore.getState().loadAllDrafts()
                     setNotice(t('dialogue.assembleDone'))
                   })
                 }

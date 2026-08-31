@@ -6,7 +6,7 @@
  */
 import { useEffect, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
-import { ChevronDown, ChevronRight, Download, History, Plus, RotateCcw, Trash2, Upload } from 'lucide-react'
+import { Ban, ChevronDown, ChevronRight, CircleCheck, Download, History, Plus, RotateCcw, Trash2, Upload } from 'lucide-react'
 import {
   collectTags,
   deleteMod,
@@ -21,6 +21,7 @@ import {
   renameTagEverywhere,
   rollbackMod,
   saveMod,
+  setModDisabled,
   type ModVersion,
   type WritingMod,
 } from '../../services/mods'
@@ -40,6 +41,7 @@ export default function ModSettings() {
   const [busy, setBusy] = useState(false)
   const [createError, setCreateError] = useState('')
   const [filterTag, setFilterTag] = useState<string | null>(null)
+  const [search, setSearch] = useState('')
   const [manageTags, setManageTags] = useState(false)
   const [tagEdits, setTagEdits] = useState<Record<string, string>>({})
   const importInputRef = useRef<HTMLInputElement>(null)
@@ -141,9 +143,17 @@ export default function ModSettings() {
         </p>
       )}
 
-      {/* 标签过滤栏 + 标签管理 */}
+      {/* 搜索 + 标签过滤栏 + 标签管理 */}
       {mods.length > 0 && (
         <div className="space-y-2">
+          {mods.length > 5 && (
+            <Input
+              className="w-56"
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              placeholder={t('mods.searchPlaceholder')}
+            />
+          )}
           <div className="flex flex-wrap items-center gap-1.5">
             <TagChip
               label={`${t('mods.allTags')} (${mods.length})`}
@@ -226,7 +236,17 @@ export default function ModSettings() {
       )}
 
       <div className="space-y-2">
-        {filterModsByTag(mods, filterTag).map((mod) => (
+        {filterModsByTag(mods, filterTag)
+          .filter((m) => {
+            const q = search.trim().toLowerCase()
+            if (!q) return true
+            return (
+              m.name.toLowerCase().includes(q) ||
+              m.description.toLowerCase().includes(q) ||
+              (m.tags ?? []).some((tag) => tag.toLowerCase().includes(q))
+            )
+          })
+          .map((mod) => (
           <ModItem
             key={mod.id}
             mod={mod}
@@ -381,7 +401,15 @@ function ModItem({
               {tag}
             </span>
           ))}
-          {enabled && (
+          {mod.disabled && (
+            <span
+              className="rounded-full px-1.5 py-0.5 text-[0.65rem]"
+              style={{ color: 'var(--color-error)', backgroundColor: 'rgba(244,63,94,0.1)' }}
+            >
+              {t('mods.disabledBadge')}
+            </span>
+          )}
+          {enabled && !mod.disabled && (
             <span
               className="rounded-full px-1.5 py-0.5 text-[0.65rem]"
               style={{ color: 'var(--color-success)', backgroundColor: 'rgba(74,222,128,0.1)' }}
@@ -542,6 +570,24 @@ function ModItem({
           <div className="flex items-center gap-2">
             <Button variant="outline" size="sm" disabled={busy} onClick={() => void handleSave()}>
               {t('mods.save')}
+            </Button>
+            <Button
+              variant="ghost"
+              size="sm"
+              disabled={busy}
+              title={t(mod.disabled ? 'mods.enableModTooltip' : 'mods.disableModTooltip')}
+              onClick={() =>
+                void (async () => {
+                  setBusy(true)
+                  const ok = await setModDisabled(mod.id, !mod.disabled)
+                  setBusy(false)
+                  if (!ok) flash(t('mods.saveFailed'))
+                  onChanged()
+                })()
+              }
+            >
+              {mod.disabled ? <CircleCheck size={12} /> : <Ban size={12} />}
+              {t(mod.disabled ? 'mods.enableMod' : 'mods.disableMod')}
             </Button>
             <Button
               variant="ghost"

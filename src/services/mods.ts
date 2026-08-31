@@ -23,6 +23,8 @@ export interface WritingMod {
   guidanceAppend: string
   /** 分类标签（尺度/节奏/文风/题材……自由填写） */
   tags?: string[]
+  /** 全局禁用：各书启用列表选不到，已启用的也不生效（重新启用后恢复） */
+  disabled?: boolean
 }
 
 export interface ModVersion {
@@ -151,7 +153,7 @@ async function rebuildEffectivePool(): Promise<void> {
   const next = new Map<string, WritingMod>()
   for (const entry of enabledEntries) {
     const current = mods.get(entry.id)
-    if (!current) continue
+    if (!current || current.disabled) continue
     const history =
       entry.version != null && entry.version !== current.version ? await loadModHistory(entry.id) : []
     const effective = pickModSnapshot(entry, current, history)
@@ -243,6 +245,23 @@ export async function saveMod(
   } catch (err) {
     console.error('[Vela Mods] 保存异常:', err)
     return null
+  }
+}
+
+/** 全局禁用/启用 Mod：纯开关，不占版本号、不进历史 */
+export async function setModDisabled(id: string, disabled: boolean): Promise<boolean> {
+  const mod = mods.get(id)
+  if (!mod) return false
+  const next: WritingMod = { ...mod, disabled }
+  try {
+    const dir = await modsDir()
+    const res = await ipc.invoke('fs:write-file', `${dir}/${id}.json`, JSON.stringify(next, null, 2))
+    if (!res.success) return false
+    mods.set(id, next)
+    await rebuildEffectivePool()
+    return true
+  } catch {
+    return false
   }
 }
 

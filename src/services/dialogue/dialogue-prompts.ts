@@ -70,6 +70,8 @@ export function buildSceneMessages(params: {
   turns: DialogueTurn[]
   userInput?: string
   references?: KnowledgeRef[]
+  /** 本轮目标字数（未设置则不注入篇幅要求） */
+  targetLength?: number
 }): ChatMessage[] {
   const { config, characters, workingState } = params
   const template = getPromptTemplate('dialogue_scene')
@@ -82,6 +84,9 @@ export function buildSceneMessages(params: {
     chapter_title: params.chapterTitle,
     chapter_goal: params.chapterGoal || '（未写）',
     scene_line: sceneLine(params.sceneTitle, params.sceneGoal),
+    length_note: params.targetLength
+      ? `本轮篇幅：目标约 ${params.targetLength} 字，硬性下限 ${Math.round(params.targetLength * 0.8)} 字，这是必须满足的要求。用足场景推进、动作细节与对白把篇幅写满，不要注水，也绝不允许提前收束。`
+      : '',
     characters_block:
       characters.map((c) => characterBlock(c, workingState[c.name])).join('\n') || '（暂无角色卡）',
     references_block: referencesBlock(params.references),
@@ -106,6 +111,8 @@ export function buildDistillMessages(params: {
   sceneGoal: string
   turns: DialogueTurn[]
   references?: KnowledgeRef[]
+  /** 蒸馏目标字数（未设置则忠实草稿体量） */
+  targetLength?: number
 }): ChatMessage[] {
   const { config } = params
   const template = getPromptTemplate('dialogue_distill')
@@ -118,6 +125,9 @@ export function buildDistillMessages(params: {
     chapter_title: params.chapterTitle,
     chapter_goal: params.chapterGoal || '（未写）',
     scene_line: sceneLine(params.sceneTitle, params.sceneGoal),
+    length_note: params.targetLength
+      ? `蒸馏篇幅：约 ${params.targetLength} 字上下，不得少于八成；宁可保留细节也不要为压缩丢失情节与关键对白。`
+      : '',
     character_names: params.characterNames.join('、') || '（无）',
     references_block: referencesBlock(params.references),
   })

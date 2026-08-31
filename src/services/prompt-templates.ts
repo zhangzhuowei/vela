@@ -2907,6 +2907,7 @@ Requirements:
       scene_line: '本场标题与目标',
       characters_block: '出场角色的人设与当前状态',
       references_block: '知识库召回的参考设定',
+      length_note: '本轮篇幅要求（未设置时为空）',
     },
     content: `你在为一部小说写一场戏。只写可读的叙事和对话，不要解释、不要列大纲、不要道歉。
 用户消息是控场指令，不是要你扮演用户。遵守世界观与人设，不要把控场者写成另一个具名角色，除非人设如此要求。
@@ -2915,6 +2916,7 @@ Requirements:
 文风：{{style_guidance}}
 本章（{{chapter_title}}）目标：{{chapter_goal}}
 本场：{{scene_line}}
+{{length_note}}
 角色：
 {{characters_block}}
 参考设定（与本场冲突时以角色状态与控场为准）：
@@ -2940,6 +2942,7 @@ Requirements:
       scene_line: '本场标题与目标',
       character_names: '出场角色名单',
       references_block: '知识库召回的参考设定',
+      length_note: '蒸馏篇幅要求（未设置时为空）',
     },
     content: `你把一场小说的对话草稿蒸馏成可直接收入章节的叙事正文。
 保留关键对白与身体/心理变化，删掉重复内容和指令口吻。遵守世界观与主角人设。
@@ -2948,6 +2951,7 @@ Requirements:
 文风：{{style_guidance}}
 本章（{{chapter_title}}）目标：{{chapter_goal}}
 本场：{{scene_line}}
+{{length_note}}
 出场角色：{{character_names}}
 参考设定：{{references_block}}`,
     systemSuffix:

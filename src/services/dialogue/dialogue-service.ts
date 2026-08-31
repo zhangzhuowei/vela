@@ -13,6 +13,7 @@ import type { SceneData, SceneTurnData } from '../../../electron/repositories/sc
 import {
   buildDistillMessages,
   buildSceneMessages,
+  type ChatMessage,
   type DialogueCharacter,
   type DialogueConfig,
   type KnowledgeRef,
@@ -131,6 +132,10 @@ export type GenerateTurnCallbacks = {
   onChunk: (chunk: string) => void
   onDone: (turns: SceneTurnData[], workingState: WorkingState) => void
   onError: (error: string) => void
+  /** 每一轮（含自动续写）拿到新的 requestId 时回调，供停止按钮跟踪 */
+  onRequest?: (requestId: string) => void
+  /** 一轮流结束、即将自动续写时回调：参数为目前已清洗的正文，供 UI 重置流式区 */
+  onRoundEnd?: (proseSoFar: string) => void
 }
 
 /**
@@ -144,6 +149,8 @@ export async function generateTurn(params: {
   chapterGoal: string
   userInput: string
   retry?: boolean
+  /** 本轮目标字数（不传则不限） */
+  targetLength?: number
   callbacks: GenerateTurnCallbacks
 }): Promise<string> {
   const { scene, callbacks } = params
@@ -156,6 +163,13 @@ export async function generateTurn(params: {
     [lastUser, scene.goal || scene.title, params.chapterGoal].filter(Boolean).join(' ')
   )
 
+  const target = params.targetLength
+  // 提示词侧的控场消息附带篇幅要求（落库仍存干净原文）
+  const promptInput =
+    !params.retry && target
+      ? `${params.userInput.trim()}\n（本轮篇幅目标约 ${target} 字，硬性下限 ${Math.round(target * 0.8)} 字，写满为止）`
+      : params.userInput
+
   const messages = buildSceneMessages({
     config: await fetchConfig(),
     characters,
@@ -165,36 +179,81 @@ export async function generateTurn(params: {
     sceneTitle: scene.title,
     sceneGoal: scene.goal,
     turns: turns.map((t) => ({ role: t.role, content: t.content })),
-    userInput: params.retry ? undefined : params.userInput,
+    userInput: params.retry ? undefined : promptInput,
     references,
+    targetLength: target,
   })
 
-  return useLLMStore.getState().generateStream(messages, {
-    onChunk: callbacks.onChunk,
-    onDone: (fullText) => {
-      void (async () => {
-        try {
+  // 篇幅闸门：正文不足目标八成时自动续写（最多 2 轮），与写稿链路同款策略
+  const MAX_CONTINUATIONS = 2
+  const parts: { prose: string; patch: WorkingState }[] = []
+  let rounds = 0
+
+  const totalProse = () => parts.map((p) => p.prose).join('\n\n')
+  const countChars = (s: string) => s.replace(/\s/g, '').length
+
+  const finalize = async () => {
+    try {
+      const prose = totalProse().trim()
+      if (!prose) {
+        callbacks.onError('模型没有写出正文')
+        return
+      }
+      // 各轮补丁按顺序合并（后轮覆盖同字段）
+      const validNames = characters.map((c) => c.name)
+      let nextState = workingState
+      let mergedPatch: WorkingState = {}
+      for (const part of parts) {
+        nextState = mergeWorkingState(nextState, part.patch, validNames)
+        mergedPatch = { ...mergedPatch, ...part.patch }
+      }
+      if (!params.retry && params.userInput.trim()) {
+        await ipc.invoke('db:scene-turn-add', scene.id, 'user', params.userInput.trim())
+      }
+      await ipc.invoke('db:scene-turn-add', scene.id, 'assistant', prose, mergedPatch)
+      await ipc.invoke('db:chapter-working-state-set', scene.chapterNumber, nextState)
+      const refreshed = await ipc.invoke('db:scene-turn-list', scene.id)
+      callbacks.onDone(refreshed, nextState)
+    } catch (err) {
+      callbacks.onError(String(err))
+    }
+  }
+
+  const runRound = (msgs: ChatMessage[]): Promise<string> =>
+    useLLMStore.getState().generateStream(msgs, {
+      onChunk: callbacks.onChunk,
+      onDone: (fullText) => {
+        void (async () => {
           const { prose, patch } = splitProseAndState(fullText)
-          if (!prose) {
-            callbacks.onError('模型没有写出正文')
+          if (prose) parts.push({ prose, patch })
+          const written = countChars(totalProse())
+          if (target && prose && written < target * 0.8 && rounds < MAX_CONTINUATIONS) {
+            rounds++
+            // UI 重置流式区为已清洗正文，续写无缝接着长
+            callbacks.onRoundEnd?.(totalProse())
+            const contMsgs = [
+              ...msgs,
+              { role: 'assistant' as const, content: fullText },
+              {
+                role: 'user' as const,
+                content:
+                  `目前正文共约 ${written} 字，尚未达到本轮目标（约 ${target} 字，硬性下限 ${Math.round(target * 0.8)} 字）。` +
+                  '继续写下去补足篇幅：无缝衔接上文，不要重复已写内容、不要总结、不要重新开头；写完后同样输出 <state> 状态块（只含相对最新状态的变化）。',
+              },
+            ]
+            const rid = await runRound(contMsgs)
+            callbacks.onRequest?.(rid)
             return
           }
-          const validNames = characters.map((c) => c.name)
-          const nextState = mergeWorkingState(workingState, patch, validNames)
-          if (!params.retry && params.userInput.trim()) {
-            await ipc.invoke('db:scene-turn-add', scene.id, 'user', params.userInput.trim())
-          }
-          await ipc.invoke('db:scene-turn-add', scene.id, 'assistant', prose, patch)
-          await ipc.invoke('db:chapter-working-state-set', scene.chapterNumber, nextState)
-          const refreshed = await ipc.invoke('db:scene-turn-list', scene.id)
-          callbacks.onDone(refreshed, nextState)
-        } catch (err) {
-          callbacks.onError(String(err))
-        }
-      })()
-    },
-    onError: callbacks.onError,
-  })
+          await finalize()
+        })()
+      },
+      onError: callbacks.onError,
+    })
+
+  const requestId = await runRound(messages)
+  callbacks.onRequest?.(requestId)
+  return requestId
 }
 
 export type DistillCallbacks = {
@@ -212,6 +271,8 @@ export async function distillScene(params: {
   chapterTitle: string
   chapterGoal: string
   modelId?: string
+  /** 蒸馏目标字数（不传则忠实草稿体量） */
+  targetLength?: number
   callbacks: DistillCallbacks
 }): Promise<string> {
   const { callbacks } = params
@@ -231,6 +292,7 @@ export async function distillScene(params: {
     sceneGoal: params.scene.goal,
     turns: turns.map((t) => ({ role: t.role, content: t.content })),
     references,
+    targetLength: params.targetLength,
   })
   return useLLMStore.getState().generateStream(
     messages,
