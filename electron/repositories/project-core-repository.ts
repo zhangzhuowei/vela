@@ -32,6 +32,7 @@ export interface ProjectCoreRow {
     characters_arch: string
     synopsis: string
     character_states: string
+    creation_mode: string
     created_at: string
     updated_at: string
 }
@@ -61,6 +62,7 @@ export interface ProjectCoreData {
     charactersArch: string
     synopsis: string
     characterStates: string
+    creationMode: string
 }
 
 /** 数据库行 → 前端数据 */
@@ -89,6 +91,7 @@ function rowToData(row: ProjectCoreRow): ProjectCoreData {
         charactersArch: row.characters_arch,
         synopsis: row.synopsis,
         characterStates: row.character_states,
+        creationMode: row.creation_mode ?? 'pipeline',
     }
 }
 
@@ -146,6 +149,7 @@ export class ProjectCoreRepository {
             charactersArch: 'characters_arch',
             synopsis: 'synopsis',
             characterStates: 'character_states',
+            creationMode: 'creation_mode',
         }
 
         const setClauses: string[] = []

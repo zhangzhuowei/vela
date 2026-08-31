@@ -14,6 +14,8 @@ export default defineConfig({
       'electron/__tests__/ipc-validation.test.ts',
       'src/i18n/__tests__/i18n.test.ts',
       'src/services/workflows/__tests__/json-repair.test.ts',
+      'src/services/dialogue/__tests__/dialogue.test.ts',
+      'src/services/__tests__/mods.test.ts',
     ],
     globals: false,
   },

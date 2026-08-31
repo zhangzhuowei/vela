@@ -8,6 +8,7 @@
  */
 
 import i18n from '../i18n'
+import { getModTemplateOverride } from './mods'
 
 export interface PromptTemplate {
   /** 模板唯一标识 */
@@ -75,6 +76,8 @@ export const EDITABLE_PROMPT_KEYS: string[] = [
   'refine_from_review',
   'deaify_polish',
   'foreshadow_extract',
+  'dialogue_scene',
+  'dialogue_distill',
 ]
 
 /** 全部内置 Prompt 模板 */
@@ -2886,6 +2889,70 @@ Requirements:
       ru: 'Вы — ведущий редактор веб-романов и опытный литературный аналитик, искусно выполняющий обратное проектирование систем настроек из существующих произведений.'
     },
   },
+
+  // ================================================================
+  // 对话创作模式：场内生成（状态输出协议在 systemSuffix，自定义不可破坏）
+  // ================================================================
+  {
+    key: 'dialogue_scene',
+    name: '对话创作·场内生成',
+    description: '对话创作模式：按控场指令写一场戏的叙事正文（角色状态输出协议由系统自动追加，不受自定义影响）',
+    systemRole: '你是一位沉浸感极强的小说场景写手，按导演的控场指令逐场推进剧情。',
+    variables: {
+      world_setting: '世界观设定',
+      protagonist_profile: '主角人设',
+      style_guidance: '文风与全局行文指导',
+      chapter_title: '本章标题',
+      chapter_goal: '本章目标',
+      scene_line: '本场标题与目标',
+      characters_block: '出场角色的人设与当前状态',
+      references_block: '知识库召回的参考设定',
+    },
+    content: `你在为一部小说写一场戏。只写可读的叙事和对话，不要解释、不要列大纲、不要道歉。
+用户消息是控场指令，不是要你扮演用户。遵守世界观与人设，不要把控场者写成另一个具名角色，除非人设如此要求。
+世界观：{{world_setting}}
+主角人设：{{protagonist_profile}}
+文风：{{style_guidance}}
+本章（{{chapter_title}}）目标：{{chapter_goal}}
+本场：{{scene_line}}
+角色：
+{{characters_block}}
+参考设定（与本场冲突时以角色状态与控场为准）：
+{{references_block}}`,
+    systemSuffix: `正文写完后，另起一行输出本轮角色状态变化（只含有变化的字段，角色名为键）：
+<state>{"角色名": {"location":"","physicalState":"","mentalState":"","keyItems":"","recentEvents":"","knownInfo":""}}</state>`,
+  },
+
+  // ================================================================
+  // 对话创作模式：收场蒸馏
+  // ================================================================
+  {
+    key: 'dialogue_distill',
+    name: '对话创作·收场蒸馏',
+    description: '对话创作模式：把整场对话草稿蒸馏成可收入草稿箱的小说正文（输出格式约束由系统自动追加）',
+    systemRole: '你是一位资深小说编辑，擅长把对话草稿蒸馏成连贯的叙事正文。',
+    variables: {
+      world_setting: '世界观设定',
+      protagonist_profile: '主角人设',
+      style_guidance: '文风与全局行文指导',
+      chapter_title: '本章标题',
+      chapter_goal: '本章目标',
+      scene_line: '本场标题与目标',
+      character_names: '出场角色名单',
+      references_block: '知识库召回的参考设定',
+    },
+    content: `你把一场小说的对话草稿蒸馏成可直接收入章节的叙事正文。
+保留关键对白与身体/心理变化，删掉重复内容和指令口吻。遵守世界观与主角人设。
+世界观：{{world_setting}}
+主角人设：{{protagonist_profile}}
+文风：{{style_guidance}}
+本章（{{chapter_title}}）目标：{{chapter_goal}}
+本场：{{scene_line}}
+出场角色：{{character_names}}
+参考设定：{{references_block}}`,
+    systemSuffix:
+      '只输出小说正文，不要大纲、不要解释、不要状态块、不要标题、不要出现「控场」字样。',
+  },
 ]
 
 /** 全局自定义覆盖 Prompt 缓存（~/.vela/prompts/） */
@@ -2932,8 +2999,11 @@ async function _loadPromptsFromDir(dirPath: string, target: Map<string, PromptTe
   const exists = await ipc.invoke('fs:check-exists', dirPath)
   if (!exists) return
 
+  // fs:list-dir 递归列目录，排除 history/ 子目录的版本存档
   const files = await ipc.invoke('fs:list-dir', dirPath)
-  const jsonFiles = files.filter((f) => !f.isDir && f.name.endsWith('.json'))
+  const jsonFiles = files.filter(
+    (f) => !f.isDir && f.name.endsWith('.json') && !/[\\/]history[\\/]/.test(f.path)
+  )
 
   for (const file of jsonFiles) {
     const result = await ipc.invoke('fs:read-file', file.path)
@@ -2948,7 +3018,7 @@ async function _loadPromptsFromDir(dirPath: string, target: Map<string, PromptTe
   }
 }
 
-/** 根据 key 获取 Prompt 模板（三级优先级：项目级 > 全局级 > 内置） */
+/** 根据 key 获取 Prompt 模板（四级优先级：项目级 > 全局级 > 启用的 Mod > 内置） */
 export function getPromptTemplate(key: string): PromptTemplate | undefined {
   // 优先级 1：项目级自定义覆盖
   const projectCustom = projectCustomPrompts.get(key)
@@ -2960,14 +3030,23 @@ export function getPromptTemplate(key: string): PromptTemplate | undefined {
     if (globalCustom) return globalCustom
   }
 
-  // 优先级 3：内置默认
-  return BUILTIN_PROMPTS.find((p) => p.key === key)
+  const builtin = BUILTIN_PROMPTS.find((p) => p.key === key)
+
+  // 优先级 3：当前工程启用的 Mod 覆盖（只覆盖 content，其余沿用内置）
+  const modContent = getModTemplateOverride(key)
+  if (modContent && builtin) {
+    return { ...builtin, content: modContent, contentLocalized: undefined }
+  }
+
+  // 优先级 4：内置默认
+  return builtin
 }
 
 /** 获取指定模板当前生效的来源 */
-export function getPromptSource(key: string): 'builtin' | 'global' | 'project' {
+export function getPromptSource(key: string): 'builtin' | 'global' | 'project' | 'mod' {
   if (projectCustomPrompts.has(key)) return 'project'
   if (customPromptsLoaded && customPrompts.has(key)) return 'global'
+  if (getModTemplateOverride(key)) return 'mod'
   return 'builtin'
 }
 
@@ -2995,6 +3074,66 @@ export function getAllPromptTemplates(): PromptTemplate[] {
   return all
 }
 
+// ================================================================
+// 模板版本历史（~/.vela/prompts/history/{key}.json，最新在前，上限 20）
+// ================================================================
+
+export interface PromptVersion {
+  savedAt: string
+  scope: 'global' | 'project'
+  content: string
+}
+
+const HISTORY_LIMIT = 20
+
+async function _historyPath(key: string): Promise<string> {
+  const { ipc } = await import('./ipc-client')
+  const velaHome = await ipc.invoke('config:get-vela-home')
+  return `${velaHome}/prompts/history/${key}.json`
+}
+
+/** 读取模板的历史版本（最新在前） */
+export async function loadPromptHistory(key: string): Promise<PromptVersion[]> {
+  try {
+    const { ipc } = await import('./ipc-client')
+    const filePath = await _historyPath(key)
+    const exists = await ipc.invoke('fs:check-exists', filePath)
+    if (!exists) return []
+    const result = await ipc.invoke('fs:read-file', filePath)
+    if (!result.success || !result.content.trim()) return []
+    const parsed = JSON.parse(result.content)
+    return Array.isArray(parsed) ? parsed : []
+  } catch {
+    return []
+  }
+}
+
+/** 追加一条历史版本记录（保存自定义模板时自动调用） */
+async function _appendPromptHistory(key: string, scope: 'global' | 'project', content: string): Promise<void> {
+  try {
+    const { ipc } = await import('./ipc-client')
+    const velaHome = await ipc.invoke('config:get-vela-home')
+    const historyDir = `${velaHome}/prompts/history`
+    const dirExists = await ipc.invoke('fs:check-exists', historyDir)
+    if (!dirExists) {
+      const promptsDir = `${velaHome}/prompts`
+      if (!(await ipc.invoke('fs:check-exists', promptsDir))) await ipc.invoke('fs:mkdir', promptsDir)
+      await ipc.invoke('fs:mkdir', historyDir)
+    }
+    const history = await loadPromptHistory(key)
+    // 与最近一条内容相同则不重复记录
+    if (history[0]?.content === content) return
+    history.unshift({ savedAt: new Date().toISOString(), scope, content })
+    await ipc.invoke(
+      'fs:write-file',
+      await _historyPath(key),
+      JSON.stringify(history.slice(0, HISTORY_LIMIT), null, 2)
+    )
+  } catch {
+    // 历史记录失败不阻断保存
+  }
+}
+
 /** 保存全局自定义 Prompt 到 ~/.vela/prompts/ */
 export async function saveCustomPrompt(template: PromptTemplate): Promise<boolean> {
   try {
@@ -3008,6 +3147,7 @@ export async function saveCustomPrompt(template: PromptTemplate): Promise<boolea
 
     await ipc.invoke('fs:write-file', filePath, JSON.stringify(template, null, 2))
     customPrompts.set(template.key, template)
+    await _appendPromptHistory(template.key, 'global', template.content)
     return true
   } catch {
     return false
@@ -3029,6 +3169,7 @@ export async function saveProjectCustomPrompt(projectPath: string, template: Pro
 
     await ipc.invoke('fs:write-file', filePath, JSON.stringify(template, null, 2))
     projectCustomPrompts.set(template.key, template)
+    await _appendPromptHistory(template.key, 'project', template.content)
     return true
   } catch {
     return false

@@ -4,10 +4,12 @@ import {
   Type, Settings2, Zap, Eye, EyeOff, ChevronDown, MessageSquare,
   Image as ImageIcon,
   Languages,
+  Puzzle,
 } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import i18n from '../../i18n'
 import PromptSettings from './PromptSettings'
+import ModSettings from './ModSettings'
 import { useLLMStore } from '../../stores/llm-store'
 import { useThemeStore, FONT_OPTIONS, type FontId } from '../../stores/theme-store'
 import type { ModelProfile } from '../../shared/ipc-channels'
@@ -29,7 +31,7 @@ import wechatImg from '/buyme/wechat.jpg?url'
 
 // ==================== 分类定义 ====================
 
-type SettingsSection = 'language' | 'llm' | 'embedding' | 'image' | 'proxy' | 'editor' | 'prompts' | 'about'
+type SettingsSection = 'language' | 'llm' | 'embedding' | 'image' | 'proxy' | 'editor' | 'prompts' | 'mods' | 'about'
 
 interface SectionItem {
   id: SettingsSection
@@ -46,6 +48,7 @@ const SECTIONS: SectionItem[] = [
   { id: 'proxy', label: 'Network Proxy', icon: <Globe size={16} />, descriptionKey: 'general.proxyDesc' },
   { id: 'editor', label: 'Editor', icon: <Type size={16} />, descriptionKey: 'general.editorDesc' },
   { id: 'prompts', label: 'Prompt Templates', icon: <MessageSquare size={16} />, descriptionKey: 'general.promptsDesc' },
+  { id: 'mods', label: 'Mods', icon: <Puzzle size={16} />, descriptionKey: 'general.modsDesc' },
   { id: 'about', label: 'About & Support', icon: <span style={{ color: '#ff4d4f', fontSize: 14 }}>❤️</span>, descriptionKey: 'general.aboutDesc' },
 ]
 
@@ -142,6 +145,7 @@ export default function SettingsModal({ open, onClose }: SettingsModalProps) {
             {section === 'proxy' && <ProxySection />}
             {section === 'editor' && <EditorSection />}
             {section === 'prompts' && <PromptSettings />}
+            {section === 'mods' && <ModSettings />}
             {section === 'about' && <AboutSection />}
           </div>
         </main>

@@ -13,6 +13,7 @@ import ChapterCardEditor from '../editor/ChapterCardEditor'
 import WorldBuildingEditor from '../editor/WorldBuildingEditor'
 import ArchFileViewer from '../editor/ArchFileViewer'
 import DraftEditor from '../editor/DraftEditor'
+import DialogueEditor from '../editor/DialogueEditor'
 import VersionHistory from '../editor/VersionHistory'
 import ReviewReport from '../editor/ReviewReport'
 import ThreeWayMerge from '../editor/ThreeWayMerge'  // 保留引用以防其他入口使用
@@ -618,6 +619,12 @@ export default function EditorArea({ onNewProject }: EditorAreaProps) {
         )}
         {activeTab?.type === 'config' && (
           <NovelConfigEditor />
+        )}
+        {activeTab?.type === 'dialogue' && (
+          <DialogueEditor
+            key={activeTab.id}
+            chapterNumber={Number(activeTab.filePath?.replace('vela://dialogue/', '') || 0)}
+          />
         )}
         {activeTab?.type === 'outline' && (
           <div className="h-full overflow-y-auto p-6">

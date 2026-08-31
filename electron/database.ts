@@ -153,6 +153,10 @@ function migrateSchema(db: BetterSqlite3.Database) {
   addColumnIfMissing('project_core', 'core_outline', `core_outline TEXT DEFAULT ''`)
   addColumnIfMissing('project_core', 'world_setting', `world_setting TEXT DEFAULT ''`)
   addColumnIfMissing('project_core', 'protagonist_profile', `protagonist_profile TEXT DEFAULT ''`)
+  // 对话创作模式：工程级默认 + 章级覆盖 + 章级进行中角色状态
+  addColumnIfMissing('project_core', 'creation_mode', `creation_mode TEXT DEFAULT 'pipeline'`)
+  addColumnIfMissing('blueprints', 'creation_mode', `creation_mode TEXT DEFAULT ''`)
+  addColumnIfMissing('blueprints', 'working_state', `working_state TEXT DEFAULT '{}'`)
 }
 
 /** 创建完整表结构（9 张核心表 + 2 张沿用表） */
@@ -461,6 +465,33 @@ function createTables(db: BetterSqlite3.Database) {
       summary TEXT DEFAULT '',
       created_at TEXT DEFAULT (datetime('now'))
     );
+
+    -- ============================================================
+    -- 对话创作模式：场 + 对话回合
+    -- ============================================================
+    CREATE TABLE IF NOT EXISTS scenes (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      chapter_number INTEGER NOT NULL,
+      seq INTEGER NOT NULL,                       -- 场序（章内）
+      title TEXT DEFAULT '',
+      goal TEXT DEFAULT '',
+      status TEXT DEFAULT 'open',                 -- open / distilled
+      body TEXT DEFAULT '',                       -- 收场后的蒸馏正文
+      created_at TEXT DEFAULT (datetime('now')),
+      updated_at TEXT DEFAULT (datetime('now'))
+    );
+    CREATE INDEX IF NOT EXISTS idx_scenes_chapter ON scenes(chapter_number, seq);
+
+    CREATE TABLE IF NOT EXISTS scene_turns (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      scene_id INTEGER NOT NULL,
+      role TEXT NOT NULL,                         -- user（控场） / assistant（正文草稿）
+      content TEXT NOT NULL,
+      state_patch TEXT DEFAULT '{}',              -- 本轮解析出的角色状态补丁
+      created_at TEXT DEFAULT (datetime('now')),
+      FOREIGN KEY (scene_id) REFERENCES scenes(id) ON DELETE CASCADE
+    );
+    CREATE INDEX IF NOT EXISTS idx_scene_turns_scene ON scene_turns(scene_id);
 
     -- 索引
     CREATE INDEX IF NOT EXISTS idx_llm_calls_time ON llm_calls(created_at);

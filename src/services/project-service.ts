@@ -125,10 +125,16 @@ export async function onProjectOpened(): Promise<void> {
   const project = useProjectStore.getState().currentProject
   if (!project) return
 
-  // 并行加载角色卡和草稿列表
+  // 并行加载角色卡、草稿列表、项目级提示词覆盖与 Mod 启用清单
+  const [{ loadProjectCustomPrompts }, { loadProjectEnabledMods }] = await Promise.all([
+    import('./prompt-templates'),
+    import('./mods'),
+  ])
   await Promise.all([
     useCharacterStore.getState().load(),
     useDraftStore.getState().loadAllDrafts(),
+    loadProjectCustomPrompts(project.path),
+    loadProjectEnabledMods(project.path),
   ])
 
   // 广播项目已就绪事件

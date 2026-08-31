@@ -7,6 +7,7 @@ import { useTranslation } from 'react-i18next'
 import { useProjectStore } from '../../stores/project-store'
 import { useWorkflowStore } from '../../stores/workflow-store'
 import { useLayoutStore } from '../../stores/layout-store'
+import { useEditorStore } from '../../stores/editor-store'
 import { ipc } from '../../services/ipc-client'
 import i18n from '../../i18n'
 import {
@@ -77,6 +78,8 @@ export default function ChapterCardEditor() {
 
   // 蓝图生成弹窗（替代原 inline 批量面板）
   const [showBlueprintDialog, setShowBlueprintDialog] = useState(false)
+  // 章级创作模式覆盖（'' = 继承工程默认）
+  const [chapterMode, setChapterMode] = useState('')
 
   const loadBlueprints = useCallback(async () => {
     if (!currentProject) return
@@ -111,6 +114,16 @@ export default function ChapterCardEditor() {
   }, [loadBlueprints])
 
   const selected = blueprints[selectedIdx] ?? null
+
+  // 选中章变化时加载章级模式覆盖
+  useEffect(() => {
+    if (!selected) return
+    let mounted = true
+    void ipc.invoke('db:chapter-mode-get', selected.chapterNumber).then((mode) => {
+      if (mounted) setChapterMode(mode || '')
+    })
+    return () => { mounted = false }
+  }, [selected?.chapterNumber])
 
   /** 更新选中章节蓝图的字段 */
   const updateField = <K extends keyof ChapterBlueprint>(key: K, value: ChapterBlueprint[K]) => {
@@ -226,7 +239,25 @@ export default function ChapterCardEditor() {
    * 写作此章 — 将当前蓝图信息注入创作弹窗
    * 支持指定章节（默认为当前选中章）
    */
-  const handleWriteChapter = (bp: ChapterBlueprint) => {
+  /** 打开对话创作 tab（对话控场 → 收场蒸馏 → 汇入草稿箱） */
+  const openDialogueTab = (bp: ChapterBlueprint) => {
+    useEditorStore.getState().openFile({
+      id: `dialogue-${bp.chapterNumber}`,
+      name: t('dialogue.tabName', { chapter: bp.chapterNumber }),
+      type: 'dialogue',
+      filePath: `vela://dialogue/${bp.chapterNumber}`,
+    })
+  }
+
+  const handleWriteChapter = async (bp: ChapterBlueprint) => {
+    // 有效模式 = 章级覆盖 > 工程默认；dialogue 时「写作此章」进对话创作
+    const override = await ipc.invoke('db:chapter-mode-get', bp.chapterNumber)
+    const projectMode = useProjectStore.getState().currentProject?.novelConfig?.creationMode
+    const mode = override === 'pipeline' || override === 'dialogue' ? override : projectMode
+    if (mode === 'dialogue') {
+      openDialogueTab(bp)
+      return
+    }
     // 通过 layout-store openChapterCreation 传递预填参数，替代 window.dispatchEvent
     useLayoutStore.getState().openChapterCreation({
       chapterNumber: bp.chapterNumber,
@@ -284,7 +315,7 @@ export default function ChapterCardEditor() {
               onClick={() => {
                 const bp = blueprints.find(b => b.chapterNumber === nextWriteChapter)
                 if (bp) {
-                  handleWriteChapter(bp)
+                  void handleWriteChapter(bp)
                 } else {
                   toast.warning(`第 ${nextWriteChapter} 章还没有蓝图，请先用「AI 生成蓝图」生成该章，或点「+」手动新建后再写作`)
                 }
@@ -406,22 +437,44 @@ export default function ChapterCardEditor() {
           {selected ? (
             <div className="max-w-2xl mx-auto px-5 py-4">
               {/* 编辑区头部 */}
-              <div className="flex items-center justify-between mb-4">
-                <h3 className="text-sm font-bold" style={{ color: 'var(--color-text)' }}>
+              <div className="flex items-start justify-between gap-2 mb-4">
+                <h3 className="text-sm font-bold flex-shrink-0 pt-1" style={{ color: 'var(--color-text)' }}>
                   {t('chapterCard.chapterTitle', { chapter: selected.chapterNumber, title: selected.title || t('chapterCard.unnamed') })}
                 </h3>
-                <div className="flex items-center gap-1.5">
+                <div className="flex flex-wrap items-center justify-end gap-1.5 min-w-0">
                   {/* 仅下一章允许写作 */}
                   {nextWriteChapter !== null && selected.chapterNumber === nextWriteChapter && (
                     <Button
                       variant="ai"
                       size="sm"
-                      onClick={() => handleWriteChapter(selected)}
+                      onClick={() => void handleWriteChapter(selected)}
                       title={t('chapterCard.writeThisChapterTooltip')}
                     >
                       <PenLine size={12} /> {t('chapterCard.writeThisChapter')}
                     </Button>
                   )}
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => openDialogueTab(selected)}
+                    title={t('chapterCard.dialogueWriteTooltip')}
+                  >
+                    {t('chapterCard.dialogueWrite')}
+                  </Button>
+                  <NativeSelect
+                    className="w-[7.5rem] flex-shrink-0"
+                    title={t('chapterCard.creationModeOverrideTooltip')}
+                    value={chapterMode}
+                    onChange={(e) => {
+                      const mode = e.target.value
+                      setChapterMode(mode)
+                      void ipc.invoke('db:chapter-mode-set', selected.chapterNumber, mode)
+                    }}
+                  >
+                    <option value="">{t('chapterCard.creationModeInherit')}</option>
+                    <option value="pipeline">{t('chapterCard.modePipeline')}</option>
+                    <option value="dialogue">{t('chapterCard.modeDialogue')}</option>
+                  </NativeSelect>
                   {/* 滚动蓝图：按已写剧情修正本章蓝图。
                       已定稿章节不再显示——正文已经写定，改蓝图只会让两者对不上，
                       还白花一次模型调用。 */}

@@ -11,6 +11,7 @@ import { ReviewRepository } from '../repositories/review-repository'
 import { PostProcessRepository } from '../repositories/post-process-repository'
 
 import { ForeshadowingRepository, ForeshadowingData } from '../repositories/foreshadowing-repository'
+import { SceneRepository } from '../repositories/scene-repository'
 import { ChapterImageRepository } from '../repositories/chapter-image-repository'
 
 // 沿用的旧表
@@ -89,6 +90,118 @@ export function registerDatabaseController() {
   ipcMain.handle('db:blueprint-update-notes', async (_event, chapterNumber: number, notes: string) => {
     try {
       BlueprintRepository.updateNotes(chapterNumber, notes)
+      return { success: true }
+    } catch (err) {
+      return { success: false, error: String(err) }
+    }
+  })
+
+  // ============================================================
+  // 2b. 对话创作模式：场 / 回合 / 章级进行中状态
+  // ============================================================
+  ipcMain.handle('db:scene-list', async (_event, chapterNumber: number) => {
+    return SceneRepository.listByChapter(chapterNumber)
+  })
+
+  ipcMain.handle('db:scene-create', async (_event, chapterNumber: number, title: string, goal: string) => {
+    try {
+      const id = SceneRepository.create(chapterNumber, title, goal)
+      return { success: true, id }
+    } catch (err) {
+      return { success: false, error: String(err) }
+    }
+  })
+
+  ipcMain.handle('db:scene-update', async (_event, id: number, patch: { title?: string; goal?: string }) => {
+    try {
+      SceneRepository.update(id, patch)
+      return { success: true }
+    } catch (err) {
+      return { success: false, error: String(err) }
+    }
+  })
+
+  ipcMain.handle('db:scene-delete', async (_event, id: number) => {
+    try {
+      SceneRepository.delete(id)
+      return { success: true }
+    } catch (err) {
+      return { success: false, error: String(err) }
+    }
+  })
+
+  ipcMain.handle('db:scene-commit', async (_event, id: number, body: string) => {
+    try {
+      SceneRepository.commit(id, body)
+      return { success: true }
+    } catch (err) {
+      return { success: false, error: String(err) }
+    }
+  })
+
+  ipcMain.handle('db:scene-reopen', async (_event, id: number) => {
+    try {
+      SceneRepository.reopen(id)
+      return { success: true }
+    } catch (err) {
+      return { success: false, error: String(err) }
+    }
+  })
+
+  ipcMain.handle('db:scene-turn-list', async (_event, sceneId: number) => {
+    return SceneRepository.listTurns(sceneId)
+  })
+
+  ipcMain.handle(
+    'db:scene-turn-add',
+    async (
+      _event,
+      sceneId: number,
+      role: 'user' | 'assistant',
+      content: string,
+      statePatch?: Record<string, Record<string, string>>
+    ) => {
+      try {
+        const id = SceneRepository.addTurn(sceneId, role, content, statePatch)
+        return { success: true, id }
+      } catch (err) {
+        return { success: false, error: String(err) }
+      }
+    }
+  )
+
+  ipcMain.handle('db:scene-turn-delete-last', async (_event, sceneId: number) => {
+    try {
+      SceneRepository.deleteLastTurn(sceneId)
+      return { success: true }
+    } catch (err) {
+      return { success: false, error: String(err) }
+    }
+  })
+
+  ipcMain.handle('db:chapter-working-state-get', async (_event, chapterNumber: number) => {
+    return SceneRepository.getWorkingState(chapterNumber)
+  })
+
+  ipcMain.handle(
+    'db:chapter-working-state-set',
+    async (_event, chapterNumber: number, state: Record<string, Record<string, string>>) => {
+      try {
+        SceneRepository.setWorkingState(chapterNumber, state)
+        return { success: true }
+      } catch (err) {
+        return { success: false, error: String(err) }
+      }
+    }
+  )
+
+  ipcMain.handle('db:chapter-mode-get', async (_event, chapterNumber: number) => {
+    return SceneRepository.getChapterMode(chapterNumber)
+  })
+
+  ipcMain.handle('db:chapter-mode-set', async (_event, chapterNumber: number, mode: string) => {
+    try {
+      SceneRepository.setChapterMode(chapterNumber, mode)
       return { success: true }
     } catch (err) {
       return { success: false, error: String(err) }

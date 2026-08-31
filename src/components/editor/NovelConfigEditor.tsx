@@ -11,6 +11,7 @@ import { Input } from '../ui/Input'
 import { Textarea } from '../ui/Textarea'
 import { NativeSelect } from '../ui/NativeSelect'
 import GenerateConfigDialog from '../dialogs/GenerateConfigDialog'
+import ModEnablePanel from './ModEnablePanel'
 
 /** Genre options with i18n labels (values kept in Chinese for backward compatibility) */
 const GENRE_OPTIONS = [
@@ -259,7 +260,24 @@ export default function NovelConfigEditor() {
                   min={100}
                 />
               </Field>
+              <Field label={t('novelConfig.creationMode')} tipItems={[
+                t('novelConfig.creationModeTips.pipeline'),
+                t('novelConfig.creationModeTips.dialogue'),
+              ]}>
+                <NativeSelect
+                  value={config.creationMode || 'pipeline'}
+                  onChange={(e) => update('creationMode', e.target.value as NovelConfig['creationMode'])}
+                >
+                  <option value="pipeline">{t('novelConfig.creationModeOptions.pipeline')}</option>
+                  <option value="dialogue">{t('novelConfig.creationModeOptions.dialogue')}</option>
+                </NativeSelect>
+              </Field>
             </div>
+          </Section>
+
+          {/* 写作 Mod（按本书启用，库在设置里维护） */}
+          <Section title={t('novelConfig.modsSection')} desc={t('novelConfig.modsSectionDesc')} t={t}>
+            <ModEnablePanel />
           </Section>
 
           {/* 核心大纲 */}

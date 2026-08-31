@@ -27,6 +27,7 @@
     "tasksLabel": "Tasks"
   },
   "activityBar": {
+    "foreshadowing": "Foreshadowing Ledger",
     "home": "Home",
     "project": "Project",
     "knowledge": "Knowledge Base",

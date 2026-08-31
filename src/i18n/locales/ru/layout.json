@@ -27,6 +27,7 @@
     "tasksLabel": "Задачи"
   },
   "activityBar": {
+    "foreshadowing": "Журнал предвестий",
     "home": "Главная",
     "project": "Проект",
     "knowledge": "База знаний",

@@ -219,6 +219,8 @@ export interface NovelConfig {
   artStyle?: string
   /** 全局反向提示词：统一作为 negative_prompt 发送，排除写实、人形等不希望出现的元素 */
   negativePrompt?: string
+  /** 创作模式：pipeline = 大纲→草稿箱管线（默认）；dialogue = 对话控场→收场蒸馏 */
+  creationMode?: 'pipeline' | 'dialogue'
 }
 
 export interface FileNode {
@@ -274,6 +276,10 @@ import type { RevisionMeta, RevisionFull } from '../../electron/repositories/rev
 import type { ReviewMeta, ReviewFull } from '../../electron/repositories/review-repository'
 import type { PostProcessRunData, PostProcessStepData } from '../../electron/repositories/post-process-repository'
 import type { ForeshadowingData } from '../../electron/repositories/foreshadowing-repository'
+import type { SceneData, SceneTurnData } from '../../electron/repositories/scene-repository'
+
+/** 章级角色进行中状态：{ 角色名: { 字段: 值 } } */
+export type WorkingState = Record<string, Record<string, string>>
 
 // ===== 数据库操作 =====
 export interface DatabaseChannels {
@@ -289,6 +295,21 @@ export interface DatabaseChannels {
   'db:blueprint-upsert': { args: [data: BlueprintData]; return: { success: boolean; error?: string } }
   'db:blueprint-upsert-many': { args: [items: BlueprintData[]]; return: { success: boolean; error?: string } }
   'db:blueprint-update-notes': { args: [chapterNumber: number, notes: string]; return: { success: boolean; error?: string } }
+
+  // 2b. 对话创作模式：场 / 回合 / 章级进行中状态
+  'db:scene-list': { args: [chapterNumber: number]; return: SceneData[] }
+  'db:scene-create': { args: [chapterNumber: number, title: string, goal: string]; return: { success: boolean; id?: number; error?: string } }
+  'db:scene-update': { args: [id: number, patch: { title?: string; goal?: string }]; return: { success: boolean; error?: string } }
+  'db:scene-delete': { args: [id: number]; return: { success: boolean; error?: string } }
+  'db:scene-commit': { args: [id: number, body: string]; return: { success: boolean; error?: string } }
+  'db:scene-reopen': { args: [id: number]; return: { success: boolean; error?: string } }
+  'db:scene-turn-list': { args: [sceneId: number]; return: SceneTurnData[] }
+  'db:scene-turn-add': { args: [sceneId: number, role: 'user' | 'assistant', content: string, statePatch?: WorkingState]; return: { success: boolean; id?: number; error?: string } }
+  'db:scene-turn-delete-last': { args: [sceneId: number]; return: { success: boolean; error?: string } }
+  'db:chapter-working-state-get': { args: [chapterNumber: number]; return: WorkingState }
+  'db:chapter-working-state-set': { args: [chapterNumber: number, state: WorkingState]; return: { success: boolean; error?: string } }
+  'db:chapter-mode-get': { args: [chapterNumber: number]; return: string }
+  'db:chapter-mode-set': { args: [chapterNumber: number, mode: string]; return: { success: boolean; error?: string } }
 
   // 3. characters
   'db:character-get-all': { args: []; return: CharacterData[] }

@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef, useCallback } from 'react'
-import { ChevronDown, ChevronRight, Globe, FolderOpen, RotateCcw, AlertTriangle } from 'lucide-react'
+import { ChevronDown, ChevronRight, Globe, FolderOpen, History, RotateCcw, AlertTriangle } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import i18n from '../../i18n'
 import {
@@ -10,12 +10,14 @@ import {
   getPromptName,
   getPromptDescription,
   getLocalizedContent,
+  loadPromptHistory,
   saveCustomPrompt,
   saveProjectCustomPrompt,
   deleteCustomPrompt,
   deleteProjectCustomPrompt,
   loadProjectCustomPrompts,
   type PromptTemplate,
+  type PromptVersion,
 } from '../../services/prompt-templates'
 import { useProjectStore } from '../../stores/project-store'
 import { Button } from '../ui/Button'
@@ -34,6 +36,7 @@ const SOURCE_CONFIG = {
   builtin: { labelKey: 'prompts.builtin', color: 'var(--color-text-muted)', bg: 'var(--color-hover)' },
   global: { labelKey: 'prompts.global', color: '#3b82f6', bg: 'rgba(59, 130, 246, 0.1)' },
   project: { labelKey: 'prompts.project', color: '#f59e0b', bg: 'rgba(245, 158, 11, 0.1)' },
+  mod: { labelKey: 'prompts.mod', color: '#a78bfa', bg: 'rgba(167, 139, 250, 0.1)' },
 } as const
 
 // ==================== 主组件 ====================
@@ -108,7 +111,7 @@ function TemplateItem({
 }: {
   builtinTemplate: PromptTemplate
   currentTemplate: PromptTemplate
-  source: 'builtin' | 'global' | 'project'
+  source: 'builtin' | 'global' | 'project' | 'mod'
   isExpanded: boolean
   onToggle: () => void
   projectPath: string | null
@@ -118,7 +121,16 @@ function TemplateItem({
   const [editContent, setEditContent] = useState(() => getLocalizedContent(currentTemplate))
   const [saving, setSaving] = useState(false)
   const [saveResult, setSaveResult] = useState<{ type: 'success' | 'error'; msg: string } | null>(null)
+  const [history, setHistory] = useState<PromptVersion[]>([])
+  const [historyOpen, setHistoryOpen] = useState(false)
   const textareaRef = useRef<HTMLTextAreaElement>(null)
+
+  // 展开历史区时懒加载版本记录
+  useEffect(() => {
+    if (isExpanded && historyOpen) {
+      void loadPromptHistory(builtinTemplate.key).then(setHistory)
+    }
+  }, [isExpanded, historyOpen, builtinTemplate.key, saving])
 
   const localizedContent = getLocalizedContent(currentTemplate)
   const [prevExpanded, setPrevExpanded] = useState(isExpanded)
@@ -339,6 +351,61 @@ function TemplateItem({
               <RotateCcw size={12} />
               {t('prompts.resetDefault')}
             </Button>
+          </div>
+
+          {/* 历史版本 */}
+          <div>
+            <button
+              className="flex items-center gap-1.5 text-xs outline-none focus:outline-none"
+              style={{ color: 'var(--color-text-muted)' }}
+              onClick={() => setHistoryOpen((v) => !v)}
+            >
+              <History size={12} />
+              {t('prompts.history')}
+              {historyOpen ? <ChevronDown size={11} /> : <ChevronRight size={11} />}
+            </button>
+            {historyOpen && (
+              <div className="mt-2 space-y-1">
+                {history.length === 0 && (
+                  <p className="text-[0.68rem]" style={{ color: 'var(--color-text-muted)' }}>
+                    {t('prompts.historyEmpty')}
+                  </p>
+                )}
+                {history.map((v, i) => (
+                  <div
+                    key={`${v.savedAt}-${i}`}
+                    className="flex items-center gap-2 rounded-lg px-2.5 py-1.5 text-[0.7rem]"
+                    style={{ border: '1px solid var(--color-border)', color: 'var(--color-text-secondary)' }}
+                  >
+                    <span className="flex-shrink-0">{new Date(v.savedAt).toLocaleString()}</span>
+                    <span
+                      className="flex-shrink-0 rounded-full px-1.5 py-0.5 text-[0.62rem]"
+                      style={{
+                        color: v.scope === 'project' ? '#f59e0b' : '#3b82f6',
+                        backgroundColor: v.scope === 'project' ? 'rgba(245,158,11,0.1)' : 'rgba(59,130,246,0.1)',
+                      }}
+                    >
+                      {t(v.scope === 'project' ? 'prompts.project' : 'prompts.global')}
+                    </span>
+                    <span className="min-w-0 flex-1 truncate" style={{ color: 'var(--color-text-muted)' }}>
+                      {v.content.slice(0, 60)}
+                    </span>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      className="flex-shrink-0"
+                      onClick={() => {
+                        setEditContent(v.content)
+                        setSaveResult({ type: 'success', msg: t('prompts.historyRestored') })
+                        setTimeout(() => setSaveResult(null), 3000)
+                      }}
+                    >
+                      {t('prompts.historyRestore')}
+                    </Button>
+                  </div>
+                ))}
+              </div>
+            )}
           </div>
 
           {/* 保存结果反馈 */}

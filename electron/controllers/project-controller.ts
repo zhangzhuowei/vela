@@ -125,6 +125,7 @@ export function registerProjectController() {
           referenceWorks: updatedCoreData.referenceWorks,
           artStyle: updatedCoreData.artStyle,
           negativePrompt: updatedCoreData.negativePrompt,
+          creationMode: (updatedCoreData.creationMode as 'pipeline' | 'dialogue') || 'pipeline',
         },
         characterStates: updatedCoreData.characterStates,
         createdAt: new Date().toISOString(), // db 中实际上有，但这里先 mock 一下时间避免前端报错
@@ -164,6 +165,7 @@ export function registerProjectController() {
           referenceWorks: data.novelConfig.referenceWorks ?? '',
           artStyle: data.novelConfig.artStyle ?? '',
           negativePrompt: data.novelConfig.negativePrompt ?? '',
+          creationMode: data.novelConfig.creationMode ?? 'pipeline',
         })
       }
 
@@ -209,6 +211,7 @@ export function registerProjectController() {
           referenceWorks: data.novelConfig.referenceWorks ?? '',
           artStyle: data.novelConfig.artStyle ?? '',
           negativePrompt: data.novelConfig.negativePrompt ?? '',
+          creationMode: data.novelConfig.creationMode ?? 'pipeline',
         })
       }
       return { success: true }

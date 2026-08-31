@@ -49,7 +49,9 @@ export default defineConfig({
     __APP_VERSION__: JSON.stringify(pkg.version)
   },
   optimizeDeps: {
-    entries: ['index.html', 'src/**/*.{ts,tsx}']
+    entries: ['index.html', 'src/**/*.{ts,tsx}'],
+    // 原生模块只在 Electron 主进程使用，渲染端优化器不要碰
+    exclude: ['@lancedb/lancedb', 'better-sqlite3']
   },
   build: {
     rollupOptions: {
