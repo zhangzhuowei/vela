@@ -22,6 +22,33 @@ import { mergeWorkingState, splitProseAndState } from './state-protocol'
 import { assembleChapterBody } from './assemble'
 import { selectSceneCharacters } from './select-characters'
 import { getPromptTemplate, renderPrompt } from '../prompt-templates'
+import { logLLMCall } from '../stats-service'
+
+type LLMUsage = { promptTokens: number; completionTokens: number; totalTokens: number }
+
+/** 对话模式的调用也记入 llm_calls，与写稿管线共用「模型调用」面板 */
+function logDialogueCall(
+  purpose: string,
+  modelId: string | undefined,
+  startedAt: number,
+  usage?: LLMUsage,
+  errorMessage?: string
+): void {
+  const st = useLLMStore.getState()
+  const mid = modelId ?? st.defaultModelId ?? ''
+  const model = st.models.find((m) => m.id === mid)
+  void logLLMCall({
+    modelId: mid,
+    modelName: model?.name ?? mid,
+    purpose,
+    promptTokens: usage?.promptTokens ?? 0,
+    completionTokens: usage?.completionTokens ?? 0,
+    totalTokens: usage?.totalTokens ?? 0,
+    durationMs: Date.now() - startedAt,
+    success: !errorMessage,
+    errorMessage,
+  })
+}
 
 /**
  * 组装对话配置。配置种子字段（world_setting / protagonist_profile）为空时
@@ -111,9 +138,30 @@ function multilineSummaryOn(): boolean {
   return useProjectStore.getState().currentProject?.novelConfig?.multilineMode === 'summary'
 }
 
+/** 生成一场的前情摘要并写回 scenes.summary；失败静默返回空串（摘要缺失不阻塞创作） */
+async function generateSceneSummary(sceneId: number, body: string): Promise<string> {
+  const text = body.trim()
+  if (!text) return ''
+  const template = getPromptTemplate('dialogue_scene_summary')
+  if (!template) return ''
+  try {
+    const messages = [{ role: 'system' as const, content: renderPrompt(template, { scene_body: text }) }]
+    const modelId = localStorage.getItem('vela-distill-model') || undefined
+    const t0 = Date.now()
+    const res = await useLLMStore.getState().generate(messages, modelId)
+    logDialogueCall('SceneSummary', modelId, t0, res.usage, res.success ? undefined : res.error)
+    const summary = (res.success ? res.content : '').trim()
+    if (summary) await ipc.invoke('db:scene-set-summary', sceneId, summary)
+    return summary
+  } catch {
+    return ''
+  }
+}
+
 /**
  * 多线联动：取同线上一场的前情摘要。
- * 懒生成 + 缓存：上一场无摘要时调一次模型生成并写回 scenes.summary，之后复用。
+ * 正常路径下摘要已在收场时预生成好，直接复用；
+ * 老数据没有摘要时兜底懒生成一次并缓存。
  * 关多线、无线名、无同线前场时返回空串。
  */
 export async function getLineContext(scene: SceneData): Promise<string> {
@@ -122,18 +170,7 @@ export async function getLineContext(scene: SceneData): Promise<string> {
   if (!prev) return ''
   if (prev.summary && prev.summary.trim()) return prev.summary.trim()
   if (!prev.body || !prev.body.trim()) return ''
-  const template = getPromptTemplate('dialogue_scene_summary')
-  if (!template) return ''
-  try {
-    const messages = [{ role: 'system' as const, content: renderPrompt(template, { scene_body: prev.body }) }]
-    const modelId = localStorage.getItem('vela-distill-model') || undefined
-    const res = await useLLMStore.getState().generate(messages, modelId)
-    const summary = (res.success ? res.content : '').trim()
-    if (summary) await ipc.invoke('db:scene-set-summary', prev.id, summary)
-    return summary
-  } catch {
-    return ''
-  }
+  return generateSceneSummary(prev.id, prev.body)
 }
 
 /** 开章时若进行中状态为空，从角色卡当前状态拷贝一份作为起点 */
@@ -253,10 +290,12 @@ export async function generateTurn(params: {
     }
   }
 
-  const runRound = (msgs: ChatMessage[]): Promise<string> =>
-    useLLMStore.getState().generateStream(msgs, {
+  const runRound = (msgs: ChatMessage[]): Promise<string> => {
+    const t0 = Date.now()
+    return useLLMStore.getState().generateStream(msgs, {
       onChunk: callbacks.onChunk,
-      onDone: (fullText) => {
+      onDone: (fullText, usage) => {
+        logDialogueCall('DialogueTurn', undefined, t0, usage)
         void (async () => {
           const { prose, patch } = splitProseAndState(fullText)
           if (prose) parts.push({ prose, patch })
@@ -282,8 +321,12 @@ export async function generateTurn(params: {
           await finalize()
         })()
       },
-      onError: callbacks.onError,
+      onError: (error) => {
+        logDialogueCall('DialogueTurn', undefined, t0, undefined, error)
+        callbacks.onError(error)
+      },
     })
+  }
 
   const requestId = await runRound(messages)
   callbacks.onRequest?.(requestId)
@@ -328,11 +371,13 @@ export async function distillScene(params: {
     references,
     targetLength: params.targetLength,
   })
+  const t0 = Date.now()
   return useLLMStore.getState().generateStream(
     messages,
     {
       onChunk: callbacks.onChunk,
-      onDone: (fullText) => {
+      onDone: (fullText, usage) => {
+        logDialogueCall('DialogueDistill', params.modelId, t0, usage)
         const { prose } = splitProseAndState(fullText)
         if (!prose.trim()) {
           callbacks.onError('蒸馏没有写出正文')
@@ -340,16 +385,22 @@ export async function distillScene(params: {
         }
         callbacks.onDone(prose.trim())
       },
-      onError: callbacks.onError,
+      onError: (error) => {
+        logDialogueCall('DialogueDistill', params.modelId, t0, undefined, error)
+        callbacks.onError(error)
+      },
     },
     params.modelId
   )
 }
 
-/** 收场落盘 */
-export async function commitScene(sceneId: number, body: string): Promise<void> {
-  const res = await ipc.invoke('db:scene-commit', sceneId, body)
+/** 收场落盘；多线开启且本场有线名时，后台预生成前情摘要（下一场生成时直接复用，不再现场等一次模型） */
+export async function commitScene(scene: SceneData, body: string): Promise<void> {
+  const res = await ipc.invoke('db:scene-commit', scene.id, body)
   if (!res.success) throw new Error(res.error || '收场失败')
+  if (multilineSummaryOn() && scene.line) {
+    void generateSceneSummary(scene.id, body)
+  }
 }
 
 /** 汇稿预览：拼接本章全部已收场正文，只读不落库 */

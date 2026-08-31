@@ -67,7 +67,23 @@ export function registerLLMController() {
     const win = BrowserWindow.fromWebContents(event.sender)
 
     const provider = LLMFactory.getProvider(model)
-    
+
+    // 终端可观测性：流式调用的关键节点都打点，排查"一直不出字"类问题时
+    // 能直接分辨是没发出去、发出去没响应、还是响应了没内容
+    const rid = requestId.slice(0, 8)
+    const t0 = Date.now()
+    let gotFirstChunk = false
+    console.log(`[LLM] ▶ ${model.name} (${model.modelName}) req=${rid}`)
+
+    // 首字超时：慢中转可能挂起几分钟不吐一个字节（undici 默认 5 分钟才断），
+    // 超阈值主动断开并给出明确错误，避免界面无限等待
+    const FIRST_BYTE_TIMEOUT_MS = 90_000
+    let firstByteTimedOut = false
+    const firstByteTimer = setTimeout(() => {
+      firstByteTimedOut = true
+      abortController.abort()
+    }, FIRST_BYTE_TIMEOUT_MS)
+
     // We do not await this globally since it's streaming independently
     provider.generateStream(model, request.messages, {
       temperature: request.temperature ?? model.temperature,
@@ -75,13 +91,27 @@ export function registerLLMController() {
       responseFormat: request.responseFormat,
       thinking: request.thinking,
       signal: abortController.signal,
-      onChunk: (chunk: string) => win?.webContents.send('llm:stream-chunk', { requestId, chunk }),
+      onChunk: (chunk: string) => {
+        if (!gotFirstChunk) {
+          gotFirstChunk = true
+          clearTimeout(firstByteTimer)
+          console.log(`[LLM] ⋯ ${model.name} 首字 ${Date.now() - t0}ms req=${rid}`)
+        }
+        win?.webContents.send('llm:stream-chunk', { requestId, chunk })
+      },
       onDone: (fullText: string, usage?: { promptTokens: number; completionTokens: number; totalTokens: number }) => {
+        clearTimeout(firstByteTimer)
+        console.log(`[LLM] ✓ ${model.name} ${Date.now() - t0}ms ${fullText.length} 字 req=${rid}`)
         win?.webContents.send('llm:stream-done', { requestId, fullText, usage })
         activeStreams.delete(requestId)
       },
       onError: (error: string) => {
-        win?.webContents.send('llm:stream-error', { requestId, error })
+        clearTimeout(firstByteTimer)
+        const finalError = firstByteTimedOut
+          ? `模型 ${FIRST_BYTE_TIMEOUT_MS / 1000} 秒无首字节响应，已自动断开（中转可能挂起，可重试或换模型）`
+          : error
+        console.error(`[LLM] ✗ ${model.name} ${Date.now() - t0}ms req=${rid} ${finalError}`)
+        win?.webContents.send('llm:stream-error', { requestId, error: finalError })
         activeStreams.delete(requestId)
       },
     })

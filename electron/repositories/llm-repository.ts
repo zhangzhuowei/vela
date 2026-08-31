@@ -48,6 +48,17 @@ export class LLMHistoryRepository {
     return row
   }
 
+  /** 按模型聚合最近成功调用的平均耗时（选模型时的速度参考） */
+  static getModelSpeeds(sampleLimit: number = 200): Array<{ modelId: string; avgMs: number; calls: number }> {
+    const db = getProjectDb()
+    if (!db) return []
+    return db.prepare(`
+      SELECT model_id as modelId, AVG(duration_ms) as avgMs, COUNT(*) as calls
+      FROM (SELECT model_id, duration_ms FROM llm_calls WHERE success = 1 ORDER BY id DESC LIMIT ?)
+      GROUP BY model_id
+    `).all(sampleLimit) as Array<{ modelId: string; avgMs: number; calls: number }>
+  }
+
   /** 获取最近 LLM 调用记录 */
   static getHistory(limit: number = 50): unknown[] {
     const db = getProjectDb()

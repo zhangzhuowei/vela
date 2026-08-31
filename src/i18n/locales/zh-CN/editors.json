@@ -39,6 +39,8 @@
     "commit": "落盘收场",
     "cancelPreview": "取消",
     "previewHint": "蒸馏草稿（可手改，落盘前不生效）",
+    "waitingModel": "等待模型响应… 已等 {{s}} 秒（部分中转首字需 10 秒以上，90 秒无响应将自动断开）",
+    "modelAvgSpeed": "（均 {{s}} 秒）",
     "committedHint": "已收场正文",
     "reopen": "重新打开",
     "assemble": "汇入草稿箱",

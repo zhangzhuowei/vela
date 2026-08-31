@@ -37,6 +37,16 @@ export async function getLLMHistory(limit = 30): Promise<LLMCallRecord[]> {
   return (await ipc.invoke('db:get-llm-history', limit)) as unknown as LLMCallRecord[]
 }
 
+/** 各模型近期平均耗时（modelId → 平均毫秒），无记录的模型不出现在结果里 */
+export async function getModelSpeeds(): Promise<Record<string, number>> {
+  try {
+    const rows = await ipc.invoke('db:get-llm-model-speeds')
+    return Object.fromEntries(rows.map((r) => [r.modelId, r.avgMs]))
+  } catch {
+    return {}
+  }
+}
+
 /** 同时加载统计和历史（常用组合） */
 export async function loadLLMData(limit = 30): Promise<{ stats: LLMStats; history: LLMCallRecord[] }> {
   const [stats, history] = await Promise.all([

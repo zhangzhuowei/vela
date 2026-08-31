@@ -18,6 +18,8 @@ export interface StreamSession {
   streaming: string
   /** 蒸馏阶段的实时/成稿文本；null 表示当前没有蒸馏草稿 */
   distillDraft: string | null
+  /** 本阶段发起时刻（ms），供界面显示已等待时长；无进行中的流时为 null */
+  startedAt: number | null
 }
 
 interface DialogueStreamState {
@@ -40,7 +42,7 @@ interface DialogueStreamState {
   fail: (sceneId: number, keepDistill?: boolean) => void
 }
 
-const EMPTY: StreamSession = { phase: null, requestId: null, streaming: '', distillDraft: null }
+const EMPTY: StreamSession = { phase: null, requestId: null, streaming: '', distillDraft: null, startedAt: null }
 
 export const useDialogueStream = create<DialogueStreamState>()((set) => {
   const patch = (sceneId: number, next: Partial<StreamSession>) =>
@@ -55,8 +57,8 @@ export const useDialogueStream = create<DialogueStreamState>()((set) => {
     sessions: {},
     doneTick: {},
 
-    beginGenerate: (sceneId) => patch(sceneId, { phase: 'generating', requestId: null, streaming: '' }),
-    beginDistill: (sceneId) => patch(sceneId, { phase: 'distilling', requestId: null, distillDraft: '' }),
+    beginGenerate: (sceneId) => patch(sceneId, { phase: 'generating', requestId: null, streaming: '', startedAt: Date.now() }),
+    beginDistill: (sceneId) => patch(sceneId, { phase: 'distilling', requestId: null, distillDraft: '', startedAt: Date.now() }),
     setRequest: (sceneId, requestId) => patch(sceneId, { requestId }),
     appendStreaming: (sceneId, chunk) =>
       set((s) => {
@@ -77,14 +79,20 @@ export const useDialogueStream = create<DialogueStreamState>()((set) => {
         doneTick: { ...s.doneTick, [sceneId]: (s.doneTick[sceneId] ?? 0) + 1 },
       })),
     finishDistill: (sceneId, draft) =>
-      patch(sceneId, { phase: null, requestId: null, streaming: '', distillDraft: draft }),
+      patch(sceneId, { phase: null, requestId: null, streaming: '', distillDraft: draft, startedAt: null }),
     fail: (sceneId, keepDistill) =>
       set((s) => {
         const cur = s.sessions[sceneId] ?? EMPTY
         return {
           sessions: {
             ...s.sessions,
-            [sceneId]: { phase: null, requestId: null, streaming: '', distillDraft: keepDistill ? cur.distillDraft : null },
+            [sceneId]: {
+              phase: null,
+              requestId: null,
+              streaming: '',
+              distillDraft: keepDistill ? cur.distillDraft : null,
+              startedAt: null,
+            },
           },
         }
       }),

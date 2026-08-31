@@ -589,6 +589,10 @@ ipcMain.handle('db:revision-create', async (_event, params: {
     return LLMHistoryRepository.getHistory(limit ?? 50)
   })
 
+  ipcMain.handle('db:get-llm-model-speeds', async () => {
+    return LLMHistoryRepository.getModelSpeeds()
+  })
+
   ipcMain.handle('db:save-summary-snapshot', async (_event, chapterNumber: number, characterStates: string) => {
     SummaryRepository.saveSnapshot(chapterNumber, characterStates)
     return { success: true }

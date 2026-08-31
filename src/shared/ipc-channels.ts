@@ -381,6 +381,7 @@ export interface DatabaseChannels {
   'db:log-llm-call': { args: [call: Record<string, unknown>]; return: { success: boolean } }
   'db:get-llm-stats': { args: []; return: { totalCalls: number; totalTokens: number; totalPromptTokens: number; totalCompletionTokens: number } }
   'db:get-llm-history': { args: [limit?: number]; return: unknown[] }
+  'db:get-llm-model-speeds': { args: []; return: Array<{ modelId: string; avgMs: number; calls: number }> }
   'db:save-summary-snapshot': { args: [chapterNumber: number, characterStates: string]; return: { success: boolean } }
   'db:get-latest-summary': { args: []; return: { characterStates: string; chapterNumber: number } | null }
 

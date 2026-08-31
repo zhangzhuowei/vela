@@ -39,6 +39,8 @@
     "commit": "Commit Scene",
     "cancelPreview": "Cancel",
     "previewHint": "Distilled draft (editable, not saved until committed)",
+    "waitingModel": "Waiting for the model… {{s}}s elapsed (some relays take 10s+ for the first byte; auto-disconnects after 90s of silence)",
+    "modelAvgSpeed": " (avg {{s}}s)",
     "committedHint": "Committed scene prose",
     "reopen": "Reopen",
     "assemble": "Send to Draft Box",

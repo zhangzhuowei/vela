@@ -8,6 +8,7 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { PanelRightClose, PanelRightOpen, Plus, RefreshCw, Send, Square, Trash2, Undo2 } from 'lucide-react'
 import { ipc } from '../../services/ipc-client'
+import { getModelSpeeds } from '../../services/stats-service'
 import { useDialogueStream } from '../../stores/dialogue-stream-store'
 import { useDraftStore } from '../../stores/draft-store'
 import { useLLMStore } from '../../stores/llm-store'
@@ -50,6 +51,23 @@ export default function DialogueEditor({ chapterNumber }: { chapterNumber: numbe
   const distillDraft = session?.distillDraft ?? null
   const activeRequestId = session?.requestId ?? null
   const streamBusy = session?.phase != null
+  // 首字未到期间每秒刷新一次渲染，等待提示能显示已等待秒数
+  const waitingFirstByte =
+    (session?.phase === 'generating' && !session.streaming) ||
+    (session?.phase === 'distilling' && session.distillDraft === '')
+  const [, bumpWaitTick] = useState(0)
+  useEffect(() => {
+    if (!waitingFirstByte) return
+    const timer = setInterval(() => bumpWaitTick((n) => n + 1), 1000)
+    return () => clearInterval(timer)
+  }, [waitingFirstByte])
+  const waitedSeconds = session?.startedAt != null ? Math.max(0, Math.floor((Date.now() - session.startedAt) / 1000)) : 0
+  // 各模型近期平均耗时（选蒸馏模型时的速度参考），空闲时刷新
+  const [modelSpeeds, setModelSpeeds] = useState<Record<string, number>>({})
+  useEffect(() => {
+    if (streamBusy) return
+    void getModelSpeeds().then(setModelSpeeds)
+  }, [streamBusy])
   // 蒸馏专用模型（'' = 跟随默认生成模型），本机记忆
   const [distillModelId, setDistillModelId] = useState(() => localStorage.getItem('vela-distill-model') ?? '')
   // 每轮目标字数（0 = 不限），本机记忆
@@ -412,13 +430,17 @@ export default function DialogueEditor({ chapterNumber }: { chapterNumber: numbe
                   </div>
                 </div>
               ))}
-              {streaming && (
+              {session?.phase === 'generating' && (
                 <div className="text-left">
                   <div
                     className="inline-block max-w-[82%] whitespace-pre-wrap rounded-xl px-4 py-2.5 text-sm leading-7"
                     style={{ backgroundColor: 'var(--color-sidebar)', fontFamily: 'var(--font-writing)' }}
                   >
-                    {liveProse(streaming) || '…'}
+                    {liveProse(streaming) || (
+                      <span style={{ color: 'var(--color-text-muted)' }}>
+                        {t('dialogue.waitingModel', { s: waitedSeconds })}
+                      </span>
+                    )}
                     <span className="ai-stream-cursor" />
                   </div>
                 </div>
@@ -435,6 +457,7 @@ export default function DialogueEditor({ chapterNumber }: { chapterNumber: numbe
                     className="config-input h-48"
                     style={{ fontFamily: 'var(--font-writing)', fontSize: 13, lineHeight: 1.7 }}
                     value={distillDraft}
+                    placeholder={session?.phase === 'distilling' ? t('dialogue.waitingModel', { s: waitedSeconds }) : undefined}
                     disabled={busy || streamBusy}
                     onChange={(e) => sceneId != null && stream.setDistillDraft(sceneId, e.target.value)}
                   />
@@ -557,6 +580,9 @@ export default function DialogueEditor({ chapterNumber }: { chapterNumber: numbe
                         .map((m) => (
                           <option key={m.id} value={m.id}>
                             {m.name}
+                            {modelSpeeds[m.id]
+                              ? t('dialogue.modelAvgSpeed', { s: Math.max(1, Math.round(modelSpeeds[m.id] / 1000)) })
+                              : ''}
                           </option>
                         ))}
                     </NativeSelect>
@@ -595,7 +621,7 @@ export default function DialogueEditor({ chapterNumber }: { chapterNumber: numbe
                       disabled={busy || streamBusy || !distillDraft.trim()}
                       onClick={() =>
                         void run(async () => {
-                          await commitScene(scene.id, distillDraft.trim())
+                          await commitScene(scene, distillDraft.trim())
                           stream.setDistillDraft(scene.id, null)
                           await loadScenes()
                         })
