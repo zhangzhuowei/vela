@@ -50,6 +50,8 @@
     "sceneGoalPlaceholder": "Чего должна достичь эта сцена (попадает в промпт, необязательно)",
     "sceneLine": "Линия",
     "sceneLinePlaceholder": "Название линии (напр. линия Флаттершай)",
+    "wordCount": "{{n}} зн.",
+    "turnCount": "{{n}} ходов",
     "stop": "Стоп",
     "turnLengthFree": "Объём: свободно",
     "turnLengthOption": "~{{n}} знаков/ход",

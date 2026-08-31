@@ -50,6 +50,8 @@
     "sceneGoalPlaceholder": "本场要达成什么（写进提示词，可空）",
     "sceneLine": "线",
     "sceneLinePlaceholder": "线名（如：柔柔线）",
+    "wordCount": "{{n}} 字",
+    "turnCount": "{{n}} 轮对话",
     "stop": "停止",
     "turnLengthFree": "字数：不限",
     "turnLengthOption": "约 {{n}} 字/轮",

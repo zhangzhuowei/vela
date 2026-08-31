@@ -50,6 +50,8 @@
     "sceneGoalPlaceholder": "What this scene should achieve (injected into the prompt, optional)",
     "sceneLine": "Line",
     "sceneLinePlaceholder": "Line name (e.g. Fluttershy line)",
+    "wordCount": "{{n}} chars",
+    "turnCount": "{{n}} turns",
     "stop": "Stop",
     "turnLengthFree": "Length: free",
     "turnLengthOption": "~{{n}} chars/turn",

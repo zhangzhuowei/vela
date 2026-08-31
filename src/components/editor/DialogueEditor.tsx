@@ -320,13 +320,20 @@ export default function DialogueEditor({ chapterNumber }: { chapterNumber: numbe
             {projectName} · {chapterTitle}
             {scene ? ` · ${scene.title || `场${scene.seq}`}` : ''}
           </span>
-          <button
-            className="icon-btn hidden flex-shrink-0 xl:flex"
-            title={t('dialogue.workingState')}
-            onClick={toggleStatePanel}
-          >
-            {statePanelOpen ? <PanelRightClose size={14} /> : <PanelRightOpen size={14} />}
-          </button>
+          <div className="flex flex-shrink-0 items-center gap-2">
+            {scene && (
+              <span className="text-[0.68rem] normal-case" style={{ color: 'var(--color-text-muted)' }}>
+                {t('dialogue.turnCount', { n: turns.filter((x) => x.role === 'assistant').length })}
+              </span>
+            )}
+            <button
+              className="icon-btn hidden xl:flex"
+              title={t('dialogue.workingState')}
+              onClick={toggleStatePanel}
+            >
+              {statePanelOpen ? <PanelRightClose size={14} /> : <PanelRightOpen size={14} />}
+            </button>
+          </div>
         </div>
         {(error || notice) && (
           <div
@@ -426,8 +433,11 @@ export default function DialogueEditor({ chapterNumber }: { chapterNumber: numbe
                   className="rounded-xl p-3"
                   style={{ border: '1px solid var(--color-success)', backgroundColor: 'var(--color-sidebar)' }}
                 >
-                  <div className="mb-1 text-xs" style={{ color: 'var(--color-success)' }}>
-                    {t('dialogue.committedHint')}
+                  <div className="mb-1 flex items-center justify-between text-xs" style={{ color: 'var(--color-success)' }}>
+                    <span>{t('dialogue.committedHint')}</span>
+                    <span style={{ color: 'var(--color-text-muted)' }}>
+                      {t('dialogue.wordCount', { n: scene.body.replace(/\s/g, '').length })}
+                    </span>
                   </div>
                   <div
                     className="whitespace-pre-wrap text-sm leading-7"
