@@ -6,7 +6,7 @@
  */
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
-import { Plus, RefreshCw, Send, Square, Trash2, Undo2 } from 'lucide-react'
+import { PanelRightClose, PanelRightOpen, Plus, RefreshCw, Send, Square, Trash2, Undo2 } from 'lucide-react'
 import { ipc } from '../../services/ipc-client'
 import { useLLMStore } from '../../stores/llm-store'
 import { useProjectStore } from '../../stores/project-store'
@@ -46,6 +46,16 @@ export default function DialogueEditor({ chapterNumber }: { chapterNumber: numbe
   const llmModels = useLLMStore((s) => s.models)
   // 汇稿预览（非 null 时显示确认弹层）
   const [assemblePreview, setAssemblePreview] = useState<string | null>(null)
+  // 右侧状态栏收起/展开，本机记忆
+  const [statePanelOpen, setStatePanelOpen] = useState(
+    () => localStorage.getItem('vela-dialogue-state-panel') !== 'closed'
+  )
+  const toggleStatePanel = () => {
+    setStatePanelOpen((prev) => {
+      localStorage.setItem('vela-dialogue-state-panel', prev ? 'closed' : 'open')
+      return !prev
+    })
+  }
   const scrollRef = useRef<HTMLDivElement>(null)
 
   const scene = scenes.find((s) => s.id === sceneId) ?? null
@@ -291,11 +301,13 @@ export default function DialogueEditor({ chapterNumber }: { chapterNumber: numbe
             {projectName} · {chapterTitle}
             {scene ? ` · ${scene.title || `场${scene.seq}`}` : ''}
           </span>
-          <details className="normal-case">
-            <summary className="cursor-pointer text-xs" style={{ color: 'var(--color-text-muted)' }}>
-              {t('dialogue.workingState')}
-            </summary>
-          </details>
+          <button
+            className="icon-btn hidden flex-shrink-0 xl:flex"
+            title={t('dialogue.workingState')}
+            onClick={toggleStatePanel}
+          >
+            {statePanelOpen ? <PanelRightClose size={14} /> : <PanelRightOpen size={14} />}
+          </button>
         </div>
         {(error || notice) && (
           <div
@@ -533,7 +545,8 @@ export default function DialogueEditor({ chapterNumber }: { chapterNumber: numbe
         )}
       </main>
 
-      {/* 进行中状态侧栏 */}
+      {/* 进行中状态侧栏（可收起） */}
+      {statePanelOpen && (
       <aside
         className="hidden w-60 flex-shrink-0 flex-col overflow-y-auto xl:flex"
         style={{ borderLeft: '1px solid var(--color-border)', backgroundColor: 'var(--color-sidebar)' }}
@@ -576,6 +589,7 @@ export default function DialogueEditor({ chapterNumber }: { chapterNumber: numbe
           ))}
         </div>
       </aside>
+      )}
 
       {/* 汇稿预览确认弹层 */}
       {assemblePreview !== null && (

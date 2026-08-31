@@ -47,6 +47,7 @@
     "workingState": "进行中角色状态",
     "generating": "生成中…",
     "sceneGoal": "场目标",
+    "sceneGoalPlaceholder": "本场要达成什么（写进提示词，可空）",
     "stop": "停止",
     "distillModelDefault": "蒸馏：默认模型",
     "distillModelTooltip": "收场蒸馏单独用哪个模型（比如控场用便宜模型、蒸馏用好模型）",

@@ -47,6 +47,7 @@
     "workingState": "Working character states",
     "generating": "Generating…",
     "sceneGoal": "Scene goal",
+    "sceneGoalPlaceholder": "What this scene should achieve (injected into the prompt, optional)",
     "stop": "Stop",
     "distillModelDefault": "Distill: default model",
     "distillModelTooltip": "Model used for scene distillation (e.g. cheap model for directing, strong model for distilling)",
