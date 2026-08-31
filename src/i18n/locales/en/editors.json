@@ -358,8 +358,8 @@
     "wordsPerChapter": "Words per Chapter",
     "creationMode": "Creation Mode",
     "creationModeOptions": {
-      "pipeline": "Outline pipeline (blueprint → draft → draft box)",
-      "dialogue": "Dialogue mode (direct → distill → assemble)"
+      "pipeline": "Outline pipeline",
+      "dialogue": "Dialogue mode"
     },
     "creationModeTips": {
       "pipeline": "Outline pipeline: AI drafts whole chapters from blueprints, then revise and finalize in the draft box",

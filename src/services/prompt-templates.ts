@@ -33,14 +33,20 @@ export interface PromptTemplate {
   systemSuffixLocalized?: Record<string, string>
 }
 
-/** 获取翻译后的模板名称 */
+/** 获取翻译后的模板名称（缺 i18n 键时回退模板自带 name，避免显示裸键名） */
 export function getPromptName(key: string): string {
-  return i18n.t(`promptTemplates.${key}.name`, { ns: 'settings' })
+  const i18nKey = `promptTemplates.${key}.name`
+  const translated = i18n.t(i18nKey, { ns: 'settings' })
+  if (translated !== i18nKey) return translated
+  return BUILTIN_PROMPTS.find((p) => p.key === key)?.name ?? key
 }
 
-/** 获取翻译后的模板描述 */
+/** 获取翻译后的模板描述（缺 i18n 键时回退模板自带 description） */
 export function getPromptDescription(key: string): string {
-  return i18n.t(`promptTemplates.${key}.description`, { ns: 'settings' })
+  const i18nKey = `promptTemplates.${key}.description`
+  const translated = i18n.t(i18nKey, { ns: 'settings' })
+  if (translated !== i18nKey) return translated
+  return BUILTIN_PROMPTS.find((p) => p.key === key)?.description ?? ''
 }
 
 /** Получить локализованное содержимое промпта */

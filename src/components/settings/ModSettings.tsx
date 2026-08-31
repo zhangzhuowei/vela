@@ -6,7 +6,7 @@
  */
 import { useEffect, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
-import { Ban, ChevronDown, ChevronRight, CircleCheck, Download, History, Plus, RotateCcw, Trash2, Upload } from 'lucide-react'
+import { Ban, ChevronDown, ChevronRight, CircleCheck, Download, Eye, History, Plus, RotateCcw, Trash2, Upload, X } from 'lucide-react'
 import {
   collectTags,
   deleteMod,
@@ -303,6 +303,7 @@ function ModItem({
   const [addKey, setAddKey] = useState('')
   const [history, setHistory] = useState<ModVersion[]>([])
   const [historyOpen, setHistoryOpen] = useState(false)
+  const [previewVersion, setPreviewVersion] = useState<ModVersion | null>(null)
   const [busy, setBusy] = useState(false)
   const [msg, setMsg] = useState('')
 
@@ -645,6 +646,14 @@ function ModItem({
                     <span className="min-w-0 flex-1 truncate" style={{ color: 'var(--color-text-muted)' }}>
                       {(v.snapshot.guidanceAppend || Object.keys(v.snapshot.templates).map(getPromptName).join('、') || '—').slice(0, 50)}
                     </span>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      className="flex-shrink-0"
+                      onClick={() => setPreviewVersion(v)}
+                    >
+                      <Eye size={11} /> {t('mods.preview')}
+                    </Button>
                     {v.version !== mod.version && (
                       <Button
                         variant="ghost"
@@ -658,6 +667,94 @@ function ModItem({
                     )}
                   </div>
                 ))}
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* 历史版本预览弹层 */}
+      {previewVersion && (
+        <div
+          className="fixed inset-0 z-[60] flex items-center justify-center p-8"
+          style={{ backgroundColor: 'var(--color-backdrop)', backdropFilter: 'blur(4px)' }}
+          onClick={(e) => e.target === e.currentTarget && setPreviewVersion(null)}
+        >
+          <div
+            className="flex max-h-[85vh] w-full max-w-2xl flex-col overflow-hidden rounded-2xl"
+            style={{ backgroundColor: 'var(--color-bg)', border: '1px solid var(--color-border)' }}
+          >
+            <div
+              className="flex items-center justify-between px-5 py-3"
+              style={{ borderBottom: '1px solid var(--color-border)' }}
+            >
+              <span className="text-sm font-semibold">
+                {t('mods.previewTitle', { name: mod.name, version: previewVersion.version })}
+              </span>
+              <button className="icon-btn" onClick={() => setPreviewVersion(null)}>
+                <X size={14} />
+              </button>
+            </div>
+            <div className="min-h-0 flex-1 space-y-4 overflow-y-auto px-6 py-4 text-xs">
+              {previewVersion.snapshot.tags && previewVersion.snapshot.tags.length > 0 && (
+                <div className="flex flex-wrap gap-1.5">
+                  {previewVersion.snapshot.tags.map((tag) => (
+                    <span
+                      key={tag}
+                      className="rounded-full px-1.5 py-0.5 text-[0.62rem]"
+                      style={{ color: 'var(--color-text-muted)', backgroundColor: 'var(--color-hover)' }}
+                    >
+                      {tag}
+                    </span>
+                  ))}
+                </div>
+              )}
+              <div>
+                <div className="mb-1 font-semibold" style={{ color: 'var(--color-text-secondary)' }}>
+                  {t('mods.guidance')}
+                </div>
+                <pre
+                  className="whitespace-pre-wrap rounded-lg p-2.5 font-mono leading-5"
+                  style={{ backgroundColor: 'var(--color-editor-bg)', border: '1px solid var(--color-border)' }}
+                >
+                  {previewVersion.snapshot.guidanceAppend || '—'}
+                </pre>
+              </div>
+              {Object.entries(previewVersion.snapshot.templates).map(([key, content]) => (
+                <div key={key}>
+                  <div className="mb-1 font-semibold" style={{ color: 'var(--color-text-secondary)' }}>
+                    {getPromptName(key)} <span className="opacity-50">({key})</span>
+                  </div>
+                  <pre
+                    className="whitespace-pre-wrap rounded-lg p-2.5 font-mono leading-5"
+                    style={{ backgroundColor: 'var(--color-editor-bg)', border: '1px solid var(--color-border)' }}
+                  >
+                    {content}
+                  </pre>
+                </div>
+              ))}
+              {previewVersion.snapshot.guidanceAppend === '' &&
+                Object.keys(previewVersion.snapshot.templates).length === 0 && (
+                  <p style={{ color: 'var(--color-text-muted)' }}>{t('mods.previewEmpty')}</p>
+                )}
+            </div>
+            {previewVersion.version !== mod.version && (
+              <div
+                className="flex items-center justify-end gap-2 px-5 py-3"
+                style={{ borderTop: '1px solid var(--color-border)' }}
+              >
+                <Button
+                  variant="outline"
+                  size="sm"
+                  disabled={busy}
+                  onClick={() => {
+                    const v = previewVersion.version
+                    setPreviewVersion(null)
+                    void handleRollback(v)
+                  }}
+                >
+                  <RotateCcw size={12} /> {t('mods.rollbackToThis')}
+                </Button>
               </div>
             )}
           </div>

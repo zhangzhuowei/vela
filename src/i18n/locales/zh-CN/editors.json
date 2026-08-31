@@ -358,8 +358,8 @@
     "wordsPerChapter": "每章字数",
     "creationMode": "创作模式",
     "creationModeOptions": {
-      "pipeline": "大纲管线（蓝图→写稿→草稿箱）",
-      "dialogue": "对话创作（控场→收场→汇稿）"
+      "pipeline": "大纲管线",
+      "dialogue": "对话创作"
     },
     "creationModeTips": {
       "pipeline": "大纲管线：AI 按蓝图整章写稿，进草稿箱后修订定稿",
