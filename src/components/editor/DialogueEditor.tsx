@@ -70,6 +70,13 @@ export default function DialogueEditor({ chapterNumber }: { chapterNumber: numbe
     })
   }
   const scrollRef = useRef<HTMLDivElement>(null)
+  // 是否贴底：用户上滑阅读时置 false，暂停自动跟随；滑回底部再恢复
+  const stickToBottom = useRef(true)
+  const onScroll = () => {
+    const el = scrollRef.current
+    if (!el) return
+    stickToBottom.current = el.scrollHeight - el.scrollTop - el.clientHeight < 80
+  }
 
   const scene = scenes.find((s) => s.id === sceneId) ?? null
 
@@ -125,8 +132,13 @@ export default function DialogueEditor({ chapterNumber }: { chapterNumber: numbe
   }
 
   useEffect(() => {
-    scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight })
+    if (stickToBottom.current) scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight })
   }, [turns, streaming])
+
+  // 切场时重置为贴底
+  useEffect(() => {
+    stickToBottom.current = true
+  }, [sceneId])
 
   const run = async (fn: () => Promise<void>) => {
     setBusy(true)
@@ -385,7 +397,7 @@ export default function DialogueEditor({ chapterNumber }: { chapterNumber: numbe
                 </>
               )}
             </div>
-            <div ref={scrollRef} className="min-h-0 flex-1 space-y-3 overflow-y-auto px-6 py-4">
+            <div ref={scrollRef} onScroll={onScroll} className="min-h-0 flex-1 space-y-3 overflow-y-auto px-6 py-4">
               {turns.map((turn) => (
                 <div key={turn.id} className={turn.role === 'user' ? 'text-right' : 'text-left'}>
                   <div
