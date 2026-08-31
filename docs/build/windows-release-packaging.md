@@ -132,6 +132,19 @@ node node_modules\electron-builder\out\cli\cli.js --prepackaged "release\0.2.1\w
 
 3. **启动冒烟** —— 直接跑 `win-unpacked\Vela.exe`，带 `ELECTRON_ENABLE_LOGGING=1` 抓 stdout/stderr，存活 30 秒后用 `tasklist` 确认进程数（主进程 + renderer + GPU + utility，正常是 4 个），stderr 应为空、不应提前退出。测完只 kill 自己启动的那个 PID 树，别按镜像名杀，免得干掉用户正在用的 Vela。
 
+## 4.5 复现记录（0.2.3，2026-08-31）
+
+同一个坑在 0.2.3 本地重打包时再次稳定复现（连续 3 次 `pnpm build` 全部卡在 rcedit `Unable to commit changes`），
+用本文第 3 节的绕法一次成功，流程与 0.2.1 一致：
+
+1. `pnpm build` 跑到 rcedit 失败退出，但 `release/0.2.3/win-unpacked/` 已产出（含已写好的 asar 完整性）。
+2. 手动跑一次 rcedit 只写 `ProductName` 验证是瞬时锁——`exit=0`（间隔够就成功），坐实竞态。
+3. 手动补写完整版本信息 + `--set-icon build/icon.ico`（一次成功，本次未触发锁）。
+4. `pnpm exec electron-builder --win --prepackaged "release/0.2.3/win-unpacked"` → 跳过 pack/rcedit，
+   直接产出 `Vela-0.2.3-setup.exe`（224.7 MB）与 `Vela-0.2.3-portable.exe`（224.1 MB）。
+
+已把上述固化为脚本 `scripts/build-win-local.mjs`，本地应急重打包直接 `node scripts/build-win-local.mjs` 即可。
+
 ## 5. 建议的根治办法（尚未实施）
 
 按优先级：
