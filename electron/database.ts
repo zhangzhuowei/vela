@@ -157,6 +157,10 @@ function migrateSchema(db: BetterSqlite3.Database) {
   addColumnIfMissing('project_core', 'creation_mode', `creation_mode TEXT DEFAULT 'pipeline'`)
   addColumnIfMissing('blueprints', 'creation_mode', `creation_mode TEXT DEFAULT ''`)
   addColumnIfMissing('blueprints', 'working_state', `working_state TEXT DEFAULT '{}'`)
+  // 对话多线联动：工程级开关 + 场的线名与摘要缓存
+  addColumnIfMissing('project_core', 'multiline_mode', `multiline_mode TEXT DEFAULT 'off'`)
+  addColumnIfMissing('scenes', 'line', `line TEXT DEFAULT ''`)
+  addColumnIfMissing('scenes', 'summary', `summary TEXT DEFAULT ''`)
 }
 
 /** 创建完整表结构（9 张核心表 + 2 张沿用表） */
@@ -477,6 +481,8 @@ function createTables(db: BetterSqlite3.Database) {
       goal TEXT DEFAULT '',
       status TEXT DEFAULT 'open',                 -- open / distilled
       body TEXT DEFAULT '',                       -- 收场后的蒸馏正文
+      line TEXT DEFAULT '',                       -- 多线联动：线名（空=未归线）
+      summary TEXT DEFAULT '',                    -- 多线联动：正文 LLM 摘要缓存
       created_at TEXT DEFAULT (datetime('now')),
       updated_at TEXT DEFAULT (datetime('now'))
     );

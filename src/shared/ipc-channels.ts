@@ -221,6 +221,8 @@ export interface NovelConfig {
   negativePrompt?: string
   /** 创作模式：pipeline = 大纲→草稿箱管线（默认）；dialogue = 对话控场→收场蒸馏 */
   creationMode?: 'pipeline' | 'dialogue'
+  /** 对话多线联动：off = 关（默认）；summary = 线标签 + 同线上一场摘要注入 */
+  multilineMode?: 'off' | 'summary'
 }
 
 export interface FileNode {
@@ -299,7 +301,9 @@ export interface DatabaseChannels {
   // 2b. 对话创作模式：场 / 回合 / 章级进行中状态
   'db:scene-list': { args: [chapterNumber: number]; return: SceneData[] }
   'db:scene-create': { args: [chapterNumber: number, title: string, goal: string]; return: { success: boolean; id?: number; error?: string } }
-  'db:scene-update': { args: [id: number, patch: { title?: string; goal?: string }]; return: { success: boolean; error?: string } }
+  'db:scene-update': { args: [id: number, patch: { title?: string; goal?: string; line?: string }]; return: { success: boolean; error?: string } }
+  'db:scene-prev-in-line': { args: [chapterNumber: number, line: string, beforeSeq: number]; return: SceneData | null }
+  'db:scene-set-summary': { args: [id: number, summary: string]; return: { success: boolean; error?: string } }
   'db:scene-delete': { args: [id: number]; return: { success: boolean; error?: string } }
   'db:scene-commit': { args: [id: number, body: string]; return: { success: boolean; error?: string } }
   'db:scene-reopen': { args: [id: number]; return: { success: boolean; error?: string } }

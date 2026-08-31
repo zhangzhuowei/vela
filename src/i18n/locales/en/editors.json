@@ -48,6 +48,8 @@
     "generating": "Generating…",
     "sceneGoal": "Scene goal",
     "sceneGoalPlaceholder": "What this scene should achieve (injected into the prompt, optional)",
+    "sceneLine": "Line",
+    "sceneLinePlaceholder": "Line name (e.g. Fluttershy line)",
     "stop": "Stop",
     "turnLengthFree": "Length: free",
     "turnLengthOption": "~{{n}} chars/turn",
@@ -364,6 +366,15 @@
     "creationModeTips": {
       "pipeline": "Outline pipeline: AI drafts whole chapters from blueprints, then revise and finalize in the draft box",
       "dialogue": "Dialogue mode: direct each scene via chat, distill it into prose, assemble scenes into a draft"
+    },
+    "multilineMode": "Multi-line linkage",
+    "multilineModeOptions": {
+      "off": "Off",
+      "summary": "Same-line summary"
+    },
+    "multilineModeTips": {
+      "off": "Off: scenes only link through the shared working character states (default)",
+      "summary": "Same-line summary: tag scenes with a line; inject the previous same-line scene's recap into generation (auto-generated and cached)"
     },
     "modsSection": "Writing Mods",
     "modsSectionDesc": "Check the mod packs enabled for this book; stackable (later wins). Changes apply immediately",

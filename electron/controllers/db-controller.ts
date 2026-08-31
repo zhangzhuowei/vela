@@ -112,9 +112,22 @@ export function registerDatabaseController() {
     }
   })
 
-  ipcMain.handle('db:scene-update', async (_event, id: number, patch: { title?: string; goal?: string }) => {
+  ipcMain.handle('db:scene-update', async (_event, id: number, patch: { title?: string; goal?: string; line?: string }) => {
     try {
       SceneRepository.update(id, patch)
+      return { success: true }
+    } catch (err) {
+      return { success: false, error: String(err) }
+    }
+  })
+
+  ipcMain.handle('db:scene-prev-in-line', async (_event, chapterNumber: number, line: string, beforeSeq: number) => {
+    return SceneRepository.prevInLine(chapterNumber, line, beforeSeq)
+  })
+
+  ipcMain.handle('db:scene-set-summary', async (_event, id: number, summary: string) => {
+    try {
+      SceneRepository.setSummary(id, summary)
       return { success: true }
     } catch (err) {
       return { success: false, error: String(err) }

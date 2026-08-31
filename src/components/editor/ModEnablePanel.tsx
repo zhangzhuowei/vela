@@ -14,11 +14,13 @@ import {
   listMods,
   loadModHistory,
   loadMods,
+  loadProjectEnabledMods,
   saveProjectEnabledMods,
   type ModEnableEntry,
   type ModVersion,
   type WritingMod,
 } from '../../services/mods'
+import { useProjectStore } from '../../stores/project-store'
 import { Input } from '../ui/Input'
 import { NativeSelect } from '../ui/NativeSelect'
 
@@ -29,17 +31,22 @@ export default function ModEnablePanel() {
   const [historyByMod, setHistoryByMod] = useState<Record<string, ModVersion[]>>({})
   const [query, setQuery] = useState('')
   const [filterTag, setFilterTag] = useState<string | null>(null)
+  const projectPath = useProjectStore((s) => s.currentProject?.path)
 
   useEffect(() => {
-    void loadMods().then(() => {
+    void (async () => {
+      await loadMods()
+      // 从磁盘重载本书启用表：热重载/模块重置后内存可能已清空，
+      // 直接读盘并重设 currentProjectPath，避免面板显示空、后续保存写空文件
+      if (projectPath) await loadProjectEnabledMods(projectPath)
       setMods(listMods())
       const current = getEnabledEntries()
       setEntries(current)
       // 已启用的 Mod 预载历史，供版本下拉使用
       for (const entry of current) void ensureHistory(entry.id)
-    })
+    })()
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [])
+  }, [projectPath])
 
   const ensureHistory = async (id: string) => {
     const history = await loadModHistory(id)

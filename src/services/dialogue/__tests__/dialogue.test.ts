@@ -162,6 +162,36 @@ describe('dialogue-prompts', () => {
     expect(messages[0].content).not.toContain('本轮篇幅')
   })
 
+  it('injects same-line context when given', () => {
+    const messages = buildSceneMessages({
+      config,
+      characters: [],
+      workingState: {},
+      chapterTitle: '第1章',
+      chapterGoal: '',
+      sceneTitle: '夜谈',
+      sceneGoal: '',
+      turns: [],
+      lineContext: '本线（柔柔线）前情：柔柔在森林边缘救下受伤的小动物。',
+    })
+    expect(messages[0].content).toContain('柔柔线')
+    expect(messages[0].content).toContain('救下受伤的小动物')
+  })
+
+  it('omits line context when not given', () => {
+    const messages = buildSceneMessages({
+      config,
+      characters: [],
+      workingState: {},
+      chapterTitle: '第1章',
+      chapterGoal: '',
+      sceneTitle: '夜谈',
+      sceneGoal: '',
+      turns: [],
+    })
+    expect(messages[0].content).not.toContain('本线')
+  })
+
   it('keeps the state protocol suffix even without references', () => {
     const messages = buildSceneMessages({
       config,
@@ -293,6 +323,8 @@ describe('assembleChapterBody', () => {
     seq,
     title: `场${seq}`,
     goal: '',
+    line: '',
+    summary: '',
     status,
     body,
     createdAt: '',

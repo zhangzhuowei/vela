@@ -14,6 +14,8 @@ export interface SceneData {
     goal: string
     status: 'open' | 'distilled'
     body: string
+    line: string
+    summary: string
     createdAt: string
     updatedAt: string
 }
@@ -36,6 +38,8 @@ function rowToScene(row: Record<string, unknown>): SceneData {
         goal: row.goal as string,
         status: row.status as 'open' | 'distilled',
         body: row.body as string,
+        line: (row.line as string) ?? '',
+        summary: (row.summary as string) ?? '',
         createdAt: row.created_at as string,
         updatedAt: row.updated_at as string,
     }
@@ -91,17 +95,37 @@ export class SceneRepository {
         return Number(result.lastInsertRowid)
     }
 
-    static update(id: number, patch: { title?: string; goal?: string }): void {
+    static update(id: number, patch: { title?: string; goal?: string; line?: string }): void {
         const db = getProjectDb()
         if (!db) return
         const sets: string[] = []
         const values: unknown[] = []
         if (patch.title !== undefined) { sets.push('title = ?'); values.push(patch.title) }
         if (patch.goal !== undefined) { sets.push('goal = ?'); values.push(patch.goal) }
+        if (patch.line !== undefined) { sets.push('line = ?'); values.push(patch.line) }
         if (sets.length === 0) return
         sets.push("updated_at = datetime('now')")
         values.push(id)
         db.prepare(`UPDATE scenes SET ${sets.join(', ')} WHERE id = ?`).run(...values)
+    }
+
+    /** 多线联动：同章、同线、seq 更小且已收场的最近一场（取前情摘要用） */
+    static prevInLine(chapterNumber: number, line: string, beforeSeq: number): SceneData | null {
+        const db = getProjectDb()
+        if (!db || !line) return null
+        const row = db.prepare(`
+      SELECT * FROM scenes
+      WHERE chapter_number = ? AND line = ? AND seq < ? AND status = 'distilled'
+      ORDER BY seq DESC LIMIT 1
+    `).get(chapterNumber, line, beforeSeq) as Record<string, unknown> | undefined
+        return row ? rowToScene(row) : null
+    }
+
+    /** 多线联动：缓存场正文摘要 */
+    static setSummary(id: number, summary: string): void {
+        const db = getProjectDb()
+        if (!db) return
+        db.prepare(`UPDATE scenes SET summary = ? WHERE id = ?`).run(summary, id)
     }
 
     /** 删场（回合级联删除）；已收场的场不可删，防止已蒸馏正文意外丢失 */

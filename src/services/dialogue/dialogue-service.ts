@@ -21,6 +21,7 @@ import {
 import { mergeWorkingState, splitProseAndState } from './state-protocol'
 import { assembleChapterBody } from './assemble'
 import { selectSceneCharacters } from './select-characters'
+import { getPromptTemplate, renderPrompt } from '../prompt-templates'
 
 /**
  * 组装对话配置。配置种子字段（world_setting / protagonist_profile）为空时
@@ -105,6 +106,36 @@ export async function resolveChapterMode(chapterNumber: number): Promise<'pipeli
     : 'pipeline'
 }
 
+/** 本书是否启用多线「同线摘要」 */
+function multilineSummaryOn(): boolean {
+  return useProjectStore.getState().currentProject?.novelConfig?.multilineMode === 'summary'
+}
+
+/**
+ * 多线联动：取同线上一场的前情摘要。
+ * 懒生成 + 缓存：上一场无摘要时调一次模型生成并写回 scenes.summary，之后复用。
+ * 关多线、无线名、无同线前场时返回空串。
+ */
+export async function getLineContext(scene: SceneData): Promise<string> {
+  if (!multilineSummaryOn() || !scene.line) return ''
+  const prev = await ipc.invoke('db:scene-prev-in-line', scene.chapterNumber, scene.line, scene.seq)
+  if (!prev) return ''
+  if (prev.summary && prev.summary.trim()) return prev.summary.trim()
+  if (!prev.body || !prev.body.trim()) return ''
+  const template = getPromptTemplate('dialogue_scene_summary')
+  if (!template) return ''
+  try {
+    const messages = [{ role: 'system' as const, content: renderPrompt(template, { scene_body: prev.body }) }]
+    const modelId = localStorage.getItem('vela-distill-model') || undefined
+    const res = await useLLMStore.getState().generate(messages, modelId)
+    const summary = (res.success ? res.content : '').trim()
+    if (summary) await ipc.invoke('db:scene-set-summary', prev.id, summary)
+    return summary
+  } catch {
+    return ''
+  }
+}
+
 /** 开章时若进行中状态为空，从角色卡当前状态拷贝一份作为起点 */
 export async function ensureWorkingState(chapterNumber: number): Promise<WorkingState> {
   const existing = await ipc.invoke('db:chapter-working-state-get', chapterNumber)
@@ -163,6 +194,8 @@ export async function generateTurn(params: {
     [lastUser, scene.goal || scene.title, params.chapterGoal].filter(Boolean).join(' ')
   )
 
+  const lineContext = await getLineContext(scene)
+
   const target = params.targetLength
   // 提示词侧的控场消息附带篇幅要求（落库仍存干净原文）
   const promptInput =
@@ -178,6 +211,7 @@ export async function generateTurn(params: {
     chapterGoal: params.chapterGoal,
     sceneTitle: scene.title,
     sceneGoal: scene.goal,
+    lineContext,
     turns: turns.map((t) => ({ role: t.role, content: t.content })),
     userInput: params.retry ? undefined : promptInput,
     references,

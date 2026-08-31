@@ -8,6 +8,7 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { PanelRightClose, PanelRightOpen, Plus, RefreshCw, Send, Square, Trash2, Undo2 } from 'lucide-react'
 import { ipc } from '../../services/ipc-client'
+import { useDialogueStream } from '../../stores/dialogue-stream-store'
 import { useDraftStore } from '../../stores/draft-store'
 import { useLLMStore } from '../../stores/llm-store'
 import { useProjectStore } from '../../stores/project-store'
@@ -35,13 +36,20 @@ export default function DialogueEditor({ chapterNumber }: { chapterNumber: numbe
   const [chapterGoal, setChapterGoal] = useState('')
   const [input, setInput] = useState('')
   const [newSceneTitle, setNewSceneTitle] = useState('')
-  const [streaming, setStreaming] = useState('')
-  const [distillDraft, setDistillDraft] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
   const [notice, setNotice] = useState('')
   const [goalDraft, setGoalDraft] = useState('')
-  const [activeRequestId, setActiveRequestId] = useState<string | null>(null)
+  const [lineDraft, setLineDraft] = useState('')
+  const multilineOn = useProjectStore((s) => s.currentProject?.novelConfig?.multilineMode) === 'summary'
+  // 流式态提到 store（按场 id），切页签卸载重挂后能接着显示
+  const stream = useDialogueStream()
+  const session = sceneId != null ? stream.sessions[sceneId] : undefined
+  const doneTick = sceneId != null ? stream.doneTick[sceneId] : undefined
+  const streaming = session?.phase === 'generating' ? session.streaming : ''
+  const distillDraft = session?.distillDraft ?? null
+  const activeRequestId = session?.requestId ?? null
+  const streamBusy = session?.phase != null
   // 蒸馏专用模型（'' = 跟随默认生成模型），本机记忆
   const [distillModelId, setDistillModelId] = useState(() => localStorage.getItem('vela-distill-model') ?? '')
   // 每轮目标字数（0 = 不限），本机记忆
@@ -85,7 +93,6 @@ export default function DialogueEditor({ chapterNumber }: { chapterNumber: numbe
   }, [chapterNumber, loadScenes])
 
   useEffect(() => {
-    setDistillDraft(null)
     setError('')
     if (sceneId == null) {
       setTurns([])
@@ -94,10 +101,18 @@ export default function DialogueEditor({ chapterNumber }: { chapterNumber: numbe
     void ipc.invoke('db:scene-turn-list', sceneId).then(setTurns)
   }, [sceneId])
 
-  // 切场时同步场目标草稿
+  // 生成完成（可能发生在本编辑器被卸载期间）后从数据库重载回合与进行中状态
+  useEffect(() => {
+    if (sceneId == null || doneTick == null) return
+    void ipc.invoke('db:scene-turn-list', sceneId).then(setTurns)
+    void ipc.invoke('db:chapter-working-state-get', chapterNumber).then(setWorkingState)
+  }, [doneTick, sceneId, chapterNumber])
+
+  // 切场时同步场目标与线名草稿
   useEffect(() => {
     setGoalDraft(scene?.goal ?? '')
-  }, [scene?.id, scene?.goal])
+    setLineDraft(scene?.line ?? '')
+  }, [scene?.id, scene?.goal, scene?.line])
 
   const saveGoal = () => {
     if (!scene || goalDraft === scene.goal) return
@@ -128,11 +143,11 @@ export default function DialogueEditor({ chapterNumber }: { chapterNumber: numbe
 
   const handleGenerate = (retry: boolean) => {
     if (!scene) return
+    const sid = scene.id
     const text = input.trim()
     if (!retry && !text) return
-    setBusy(true)
     setError('')
-    setStreaming('')
+    stream.beginGenerate(sid)
     void generateTurn({
       scene,
       chapterTitle,
@@ -141,25 +156,19 @@ export default function DialogueEditor({ chapterNumber }: { chapterNumber: numbe
       retry,
       targetLength: turnLength || undefined,
       callbacks: {
-        onChunk: (chunk) => setStreaming((prev) => prev + chunk),
-        onRequest: (requestId) => setActiveRequestId(requestId || null),
-        onRoundEnd: (proseSoFar) => setStreaming(proseSoFar + '\n\n'),
-        onDone: (nextTurns, nextState) => {
-          setTurns(nextTurns)
-          setWorkingState(nextState)
-          setStreaming('')
+        onChunk: (chunk) => stream.appendStreaming(sid, chunk),
+        onRequest: (requestId) => stream.setRequest(sid, requestId || null),
+        onRoundEnd: (proseSoFar) => stream.setStreaming(sid, proseSoFar + '\n\n'),
+        onDone: () => {
+          stream.finishGenerate(sid)
           if (!retry) setInput('')
-          setBusy(false)
-          setActiveRequestId(null)
         },
         onError: (msg) => {
-          setStreaming('')
+          stream.fail(sid)
           setError(msg)
-          setBusy(false)
-          setActiveRequestId(null)
         },
       },
-    }).then((requestId) => setActiveRequestId(requestId || null))
+    }).then((requestId) => stream.setRequest(sid, requestId || null))
   }
 
   const handleStop = () => {
@@ -169,9 +178,9 @@ export default function DialogueEditor({ chapterNumber }: { chapterNumber: numbe
   // 蒸馏（流式）：草稿区实时增长，完成后替换为剥离状态块的干净稿
   const handleDistill = () => {
     if (!scene) return
-    setBusy(true)
+    const sid = scene.id
     setError('')
-    setDistillDraft('')
+    stream.beginDistill(sid)
     void distillScene({
       scene,
       chapterTitle,
@@ -179,25 +188,18 @@ export default function DialogueEditor({ chapterNumber }: { chapterNumber: numbe
       modelId: distillModelId || undefined,
       targetLength: distillLength || undefined,
       callbacks: {
-        onChunk: (chunk) => setDistillDraft((prev) => (prev ?? '') + chunk),
-        onDone: (draft) => {
-          setDistillDraft(draft)
-          setBusy(false)
-          setActiveRequestId(null)
-        },
+        onChunk: (chunk) => stream.appendDistill(sid, chunk),
+        onDone: (draft) => stream.finishDistill(sid, draft),
         onError: (msg) => {
-          setDistillDraft(null)
+          stream.fail(sid)
           setError(msg)
-          setBusy(false)
-          setActiveRequestId(null)
         },
       },
     })
-      .then((requestId) => setActiveRequestId(requestId || null))
+      .then((requestId) => stream.setRequest(sid, requestId || null))
       .catch((err) => {
-        setDistillDraft(null)
+        stream.fail(sid)
         setError(err instanceof Error ? err.message : String(err))
-        setBusy(false)
       })
   }
 
@@ -265,6 +267,14 @@ export default function DialogueEditor({ chapterNumber }: { chapterNumber: numbe
                 }}
               />
               <span className="min-w-0 flex-1 truncate text-xs">{s.title || `场${s.seq}`}</span>
+              {s.line && (
+                <span
+                  className="flex-shrink-0 rounded-full px-1.5 py-0.5 text-[0.58rem]"
+                  style={{ color: 'var(--color-accent)', backgroundColor: 'var(--color-active)' }}
+                >
+                  {s.line}
+                </span>
+              )}
               {s.status === 'open' && (
                 <button
                   className="icon-btn"
@@ -349,6 +359,24 @@ export default function DialogueEditor({ chapterNumber }: { chapterNumber: numbe
                 onBlur={saveGoal}
                 placeholder={t('dialogue.sceneGoalPlaceholder')}
               />
+              {multilineOn && (
+                <>
+                  <span className="flex-shrink-0 text-xs" style={{ color: 'var(--color-text-muted)' }}>
+                    {t('dialogue.sceneLine')}
+                  </span>
+                  <Input
+                    className="w-32 flex-shrink-0"
+                    value={lineDraft}
+                    onChange={(e) => setLineDraft(e.target.value)}
+                    onBlur={() => {
+                      if (scene && lineDraft !== (scene.line ?? '')) {
+                        void ipc.invoke('db:scene-update', scene.id, { line: lineDraft.trim() }).then(() => loadScenes())
+                      }
+                    }}
+                    placeholder={t('dialogue.sceneLinePlaceholder')}
+                  />
+                </>
+              )}
             </div>
             <div ref={scrollRef} className="min-h-0 flex-1 space-y-3 overflow-y-auto px-6 py-4">
               {turns.map((turn) => (
@@ -388,8 +416,8 @@ export default function DialogueEditor({ chapterNumber }: { chapterNumber: numbe
                     className="config-input h-48"
                     style={{ fontFamily: 'var(--font-writing)', fontSize: 13, lineHeight: 1.7 }}
                     value={distillDraft}
-                    disabled={busy}
-                    onChange={(e) => setDistillDraft(e.target.value)}
+                    disabled={busy || streamBusy}
+                    onChange={(e) => sceneId != null && stream.setDistillDraft(sceneId, e.target.value)}
                   />
                 </div>
               )}
@@ -423,7 +451,7 @@ export default function DialogueEditor({ chapterNumber }: { chapterNumber: numbe
                         backgroundColor: 'var(--color-hover)',
                         color: 'var(--color-text-secondary)',
                       }}
-                      disabled={busy}
+                      disabled={busy || streamBusy}
                       onClick={() => setInput((prev) => (prev.trim() ? `${prev} ${preset}` : preset))}
                     >
                       {preset}
@@ -444,7 +472,7 @@ export default function DialogueEditor({ chapterNumber }: { chapterNumber: numbe
                 <Button
                   variant="ai"
                   size="sm"
-                  disabled={busy || !input.trim() || scene.status !== 'open'}
+                  disabled={busy || streamBusy || !input.trim() || scene.status !== 'open'}
                   onClick={() => handleGenerate(false)}
                 >
                   <Send size={12} /> {t('dialogue.send')}
@@ -466,7 +494,7 @@ export default function DialogueEditor({ chapterNumber }: { chapterNumber: numbe
                     </option>
                   ))}
                 </NativeSelect>
-                {busy && activeRequestId && (
+                {streamBusy && activeRequestId && (
                   <Button variant="destructive" size="sm" onClick={handleStop}>
                     <Square size={12} /> {t('dialogue.stop')}
                   </Button>
@@ -475,7 +503,7 @@ export default function DialogueEditor({ chapterNumber }: { chapterNumber: numbe
                   variant="outline"
                   size="sm"
                   disabled={
-                    busy || scene.status !== 'open' || turns[turns.length - 1]?.role !== 'user'
+                    busy || streamBusy || scene.status !== 'open' || turns[turns.length - 1]?.role !== 'user'
                   }
                   onClick={() => handleGenerate(true)}
                 >
@@ -484,7 +512,7 @@ export default function DialogueEditor({ chapterNumber }: { chapterNumber: numbe
                 <Button
                   variant="ghost"
                   size="sm"
-                  disabled={busy || scene.status !== 'open' || turns.length === 0}
+                  disabled={busy || streamBusy || scene.status !== 'open' || turns.length === 0}
                   title={t('dialogue.undoTurnTooltip')}
                   onClick={handleUndoTurn}
                 >
@@ -530,7 +558,7 @@ export default function DialogueEditor({ chapterNumber }: { chapterNumber: numbe
                     <Button
                       variant="outline"
                       size="sm"
-                      disabled={busy || turns.length === 0}
+                      disabled={busy || streamBusy || turns.length === 0}
                       onClick={handleDistill}
                     >
                       {t('dialogue.distill')}
@@ -542,21 +570,26 @@ export default function DialogueEditor({ chapterNumber }: { chapterNumber: numbe
                     <Button
                       variant="success"
                       size="sm"
-                      disabled={busy || !distillDraft.trim()}
+                      disabled={busy || streamBusy || !distillDraft.trim()}
                       onClick={() =>
                         void run(async () => {
                           await commitScene(scene.id, distillDraft.trim())
-                          setDistillDraft(null)
+                          stream.setDistillDraft(scene.id, null)
                           await loadScenes()
                         })
                       }
                     >
                       {t('dialogue.commit')}
                     </Button>
-                    <Button variant="outline" size="sm" disabled={busy} onClick={handleDistill}>
+                    <Button variant="outline" size="sm" disabled={busy || streamBusy} onClick={handleDistill}>
                       {t('dialogue.redistill')}
                     </Button>
-                    <Button variant="ghost" size="sm" disabled={busy} onClick={() => setDistillDraft(null)}>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      disabled={busy || streamBusy}
+                      onClick={() => sceneId != null && stream.setDistillDraft(sceneId, null)}
+                    >
                       {t('dialogue.cancelPreview')}
                     </Button>
                   </>

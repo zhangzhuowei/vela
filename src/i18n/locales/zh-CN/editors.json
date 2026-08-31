@@ -48,6 +48,8 @@
     "generating": "生成中…",
     "sceneGoal": "场目标",
     "sceneGoalPlaceholder": "本场要达成什么（写进提示词，可空）",
+    "sceneLine": "线",
+    "sceneLinePlaceholder": "线名（如：柔柔线）",
     "stop": "停止",
     "turnLengthFree": "字数：不限",
     "turnLengthOption": "约 {{n}} 字/轮",
@@ -364,6 +366,15 @@
     "creationModeTips": {
       "pipeline": "大纲管线：AI 按蓝图整章写稿，进草稿箱后修订定稿",
       "dialogue": "对话创作：逐场对话控场，收场蒸馏成正文，汇稿进草稿箱"
+    },
+    "multilineMode": "多线联动",
+    "multilineModeOptions": {
+      "off": "关",
+      "summary": "同线摘要"
+    },
+    "multilineModeTips": {
+      "off": "关闭：场之间只靠共享的进行中角色状态联动（默认）",
+      "summary": "同线摘要：给场标线名，生成时注入同一条线上一场的前情摘要（自动生成并缓存）"
     },
     "modsSection": "写作 Mod",
     "modsSectionDesc": "勾选本书启用的改装包，可叠加（越晚勾选优先级越高）；改动即时生效",

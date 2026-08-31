@@ -72,6 +72,8 @@ export function buildSceneMessages(params: {
   references?: KnowledgeRef[]
   /** 本轮目标字数（未设置则不注入篇幅要求） */
   targetLength?: number
+  /** 同线上一场前情摘要（多线联动，未启用则不传） */
+  lineContext?: string
 }): ChatMessage[] {
   const { config, characters, workingState } = params
   const template = getPromptTemplate('dialogue_scene')
@@ -84,6 +86,7 @@ export function buildSceneMessages(params: {
     chapter_title: params.chapterTitle,
     chapter_goal: params.chapterGoal || '（未写）',
     scene_line: sceneLine(params.sceneTitle, params.sceneGoal),
+    line_context: params.lineContext?.trim() ? `本线前情：${params.lineContext.trim()}` : '',
     length_note: params.targetLength
       ? `本轮篇幅：目标约 ${params.targetLength} 字，硬性下限 ${Math.round(params.targetLength * 0.8)} 字，这是必须满足的要求。用足场景推进、动作细节与对白把篇幅写满，不要注水，也绝不允许提前收束。`
       : '',

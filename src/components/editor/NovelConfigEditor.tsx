@@ -272,6 +272,20 @@ export default function NovelConfigEditor() {
                   <option value="dialogue">{t('novelConfig.creationModeOptions.dialogue')}</option>
                 </NativeSelect>
               </Field>
+              {(config.creationMode || 'pipeline') === 'dialogue' && (
+                <Field label={t('novelConfig.multilineMode')} tipItems={[
+                  t('novelConfig.multilineModeTips.off'),
+                  t('novelConfig.multilineModeTips.summary'),
+                ]}>
+                  <NativeSelect
+                    value={config.multilineMode || 'off'}
+                    onChange={(e) => update('multilineMode', e.target.value as NovelConfig['multilineMode'])}
+                  >
+                    <option value="off">{t('novelConfig.multilineModeOptions.off')}</option>
+                    <option value="summary">{t('novelConfig.multilineModeOptions.summary')}</option>
+                  </NativeSelect>
+                </Field>
+              )}
             </div>
           </Section>
 
