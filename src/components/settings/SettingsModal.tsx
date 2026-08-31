@@ -121,7 +121,7 @@ export default function SettingsModal({ open, onClose }: SettingsModalProps) {
           >
             <div>
               <h2 className="text-base font-semibold" style={{ color: 'var(--color-text)' }}>
-                {t(`general.${section}`)}
+                {t(`general.${section === 'llm' ? 'models' : section}`)}
               </h2>
               <p className="text-xs mt-0.5" style={{ color: 'var(--color-text-muted)' }}>
                 {t(SECTIONS.find((s) => s.id === section)?.descriptionKey ?? '')}
@@ -461,6 +461,10 @@ function ModelForm({
   const [testing, setTesting] = useState(false)
   const [testResult, setTestResult] = useState<{ success: boolean, error?: string, dimension?: number } | null>(null)
   const testConnection = useLLMStore(s => s.testConnection)
+  // 从服务商拉取可用模型
+  const [fetchingModels, setFetchingModels] = useState(false)
+  const [modelCatalog, setModelCatalog] = useState<string[]>([])
+  const [modelFetchError, setModelFetchError] = useState('')
 
   const isEmbedding = model.purposes?.includes('embedding')
   const isImage = model.purposes?.includes('image')
@@ -477,6 +481,21 @@ function ModelForm({
   /** 更新单个字段 */
   const up = <K extends keyof ModelProfile>(key: K, val: ModelProfile[K]) =>
     onChange({ ...model, [key]: val })
+
+  /** 从服务商 /models 端点拉取可用模型清单 */
+  const handleFetchModels = async () => {
+    setFetchingModels(true)
+    setModelFetchError('')
+    setModelCatalog([])
+    const res = await ipc.invoke('llm:fetch-provider-models', { baseUrl: model.baseUrl, apiKey: model.apiKey })
+    setFetchingModels(false)
+    if (res.success) {
+      setModelCatalog(res.models)
+      if (res.models.length === 0) setModelFetchError(t('models.fetchEmpty'))
+    } else {
+      setModelFetchError(res.error ?? t('models.fetchFailed'))
+    }
+  }
 
   /**
    * 切换服务商：从持久化预设中自动填充 baseUrl / protocol
@@ -590,27 +609,39 @@ function ModelForm({
       <div>
         <div className="flex items-center justify-between mb-1">
           <Label className="mb-0">{t('models.modelId')}</Label>
-          {presetModels.length > 0 && (
+          <div className="flex items-center gap-3">
             <button
               type="button"
-              onClick={() => {
-                if (inCustom) {
-                  // 切回预设列表
-                  const first = presetModels[0]
-                  setCustomModelName(false)
-                  onChange({ ...model, modelName: first.name, maxTokens: first.maxTokens ?? model.maxTokens })
-                } else {
-                  // 切换到自定义输入
-                  setCustomModelName(true)
-                  up('modelName', '')
-                }
-              }}
-              className="text-xs transition-colors"
+              disabled={fetchingModels || !model.baseUrl}
+              onClick={handleFetchModels}
+              title={t('models.fetchModelsTooltip')}
+              className="text-xs transition-colors disabled:opacity-40"
               style={{ color: 'var(--color-accent)' }}
             >
-              {inCustom ? t('models.presetModelSelect') : t('models.customModelInput')}
+              {fetchingModels ? t('models.fetching') : t('models.fetchModels')}
             </button>
-          )}
+            {presetModels.length > 0 && (
+              <button
+                type="button"
+                onClick={() => {
+                  if (inCustom) {
+                    // 切回预设列表
+                    const first = presetModels[0]
+                    setCustomModelName(false)
+                    onChange({ ...model, modelName: first.name, maxTokens: first.maxTokens ?? model.maxTokens })
+                  } else {
+                    // 切换到自定义输入
+                    setCustomModelName(true)
+                    up('modelName', '')
+                  }
+                }}
+                className="text-xs transition-colors"
+                style={{ color: 'var(--color-accent)' }}
+              >
+                {inCustom ? t('models.presetModelSelect') : t('models.customModelInput')}
+              </button>
+            )}
+          </div>
         </div>
 
         {/* 有预设模型 且 未处于手动输入模式 → 显示下拉 */}
@@ -632,6 +663,35 @@ function ModelForm({
               placeholder={isImage ? 'Kwai-Kolors/Kolors' : isEmbedding ? 'text-embedding-3-small' : 'gpt-4o'}
               autoFocus={customModelName}
             />
+          </div>
+        )}
+        {modelFetchError && (
+          <p className="mt-1 text-xs" style={{ color: 'var(--color-error)' }}>{modelFetchError}</p>
+        )}
+        {modelCatalog.length > 0 && (
+          <div
+            className="mt-1 max-h-40 overflow-y-auto rounded-md"
+            style={{ border: '1px solid var(--color-border)' }}
+          >
+            {modelCatalog.map((id) => (
+              <button
+                key={id}
+                type="button"
+                className={cn(
+                  'block w-full truncate px-2 py-1 text-left text-xs transition-colors',
+                  model.modelName === id
+                    ? 'bg-[var(--color-accent)] text-white'
+                    : 'hover:bg-[var(--color-hover)] text-[var(--color-text-secondary)]',
+                )}
+                onClick={() => {
+                  setCustomModelName(true)
+                  up('modelName', id)
+                  setModelCatalog([])
+                }}
+              >
+                {id}
+              </button>
+            ))}
           </div>
         )}
       </div>

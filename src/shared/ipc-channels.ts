@@ -113,6 +113,10 @@ export interface LLMChannels {
     args: []
     return: ModelProfile[]
   }
+  'llm:fetch-provider-models': {
+    args: [creds: { baseUrl: string; apiKey: string }]
+    return: { success: boolean; models: string[]; error?: string }
+  }
   'llm:save-model': {
     args: [model: ModelProfile]
     return: { success: boolean }

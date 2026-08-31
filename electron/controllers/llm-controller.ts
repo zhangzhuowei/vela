@@ -101,6 +101,41 @@ export function registerLLMController() {
 
   ipcMain.handle('llm:list-models', async () => loadModelConfigs())
 
+  // 从服务商 OpenAI 兼容 /models 端点拉取可用模型清单
+  ipcMain.handle('llm:fetch-provider-models', async (_event, creds: { baseUrl: string; apiKey: string }) => {
+    try {
+      applyProxyConfig()
+      const base = (creds.baseUrl || '').trim().replace(/\/+$/, '')
+      if (!base) return { success: false, models: [], error: '请先填写 Base URL' }
+      // base 末尾带版本号（/v1 等）则直接 + /models，否则补 /v1/models
+      const url = /\/v\d+$/.test(base) ? `${base}/models` : `${base}/v1/models`
+      const res = await fetch(url, {
+        headers: { Authorization: `Bearer ${creds.apiKey || ''}` },
+      })
+      const text = await res.text()
+      if (!res.ok) {
+        return { success: false, models: [], error: `上游 ${res.status}: ${text.slice(0, 200)}` }
+      }
+      let data: unknown
+      try {
+        data = JSON.parse(text)
+      } catch {
+        return { success: false, models: [], error: '返回的不是 JSON（Base URL 可能填成了控制台地址）' }
+      }
+      const list = (data as { data?: Array<{ id?: string }> })?.data
+      if (!Array.isArray(list)) {
+        return { success: false, models: [], error: '响应缺少 data 数组' }
+      }
+      const models = list
+        .map((m) => (typeof m?.id === 'string' ? m.id : ''))
+        .filter(Boolean)
+        .sort((a, b) => (a < b ? -1 : a > b ? 1 : 0))
+      return { success: true, models }
+    } catch (error) {
+      return { success: false, models: [], error: String(error) }
+    }
+  })
+
   ipcMain.handle('llm:save-model', async (_event, model: ModelProfile) => {
     try {
       const models = loadModelConfigs()
