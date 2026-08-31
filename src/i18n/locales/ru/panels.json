@@ -373,7 +373,13 @@
   },
   "common": {
     "refresh": "Обновить",
-    "closePanel": "Закрыть панель"
+    "closePanel": "Закрыть панель",
+    "time": "Время",
+    "model": "Модель",
+    "purpose": "Назначение",
+    "tokens": "Токены",
+    "duration": "Длительность",
+    "status": "Статус"
   },
   "knowledge": {
     "title": "База знаний",

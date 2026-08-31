@@ -373,7 +373,13 @@
   },
   "common": {
     "refresh": "Refresh",
-    "closePanel": "Close panel"
+    "closePanel": "Close panel",
+    "time": "Time",
+    "model": "Model",
+    "purpose": "Purpose",
+    "tokens": "Tokens",
+    "duration": "Duration",
+    "status": "Status"
   },
   "knowledge": {
     "title": "Knowledge Base",

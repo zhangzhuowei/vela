@@ -373,7 +373,13 @@
   },
   "common": {
     "refresh": "刷新",
-    "closePanel": "关闭面板"
+    "closePanel": "关闭面板",
+    "time": "时间",
+    "model": "模型",
+    "purpose": "用途",
+    "tokens": "Token",
+    "duration": "耗时",
+    "status": "状态"
   },
   "knowledge": {
     "title": "知识库",
