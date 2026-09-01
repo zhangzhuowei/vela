@@ -23,7 +23,7 @@ import {
 } from '../../services/dialogue/dialogue-service'
 import ModScopeBar from './ModScopeBar'
 import { resolveOptionCount, resolveOptionMaxChars } from '../../services/dialogue/option-hints'
-import { parseOptionHints, splitProseAndState } from '../../services/dialogue/state-protocol'
+import { parseOptionHints, splitProseAndState, stripProtocolLeak } from '../../services/dialogue/state-protocol'
 import RequestMonitor from './RequestMonitor'
 import { NativeSelect } from '../ui/NativeSelect'
 import { Button } from '../ui/Button'
@@ -333,7 +333,7 @@ export default function DialogueEditor({ chapterNumber }: { chapterNumber: numbe
   const liveProse = (raw: string) => {
     const cuts = [raw.search(/<state>/i), raw.search(/<options>/i)].filter((i) => i >= 0)
     const cut = cuts.length ? Math.min(...cuts) : -1
-    return (cut === -1 ? raw : raw.slice(0, cut)).trimEnd()
+    return stripProtocolLeak((cut === -1 ? raw : raw.slice(0, cut)).trimEnd())
   }
   const lastAssistant = [...turns].reverse().find((t) => t.role === 'assistant')
   const optionHints =

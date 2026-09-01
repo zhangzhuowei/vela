@@ -79,7 +79,9 @@ export const DIALOGUE_FORMAT_PIN_MARKER =
 export function dialogueFormatContract(optionCount?: number, optionMaxChars?: number): string {
   const state =
     `${DIALOGUE_FORMAT_PIN_MARKER}\n` +
-    '<state>{"角色名": {"location":"","physicalState":"","mentalState":"","keyItems":"","recentEvents":"","knownInfo":""}}</state>'
+    '字段仅限 location、physicalState、mentalState、keyItems、recentEvents、knownInfo。\n' +
+    '只输出真实标签，例如 <state>{"角色名":{"location":"现场"}}</state>；没有变化则 <state>{}</state>。\n' +
+    '不要把本段说明、空字段模板、「占位」「不写」写进正文，也不要把标签改成《state》。'
   const options = optionCount
     ? `正文与状态块写完后，再输出恰好 ${optionCount} 条下一轮控场方向${
         optionMaxChars === 0 ? '' : `，每条不超过 ${optionMaxChars ?? 24} 字`

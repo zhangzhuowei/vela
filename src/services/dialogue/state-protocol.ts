@@ -11,15 +11,29 @@ const STATE_RE = /<state>\s*([\s\S]*?)\s*<\/state>/i
 // 闭合标签可选：部分模型只写 <options> 不写 </options>，未闭合时吃到文本末尾
 const OPTIONS_RE = /<options>\s*([\s\S]*?)(?:\s*<\/options>|$)/i
 const OPTION_LINE_RE = /^\s*(?:\d+\s*[.)、:：]|[-*•])\s*(.+)$/
+/** 模型把格式合同念出来：把 <state> 写成《state》并跟「占位不写」 */
+const STATE_LEAK_RE = /(?:^|\n)\s*[《<]state[》>]\s*占位[^\n]*/gi
+const PLACEHOLDER_REFUSAL_RE = /(?:^|\n)\s*占位不写[。.]?\s*/g
+
+/** 去掉模型照抄的格式说明残片，避免写进正文气泡。 */
+export function stripProtocolLeak(text: string): string {
+  return text
+    .replace(STATE_LEAK_RE, '')
+    .replace(PLACEHOLDER_REFUSAL_RE, '')
+    .replace(/\n{3,}/g, '\n\n')
+    .trim()
+}
 
 /** 从模型输出中剥离正文与状态补丁；坏 JSON 容错为空补丁 */
 export function splitProseAndState(raw: string): { prose: string; patch: WorkingState } {
   const text = raw ?? ''
   const match = text.match(STATE_RE)
-  if (!match) return { prose: stripOptionHints(text), patch: {} }
+  if (!match) return { prose: stripProtocolLeak(stripOptionHints(text)), patch: {} }
 
-  const prose = stripOptionHints(
-    (text.slice(0, match.index) + text.slice((match.index ?? 0) + match[0].length)).trim()
+  const prose = stripProtocolLeak(
+    stripOptionHints(
+      (text.slice(0, match.index) + text.slice((match.index ?? 0) + match[0].length)).trim()
+    )
   )
   let patch: WorkingState = {}
   try {

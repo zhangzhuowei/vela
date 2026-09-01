@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { mergeWorkingState, parseOptionHints, splitProseAndState } from '../state-protocol'
+import { mergeWorkingState, parseOptionHints, splitProseAndState, stripProtocolLeak } from '../state-protocol'
 import { resolveOptionCount, resolveOptionMaxChars } from '../option-hints'
 import { buildDistillMessages, buildSceneMessages, pinPostHistory } from '../dialogue-prompts'
 import { shouldContinueTurn } from '../dialogue-service'
@@ -44,6 +44,14 @@ describe('state-protocol', () => {
   it('ignores empty patch values', () => {
     const next = mergeWorkingState({ 紫悦: { location: '山门' } }, { 紫悦: { location: '  ' } }, ['紫悦'])
     expect(next['紫悦'].location).toBe('山门')
+  })
+
+  it('strips echoed 《state》 placeholder lines from prose', () => {
+    const raw = '林徽把腰侧贴上凉石头。\n《state》占位不写。\n<options>\n1. 继续推进\n</options>'
+    const { prose, patch } = splitProseAndState(raw)
+    expect(prose).toBe('林徽把腰侧贴上凉石头。')
+    expect(patch).toEqual({})
+    expect(stripProtocolLeak('正文。\n《state》占位不写。')).toBe('正文。')
   })
 
   it('strips option blocks from prose and leaves state intact', () => {
