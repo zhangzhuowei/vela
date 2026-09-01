@@ -127,6 +127,8 @@ export function registerProjectController() {
           negativePrompt: updatedCoreData.negativePrompt,
           creationMode: (updatedCoreData.creationMode as 'pipeline' | 'dialogue') || 'pipeline',
           multilineMode: (updatedCoreData.multilineMode as 'off' | 'summary') || 'off',
+          optionHintsEnabled: updatedCoreData.optionHintsEnabled ?? false,
+          optionHintsCount: updatedCoreData.optionHintsCount ?? 3,
         },
         characterStates: updatedCoreData.characterStates,
         createdAt: new Date().toISOString(), // db 中实际上有，但这里先 mock 一下时间避免前端报错
@@ -168,6 +170,8 @@ export function registerProjectController() {
           negativePrompt: data.novelConfig.negativePrompt ?? '',
           creationMode: data.novelConfig.creationMode ?? 'pipeline',
           multilineMode: data.novelConfig.multilineMode ?? 'off',
+          optionHintsEnabled: data.novelConfig.optionHintsEnabled ?? false,
+          optionHintsCount: data.novelConfig.optionHintsCount ?? 3,
         })
       }
 
@@ -215,6 +219,8 @@ export function registerProjectController() {
           negativePrompt: data.novelConfig.negativePrompt ?? '',
           creationMode: data.novelConfig.creationMode ?? 'pipeline',
           multilineMode: data.novelConfig.multilineMode ?? 'off',
+          optionHintsEnabled: data.novelConfig.optionHintsEnabled ?? false,
+          optionHintsCount: data.novelConfig.optionHintsCount ?? 3,
         })
       }
       return { success: true }

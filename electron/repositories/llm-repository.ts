@@ -63,11 +63,13 @@ export class LLMHistoryRepository {
   static getHistory(limit: number = 50): unknown[] {
     const db = getProjectDb()
     if (!db) return []
+    // created_at 存的是 SQLite CURRENT_TIMESTAMP（UTC），出库时转本地时区，
+    // 否则渲染端按本地时间解析会差出时区偏移（如 UTC+8 显示慢 8 小时）
     return db.prepare(`
       SELECT id, model_name as modelName, purpose,
         prompt_tokens as promptTokens, completion_tokens as completionTokens,
         total_tokens as totalTokens, duration_ms as durationMs,
-        success, created_at as createdAt
+        success, datetime(created_at, 'localtime') as createdAt
       FROM llm_calls ORDER BY id DESC LIMIT ?
     `).all(limit)
   }

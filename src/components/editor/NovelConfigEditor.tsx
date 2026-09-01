@@ -286,6 +286,32 @@ export default function NovelConfigEditor() {
                   </NativeSelect>
                 </Field>
               )}
+              {(config.creationMode || 'pipeline') === 'dialogue' && (
+                <Field label={t('novelConfig.optionHints')} tipItems={[
+                  t('novelConfig.optionHintsTips.off'),
+                  t('novelConfig.optionHintsTips.on'),
+                ]}>
+                  <NativeSelect
+                    value={config.optionHintsEnabled ? 'on' : 'off'}
+                    onChange={(e) => update('optionHintsEnabled', e.target.value === 'on')}
+                  >
+                    <option value="off">{t('novelConfig.optionHintsOptions.off')}</option>
+                    <option value="on">{t('novelConfig.optionHintsOptions.on')}</option>
+                  </NativeSelect>
+                </Field>
+              )}
+              {(config.creationMode || 'pipeline') === 'dialogue' && config.optionHintsEnabled && (
+                <Field label={t('novelConfig.optionHintsCount')} tipItems={[t('novelConfig.optionHintsCountTip')]}>
+                  <NativeSelect
+                    value={String(config.optionHintsCount || 3)}
+                    onChange={(e) => update('optionHintsCount', Number(e.target.value))}
+                  >
+                    {[3, 4, 5].map((n) => (
+                      <option key={n} value={n}>{t('novelConfig.optionHintsCountOption', { n })}</option>
+                    ))}
+                  </NativeSelect>
+                </Field>
+              )}
             </div>
           </Section>
 

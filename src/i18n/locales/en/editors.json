@@ -39,7 +39,7 @@
     "commit": "Commit Scene",
     "cancelPreview": "Cancel",
     "previewHint": "Distilled draft (editable, not saved until committed)",
-    "waitingModel": "Waiting for the model… {{s}}s elapsed (some relays take 10s+ for the first byte; auto-disconnects after 90s of silence)",
+    "waitingModel": "Waiting for the model… {{s}}s elapsed (slow relays may take minutes for the first byte; auto-disconnects after 240s of silence)",
     "modelAvgSpeed": " (avg {{s}}s)",
     "committedHint": "Committed scene prose",
     "reopen": "Reopen",
@@ -73,6 +73,11 @@
     },
     "distillModelDefault": "Distill: default model",
     "distillModelTooltip": "Model used for scene distillation (e.g. cheap model for directing, strong model for distilling)",
+    "optionHintsLabel": "Next turn could go this way",
+    "optionHintsInherit": "Options: follow book",
+    "optionHintsOff": "Options: off",
+    "optionHintsCountLive": "Options: {{n}}",
+    "optionHintsTooltip": "After each turn, suggest next-turn directions. Follow book = use the novel config switch and count",
     "quickDirectives": ["Push forward", "Deepen emotion", "Slow down", "Change scene", "Wrap up scene"],
     "assemblePreviewTitle": "Assembly preview",
     "assemblePreviewStats": "{{scenes}} scenes · ~{{words}} chars",
@@ -380,6 +385,18 @@
       "off": "Off: scenes only link through the shared working character states (default)",
       "summary": "Same-line summary: tag scenes with a line; inject the previous same-line scene's recap into generation (auto-generated and cached)"
     },
+    "optionHints": "Next-turn options",
+    "optionHintsOptions": {
+      "off": "Off",
+      "on": "On"
+    },
+    "optionHintsTips": {
+      "off": "Off: do not suggest next-turn directions after each generation (default)",
+      "on": "On: after each turn, show a few direction chips that fill the prompt box"
+    },
+    "optionHintsCount": "Option count",
+    "optionHintsCountTip": "Book-level default; the dialogue toolbar can override it without changing this setting",
+    "optionHintsCountOption": "{{n}} options",
     "modsSection": "Writing Mods",
     "modsSectionDesc": "Check the mod packs enabled for this book; stackable (later wins). Changes apply immediately",
     "modsEmpty": "No mods yet. Create one in Settings → Mods, then enable it here.",

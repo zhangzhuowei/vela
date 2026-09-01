@@ -227,6 +227,10 @@ export interface NovelConfig {
   creationMode?: 'pipeline' | 'dialogue'
   /** 对话多线联动：off = 关（默认）；summary = 线标签 + 同线上一场摘要注入 */
   multilineMode?: 'off' | 'summary'
+  /** 对话结束后是否给出下一轮控场选项（默认关） */
+  optionHintsEnabled?: boolean
+  /** 书级默认选项条数（3–5，默认 3） */
+  optionHintsCount?: number
 }
 
 export interface FileNode {

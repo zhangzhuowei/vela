@@ -2915,6 +2915,7 @@ Requirements:
       references_block: '知识库召回的参考设定',
       length_note: '本轮篇幅要求（未设置时为空）',
       line_context: '同线上一场的前情摘要（未启用多线时为空）',
+      option_note: '控场选项要求（未开启时为空）',
     },
     content: `你在为一部小说写一场戏。只写可读的叙事和对话，不要解释、不要列大纲、不要道歉。
 用户消息是控场指令，不是要你扮演用户。遵守世界观与人设，不要把控场者写成另一个具名角色，除非人设如此要求。
@@ -2930,7 +2931,8 @@ Requirements:
 参考设定（与本场冲突时以角色状态与控场为准）：
 {{references_block}}`,
     systemSuffix: `正文写完后，另起一行输出本轮角色状态变化（只含有变化的字段，角色名为键）：
-<state>{"角色名": {"location":"","physicalState":"","mentalState":"","keyItems":"","recentEvents":"","knownInfo":""}}</state>`,
+<state>{"角色名": {"location":"","physicalState":"","mentalState":"","keyItems":"","recentEvents":"","knownInfo":""}}</state>
+{{option_note}}`,
   },
 
   // ================================================================

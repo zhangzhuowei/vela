@@ -6,6 +6,7 @@
  * 放在 systemSuffix，渲染时强制取内置版本，自定义无法破坏解析。
  */
 import { getPromptTemplate, renderPrompt } from '../prompt-templates'
+import { splitProseAndState } from './state-protocol'
 import type { WorkingState } from '../../shared/ipc-channels'
 
 export type ChatMessage = { role: 'system' | 'user' | 'assistant'; content: string }
@@ -74,6 +75,8 @@ export function buildSceneMessages(params: {
   targetLength?: number
   /** 同线上一场前情摘要（多线联动，未启用则不传） */
   lineContext?: string
+  /** 本轮结束后给出的控场选项条数（未设置则不要求输出选项） */
+  optionCount?: number
 }): ChatMessage[] {
   const { config, characters, workingState } = params
   const template = getPromptTemplate('dialogue_scene')
@@ -89,6 +92,9 @@ export function buildSceneMessages(params: {
     line_context: params.lineContext?.trim() ? `本线前情：${params.lineContext.trim()}` : '',
     length_note: params.targetLength
       ? `本轮篇幅：目标约 ${params.targetLength} 字，硬性下限 ${Math.round(params.targetLength * 0.8)} 字，这是必须满足的要求。用足场景推进、动作细节与对白把篇幅写满，不要注水，也绝不允许提前收束。`
+      : '',
+    option_note: params.optionCount
+      ? `正文与状态块写完后，再输出恰好 ${params.optionCount} 条下一轮控场方向，每条不超过 24 字，互不重复，覆盖不同走向。只写方向，不要解释。格式：\n<options>\n${Array.from({ length: params.optionCount }, (_, i) => `${i + 1}. …`).join('\n')}\n</options>`
       : '',
     characters_block:
       characters.map((c) => characterBlock(c, workingState[c.name])).join('\n') || '（暂无角色卡）',
@@ -136,7 +142,7 @@ export function buildDistillMessages(params: {
   })
 
   const transcript = params.turns
-    .map((t) => `${t.role === 'user' ? '控场' : '草稿'}：${t.content}`)
+    .map((t) => `${t.role === 'user' ? '控场' : '草稿'}：${splitProseAndState(t.content).prose}`)
     .join('\n\n')
 
   return [

@@ -39,7 +39,7 @@
     "commit": "落盘收场",
     "cancelPreview": "取消",
     "previewHint": "蒸馏草稿（可手改，落盘前不生效）",
-    "waitingModel": "等待模型响应… 已等 {{s}} 秒（部分中转首字需 10 秒以上，90 秒无响应将自动断开）",
+    "waitingModel": "等待模型响应… 已等 {{s}} 秒（慢中转首字可能要几分钟，240 秒无响应将自动断开）",
     "modelAvgSpeed": "（均 {{s}} 秒）",
     "committedHint": "已收场正文",
     "reopen": "重新打开",
@@ -73,6 +73,11 @@
     },
     "distillModelDefault": "蒸馏：默认模型",
     "distillModelTooltip": "收场蒸馏单独用哪个模型（比如控场用便宜模型、蒸馏用好模型）",
+    "optionHintsLabel": "下一轮可以这样走",
+    "optionHintsInherit": "选项：跟随书",
+    "optionHintsOff": "选项：关",
+    "optionHintsCountLive": "选项：{{n}} 个",
+    "optionHintsTooltip": "每轮结束后给出下一轮控场方向；跟随书=用小说配置里的开关和个数",
     "quickDirectives": ["继续推进", "加深情绪", "放慢节奏", "切换场景", "收束本场"],
     "assemblePreviewTitle": "汇稿预览",
     "assemblePreviewStats": "{{scenes}} 场 · 约 {{words}} 字",
@@ -380,6 +385,18 @@
       "off": "关闭：场之间只靠共享的进行中角色状态联动（默认）",
       "summary": "同线摘要：给场标线名，生成时注入同一条线上一场的前情摘要（自动生成并缓存）"
     },
+    "optionHints": "控场选项",
+    "optionHintsOptions": {
+      "off": "关",
+      "on": "开"
+    },
+    "optionHintsTips": {
+      "off": "关闭：每轮生成后不提供下一轮方向（默认）",
+      "on": "开启：每轮正文后给出若干条控场方向，点一下填进输入框"
+    },
+    "optionHintsCount": "选项个数",
+    "optionHintsCountTip": "书级默认个数；对话页底栏可以当场改，不改配置",
+    "optionHintsCountOption": "{{n}} 个",
     "modsSection": "写作 Mod",
     "modsSectionDesc": "勾选本书启用的改装包，可叠加（越晚勾选优先级越高）；改动即时生效",
     "modsEmpty": "还没有 Mod。到 设置 → Mod 管理 新建后再来勾选。",

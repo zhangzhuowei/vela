@@ -8,14 +8,19 @@
 import type { WorkingState } from '../../shared/ipc-channels'
 
 const STATE_RE = /<state>\s*([\s\S]*?)\s*<\/state>/i
+// 闭合标签可选：部分模型只写 <options> 不写 </options>，未闭合时吃到文本末尾
+const OPTIONS_RE = /<options>\s*([\s\S]*?)(?:\s*<\/options>|$)/i
+const OPTION_LINE_RE = /^\s*(?:\d+\s*[.)、:：]|[-*•])\s*(.+)$/
 
 /** 从模型输出中剥离正文与状态补丁；坏 JSON 容错为空补丁 */
 export function splitProseAndState(raw: string): { prose: string; patch: WorkingState } {
   const text = raw ?? ''
   const match = text.match(STATE_RE)
-  if (!match) return { prose: text.trim(), patch: {} }
+  if (!match) return { prose: stripOptionHints(text), patch: {} }
 
-  const prose = (text.slice(0, match.index) + text.slice((match.index ?? 0) + match[0].length)).trim()
+  const prose = stripOptionHints(
+    (text.slice(0, match.index) + text.slice((match.index ?? 0) + match[0].length)).trim()
+  )
   let patch: WorkingState = {}
   try {
     const parsed = JSON.parse(match[1])
@@ -33,6 +38,33 @@ export function splitProseAndState(raw: string): { prose: string; patch: Working
     patch = {}
   }
   return { prose, patch }
+}
+
+function stripOptionHints(text: string): string {
+  return text.replace(OPTIONS_RE, '').trim()
+}
+
+/** 从模型输出的 <options> 块解析下一轮控场选项；无块时返回空数组 */
+export function parseOptionHints(raw: string, limit?: number): string[] {
+  const match = (raw ?? '').match(OPTIONS_RE)
+  if (!match) return []
+  const items: string[] = []
+  for (const line of match[1].split(/\r?\n/)) {
+    const trimmed = line.trim()
+    if (!trimmed) continue
+    const numbered = trimmed.match(OPTION_LINE_RE)
+    const text = (numbered ? numbered[1] : trimmed).trim()
+    if (text) items.push(text)
+  }
+  if (limit && limit > 0) return items.slice(0, limit)
+  return items
+}
+
+/** 把解析后的选项规范成可落库的 <options> 块；空列表返回空串 */
+export function formatOptionHints(options: string[]): string {
+  const items = options.map((s) => s.trim()).filter(Boolean)
+  if (items.length === 0) return ''
+  return `<options>\n${items.map((s, i) => `${i + 1}. ${s}`).join('\n')}\n</options>`
 }
 
 /**

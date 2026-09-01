@@ -18,7 +18,7 @@ import {
   type DialogueConfig,
   type KnowledgeRef,
 } from './dialogue-prompts'
-import { mergeWorkingState, splitProseAndState } from './state-protocol'
+import { formatOptionHints, mergeWorkingState, parseOptionHints, splitProseAndState } from './state-protocol'
 import { assembleChapterBody } from './assemble'
 import { selectSceneCharacters } from './select-characters'
 import { getPromptTemplate, renderPrompt } from '../prompt-templates'
@@ -219,6 +219,8 @@ export async function generateTurn(params: {
   retry?: boolean
   /** 本轮目标字数（不传则不限） */
   targetLength?: number
+  /** 本轮结束后给出的控场选项条数（不传则不要求） */
+  optionCount?: number
   callbacks: GenerateTurnCallbacks
 }): Promise<string> {
   const { scene, callbacks } = params
@@ -249,15 +251,16 @@ export async function generateTurn(params: {
     sceneTitle: scene.title,
     sceneGoal: scene.goal,
     lineContext,
-    turns: turns.map((t) => ({ role: t.role, content: t.content })),
+    turns: turns.map((t) => ({ role: t.role, content: splitProseAndState(t.content).prose })),
     userInput: params.retry ? undefined : promptInput,
     references,
     targetLength: target,
+    optionCount: params.optionCount,
   })
 
   // 篇幅闸门：正文不足目标八成时自动续写（最多 2 轮），与写稿链路同款策略
   const MAX_CONTINUATIONS = 2
-  const parts: { prose: string; patch: WorkingState }[] = []
+  const parts: { prose: string; patch: WorkingState; options: string[] }[] = []
   let rounds = 0
 
   const totalProse = () => parts.map((p) => p.prose).join('\n\n')
@@ -278,10 +281,12 @@ export async function generateTurn(params: {
         nextState = mergeWorkingState(nextState, part.patch, validNames)
         mergedPatch = { ...mergedPatch, ...part.patch }
       }
+      const lastOptions = parts[parts.length - 1]?.options ?? []
+      const saved = lastOptions.length ? `${prose}\n\n${formatOptionHints(lastOptions)}` : prose
       if (!params.retry && params.userInput.trim()) {
         await ipc.invoke('db:scene-turn-add', scene.id, 'user', params.userInput.trim())
       }
-      await ipc.invoke('db:scene-turn-add', scene.id, 'assistant', prose, mergedPatch)
+      await ipc.invoke('db:scene-turn-add', scene.id, 'assistant', saved, mergedPatch)
       await ipc.invoke('db:chapter-working-state-set', scene.chapterNumber, nextState)
       const refreshed = await ipc.invoke('db:scene-turn-list', scene.id)
       callbacks.onDone(refreshed, nextState)
@@ -298,7 +303,8 @@ export async function generateTurn(params: {
         logDialogueCall('DialogueTurn', undefined, t0, usage)
         void (async () => {
           const { prose, patch } = splitProseAndState(fullText)
-          if (prose) parts.push({ prose, patch })
+          const options = parseOptionHints(fullText, params.optionCount)
+          if (prose) parts.push({ prose, patch, options })
           const written = countChars(totalProse())
           if (target && prose && written < target * 0.8 && rounds < MAX_CONTINUATIONS) {
             rounds++

@@ -20,6 +20,8 @@ import {
   generateTurn,
   previewChapterBody,
 } from '../../services/dialogue/dialogue-service'
+import { resolveOptionCount } from '../../services/dialogue/option-hints'
+import { parseOptionHints, splitProseAndState } from '../../services/dialogue/state-protocol'
 import { NativeSelect } from '../ui/NativeSelect'
 import { Button } from '../ui/Button'
 import { Input } from '../ui/Input'
@@ -43,6 +45,19 @@ export default function DialogueEditor({ chapterNumber }: { chapterNumber: numbe
   const [goalDraft, setGoalDraft] = useState('')
   const [lineDraft, setLineDraft] = useState('')
   const multilineOn = useProjectStore((s) => s.currentProject?.novelConfig?.multilineMode) === 'summary'
+  const bookOptionEnabled = useProjectStore((s) => s.currentProject?.novelConfig?.optionHintsEnabled) ?? false
+  const bookOptionCount = useProjectStore((s) => s.currentProject?.novelConfig?.optionHintsCount) ?? 3
+  const [optionOverride, setOptionOverride] = useState<number | null>(() => {
+    const raw = localStorage.getItem('vela-dialogue-option-count')
+    if (raw == null || raw === '') return null
+    const n = Number(raw)
+    return Number.isFinite(n) ? n : null
+  })
+  const optionCount = resolveOptionCount({
+    bookEnabled: bookOptionEnabled,
+    bookCount: bookOptionCount,
+    localOverride: optionOverride,
+  })
   // 流式态提到 store（按场 id），切页签卸载重挂后能接着显示
   const stream = useDialogueStream()
   const session = sceneId != null ? stream.sessions[sceneId] : undefined
@@ -185,6 +200,7 @@ export default function DialogueEditor({ chapterNumber }: { chapterNumber: numbe
       userInput: text,
       retry,
       targetLength: turnLength || undefined,
+      optionCount: optionCount || undefined,
       callbacks: {
         onChunk: (chunk) => stream.appendStreaming(sid, chunk),
         onRequest: (requestId) => stream.setRequest(sid, requestId || null),
@@ -243,9 +259,15 @@ export default function DialogueEditor({ chapterNumber }: { chapterNumber: numbe
   }
 
   const liveProse = (raw: string) => {
-    const cut = raw.search(/<state>/i)
+    const cuts = [raw.search(/<state>/i), raw.search(/<options>/i)].filter((i) => i >= 0)
+    const cut = cuts.length ? Math.min(...cuts) : -1
     return (cut === -1 ? raw : raw.slice(0, cut)).trimEnd()
   }
+  const lastAssistant = [...turns].reverse().find((t) => t.role === 'assistant')
+  const optionHints =
+    optionCount > 0 && lastAssistant && !streamBusy
+      ? parseOptionHints(lastAssistant.content, optionCount)
+      : []
 
   return (
     <div className="flex h-full">
@@ -426,7 +448,7 @@ export default function DialogueEditor({ chapterNumber }: { chapterNumber: numbe
                       fontFamily: turn.role === 'assistant' ? 'var(--font-writing)' : undefined,
                     }}
                   >
-                    {turn.content}
+                    {turn.role === 'assistant' ? splitProseAndState(turn.content).prose : turn.content}
                   </div>
                 </div>
               ))}
@@ -442,6 +464,30 @@ export default function DialogueEditor({ chapterNumber }: { chapterNumber: numbe
                       </span>
                     )}
                     <span className="ai-stream-cursor" />
+                  </div>
+                </div>
+              )}
+              {optionHints.length > 0 && scene.status === 'open' && (
+                <div className="space-y-1.5">
+                  <div className="text-xs" style={{ color: 'var(--color-text-muted)' }}>
+                    {t('dialogue.optionHintsLabel')}
+                  </div>
+                  <div className="flex flex-col gap-1.5">
+                    {optionHints.map((hint, i) => (
+                      <button
+                        key={`${i}-${hint}`}
+                        className="rounded-xl px-3 py-2 text-left text-sm transition-colors hover:bg-[var(--color-accent)] hover:text-white"
+                        style={{
+                          border: '1px solid var(--color-border)',
+                          backgroundColor: 'var(--color-hover)',
+                          color: 'var(--color-text-secondary)',
+                        }}
+                        disabled={busy || streamBusy}
+                        onClick={() => setInput(hint)}
+                      >
+                        {i + 1}. {hint}
+                      </button>
+                    ))}
                   </div>
                 </div>
               )}
@@ -536,6 +582,30 @@ export default function DialogueEditor({ chapterNumber }: { chapterNumber: numbe
                   {[300, 500, 800, 1200, 2000].map((n) => (
                     <option key={n} value={n}>
                       {t('dialogue.turnLengthOption', { n })}
+                    </option>
+                  ))}
+                </NativeSelect>
+                <NativeSelect
+                  className="w-36"
+                  title={t('dialogue.optionHintsTooltip')}
+                  value={optionOverride == null ? '' : String(optionOverride)}
+                  onChange={(e) => {
+                    const raw = e.target.value
+                    if (raw === '') {
+                      setOptionOverride(null)
+                      localStorage.setItem('vela-dialogue-option-count', '')
+                      return
+                    }
+                    const v = Number(raw)
+                    setOptionOverride(v)
+                    localStorage.setItem('vela-dialogue-option-count', String(v))
+                  }}
+                >
+                  <option value="">{t('dialogue.optionHintsInherit')}</option>
+                  <option value="0">{t('dialogue.optionHintsOff')}</option>
+                  {[3, 4, 5].map((n) => (
+                    <option key={n} value={n}>
+                      {t('dialogue.optionHintsCountLive', { n })}
                     </option>
                   ))}
                 </NativeSelect>

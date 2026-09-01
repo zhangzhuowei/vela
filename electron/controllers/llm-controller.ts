@@ -75,9 +75,11 @@ export function registerLLMController() {
     let gotFirstChunk = false
     console.log(`[LLM] ▶ ${model.name} (${model.modelName}) req=${rid}`)
 
-    // 首字超时：慢中转可能挂起几分钟不吐一个字节（undici 默认 5 分钟才断），
-    // 超阈值主动断开并给出明确错误，避免界面无限等待
-    const FIRST_BYTE_TIMEOUT_MS = 90_000
+    // 首字超时：慢中转可能挂起不吐一个字节（undici 默认 5 分钟才断），
+    // 超阈值主动断开并给出明确错误，避免界面无限等待。
+    // 阈值取 240s：kiro 类中转跑大提示词（蒸馏）首字可能超过 90s，实测会误杀，
+    // 故放宽到仍先于底层 5 分钟超时、但能容纳慢中转的水位
+    const FIRST_BYTE_TIMEOUT_MS = 240_000
     let firstByteTimedOut = false
     const firstByteTimer = setTimeout(() => {
       firstByteTimedOut = true

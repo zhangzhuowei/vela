@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
-import { mergeWorkingState, splitProseAndState } from '../state-protocol'
+import { mergeWorkingState, parseOptionHints, splitProseAndState } from '../state-protocol'
+import { resolveOptionCount } from '../option-hints'
 import { buildDistillMessages, buildSceneMessages } from '../dialogue-prompts'
 import { assembleChapterBody } from '../assemble'
 import { selectSceneCharacters } from '../select-characters'
@@ -42,6 +43,56 @@ describe('state-protocol', () => {
   it('ignores empty patch values', () => {
     const next = mergeWorkingState({ 紫悦: { location: '山门' } }, { 紫悦: { location: '  ' } }, ['紫悦'])
     expect(next['紫悦'].location).toBe('山门')
+  })
+
+  it('strips option blocks from prose and leaves state intact', () => {
+    const raw = '月光很亮。\n<options>\n1. 继续推进\n2. 加深情绪\n</options>\n<state>{"紫悦":{"location":"窗边"}}</state>'
+    const { prose, patch } = splitProseAndState(raw)
+    expect(prose).toBe('月光很亮。')
+    expect(patch['紫悦'].location).toBe('窗边')
+  })
+})
+
+describe('parseOptionHints', () => {
+  it('parses numbered lines from an options block', () => {
+    const raw = '正文。\n<options>\n1. 让云宝先开口\n2. 写她握拳的细节\n3. 切到排练室\n</options>'
+    expect(parseOptionHints(raw)).toEqual(['让云宝先开口', '写她握拳的细节', '切到排练室'])
+  })
+
+  it('accepts chinese numbering and clamps to limit', () => {
+    const raw = '<options>\n1、推进剧情\n2、放慢节奏\n3、切换场景\n4、收束本场\n</options>'
+    expect(parseOptionHints(raw, 3)).toEqual(['推进剧情', '放慢节奏', '切换场景'])
+  })
+
+  it('returns empty when there is no options block', () => {
+    expect(parseOptionHints('只有正文。')).toEqual([])
+  })
+
+  it('parses an unclosed options block and strips it from prose', () => {
+    const raw = '“广场东侧。”紫悦抬头，“那尊石像。”\n<options>\n1. 三马同赴广场，实地勘测石像异常\n2. 紫悦查阅石像来历与建造年份记录\n3. 镇长以庆典布置为由拒绝封锁石像'
+    expect(parseOptionHints(raw, 3)).toEqual([
+      '三马同赴广场，实地勘测石像异常',
+      '紫悦查阅石像来历与建造年份记录',
+      '镇长以庆典布置为由拒绝封锁石像',
+    ])
+    expect(splitProseAndState(raw).prose).toBe('“广场东侧。”紫悦抬头，“那尊石像。”')
+  })
+})
+
+describe('resolveOptionCount', () => {
+  it('uses the local override when set, including off', () => {
+    expect(resolveOptionCount({ bookEnabled: true, bookCount: 3, localOverride: 5 })).toBe(5)
+    expect(resolveOptionCount({ bookEnabled: true, bookCount: 3, localOverride: 0 })).toBe(0)
+  })
+
+  it('follows the book default when local override inherits', () => {
+    expect(resolveOptionCount({ bookEnabled: true, bookCount: 4, localOverride: null })).toBe(4)
+    expect(resolveOptionCount({ bookEnabled: false, bookCount: 4, localOverride: null })).toBe(0)
+  })
+
+  it('clamps book count to 3–5', () => {
+    expect(resolveOptionCount({ bookEnabled: true, bookCount: 9, localOverride: null })).toBe(5)
+    expect(resolveOptionCount({ bookEnabled: true, bookCount: 1, localOverride: null })).toBe(3)
   })
 })
 
@@ -146,6 +197,36 @@ describe('dialogue-prompts', () => {
     })
     expect(messages[0].content).toContain('800')
     expect(messages[0].content).toContain('本轮篇幅')
+  })
+
+  it('injects an option-hint note when optionCount is set', () => {
+    const messages = buildSceneMessages({
+      config,
+      characters: [],
+      workingState: {},
+      chapterTitle: '第1章',
+      chapterGoal: '',
+      sceneTitle: '夜谈',
+      sceneGoal: '',
+      turns: [],
+      optionCount: 3,
+    })
+    expect(messages[0].content).toContain('<options>')
+    expect(messages[0].content).toContain('3')
+  })
+
+  it('omits the option-hint note when optionCount is not set', () => {
+    const messages = buildSceneMessages({
+      config,
+      characters: [],
+      workingState: {},
+      chapterTitle: '第1章',
+      chapterGoal: '',
+      sceneTitle: '夜谈',
+      sceneGoal: '',
+      turns: [],
+    })
+    expect(messages[0].content).not.toContain('<options>')
   })
 
   it('omits the length note when not given', () => {

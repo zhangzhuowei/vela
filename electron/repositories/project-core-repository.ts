@@ -34,6 +34,8 @@ export interface ProjectCoreRow {
     character_states: string
     creation_mode: string
     multiline_mode: string
+    option_hints_enabled: number
+    option_hints_count: number
     created_at: string
     updated_at: string
 }
@@ -65,6 +67,8 @@ export interface ProjectCoreData {
     characterStates: string
     creationMode: string
     multilineMode: string
+    optionHintsEnabled: boolean
+    optionHintsCount: number
 }
 
 /** 数据库行 → 前端数据 */
@@ -95,6 +99,8 @@ function rowToData(row: ProjectCoreRow): ProjectCoreData {
         characterStates: row.character_states,
         creationMode: row.creation_mode ?? 'pipeline',
         multilineMode: row.multiline_mode ?? 'off',
+        optionHintsEnabled: Number(row.option_hints_enabled) === 1,
+        optionHintsCount: row.option_hints_count ?? 3,
     }
 }
 
@@ -154,6 +160,8 @@ export class ProjectCoreRepository {
             characterStates: 'character_states',
             creationMode: 'creation_mode',
             multilineMode: 'multiline_mode',
+            optionHintsEnabled: 'option_hints_enabled',
+            optionHintsCount: 'option_hints_count',
         }
 
         const setClauses: string[] = []
@@ -162,7 +170,9 @@ export class ProjectCoreRepository {
         for (const [camel, col] of Object.entries(fieldMap)) {
             if (camel in data) {
                 setClauses.push(`${col} = ?`)
-                values.push((data as Record<string, unknown>)[camel])
+                let value = (data as Record<string, unknown>)[camel]
+                if (camel === 'optionHintsEnabled') value = value ? 1 : 0
+                values.push(value)
             }
         }
 
