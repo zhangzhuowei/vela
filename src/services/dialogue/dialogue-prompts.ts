@@ -2,12 +2,15 @@
  * 对话创作模式 — 提示词组装
  *
  * 系统提示词走 prompt-templates 三级覆盖体系（项目 > 全局 > 内置），
- * 可在「设置 → 提示词模板」自定义；<state> 状态协议与蒸馏输出约束
- * 放在 systemSuffix，渲染时强制取内置版本，自定义无法破坏解析。
+ * 可在「设置 → 提示词模板」自定义。<state> / <options> 格式合同与 Mod
+ * 贴底一起钉在整段对话之后，不进顶部 system。
  */
+import { pinPostHistory } from '../llm-request-inspect'
 import { getPromptTemplate, renderPrompt } from '../prompt-templates'
 import { splitProseAndState } from './state-protocol'
 import type { WorkingState } from '../../shared/ipc-channels'
+
+export { pinPostHistory }
 
 export type ChatMessage = { role: 'system' | 'user' | 'assistant'; content: string }
 
@@ -60,11 +63,29 @@ function sceneLine(title: string, goal: string): string {
   return title + (goal ? ` — ${goal}` : '')
 }
 
-/** 把 Mod 行文指导钉在整段对话之后（尾部 user，避免 Gemini 把尾部 system 提顶）。 */
-export function pinPostHistory(messages: ChatMessage[], postHistory?: string): ChatMessage[] {
-  const text = postHistory?.trim()
-  if (!text) return messages
-  return [...messages, { role: 'user', content: text }]
+/** 拼接贴底各段（Mod 指导 + 格式合同），空段丢弃。 */
+export function composeDialoguePostHistory(...parts: Array<string | undefined>): string {
+  return parts
+    .map((p) => p?.trim())
+    .filter((p): p is string => Boolean(p))
+    .join('\n\n')
+}
+
+/** 格式合同特征句：请求监控用它识别「仅钉格式、没有 Mod」的贴底。 */
+export const DIALOGUE_FORMAT_PIN_MARKER =
+  '正文写完后，另起一行输出本轮角色状态变化（只含有变化的字段，角色名为键）：'
+
+/** 场内生成的格式合同：状态块 + 可选控场选项。钉在对话之后，抗漏。 */
+export function dialogueFormatContract(optionCount?: number, optionMaxChars?: number): string {
+  const state =
+    `${DIALOGUE_FORMAT_PIN_MARKER}\n` +
+    '<state>{"角色名": {"location":"","physicalState":"","mentalState":"","keyItems":"","recentEvents":"","knownInfo":""}}</state>'
+  const options = optionCount
+    ? `正文与状态块写完后，再输出恰好 ${optionCount} 条下一轮控场方向${
+        optionMaxChars === 0 ? '' : `，每条不超过 ${optionMaxChars ?? 24} 字`
+      }，互不重复，覆盖不同走向。只写方向，不要解释。格式：\n<options>\n${Array.from({ length: optionCount }, (_, i) => `${i + 1}. …`).join('\n')}\n</options>`
+    : ''
+  return composeDialoguePostHistory(state, options)
 }
 
 export function buildSceneMessages(params: {
@@ -88,6 +109,8 @@ export function buildSceneMessages(params: {
   optionMaxChars?: number
   /** 启用 Mod 的行文指导，贴在整段对话之后 */
   postHistory?: string
+  /** 场内生成默认钉格式合同；续写/服务层自己拼贴底时关掉，避免夹进 core */
+  skipFormat?: boolean
 }): ChatMessage[] {
   const { config, characters, workingState } = params
   const template = getPromptTemplate('dialogue_scene')
@@ -104,11 +127,7 @@ export function buildSceneMessages(params: {
     length_note: params.targetLength
       ? `本轮篇幅：目标约 ${params.targetLength} 字，硬性下限 ${Math.round(params.targetLength * 0.8)} 字，这是必须满足的要求。用足场景推进、动作细节与对白把篇幅写满，不要注水，也绝不允许提前收束。`
       : '',
-    option_note: params.optionCount
-      ? `正文与状态块写完后，再输出恰好 ${params.optionCount} 条下一轮控场方向${
-          params.optionMaxChars === 0 ? '' : `，每条不超过 ${params.optionMaxChars ?? 24} 字`
-        }，互不重复，覆盖不同走向。只写方向，不要解释。格式：\n<options>\n${Array.from({ length: params.optionCount }, (_, i) => `${i + 1}. …`).join('\n')}\n</options>`
-      : '',
+    option_note: '',
     characters_block:
       characters.map((c) => characterBlock(c, workingState[c.name])).join('\n') || '（暂无角色卡）',
     references_block: referencesBlock(params.references),
@@ -121,7 +140,12 @@ export function buildSceneMessages(params: {
   if (params.userInput?.trim()) {
     messages.push({ role: 'user', content: params.userInput.trim() })
   }
-  return pinPostHistory(messages, params.postHistory)
+  return pinPostHistory(
+    messages,
+    params.skipFormat
+      ? params.postHistory
+      : composeDialoguePostHistory(params.postHistory, dialogueFormatContract(params.optionCount, params.optionMaxChars))
+  )
 }
 
 export function buildDistillMessages(params: {

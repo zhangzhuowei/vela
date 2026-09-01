@@ -19,8 +19,10 @@ export interface WritingMod {
   updatedAt: string
   /** 模板 key → content 覆盖（仅 content，systemSuffix 始终取内置） */
   templates: Record<string, string>
-  /** 追加到行文指导（注入生成/蒸馏提示词的文风段） */
+  /** 追加到行文指导：破甲/硬格式默认贴底，文风可选进顶部 system */
   guidanceAppend: string
+  /** 指导投放位置；缺省为 post_history */
+  inject?: ModInjectSlot
   /** 分类标签（尺度/节奏/文风/题材……自由填写） */
   tags?: string[]
   /** 全局禁用：各书启用列表选不到，已启用的也不生效（重新启用后恢复） */
@@ -34,6 +36,15 @@ export interface ModVersion {
 }
 
 /** 工程启用条目：version=null 表示跟随最新，数字表示钉住该历史版本 */
+export type ModInjectSlot = 'system' | 'post_history'
+
+export interface ModGuidancePart {
+  id: string
+  name: string
+  inject: ModInjectSlot
+  text: string
+}
+
 export interface ModEnableEntry {
   id: string
   version: number | null
@@ -44,11 +55,118 @@ const HISTORY_LIMIT = 20
 // ===== 内存缓存 =====
 const mods: Map<string, WritingMod> = new Map()
 let enabledEntries: ModEnableEntry[] = []
+let chapterExclude: Record<string, string[]> = {}
+let sceneExclude: Record<string, string[]> = {}
 /** 按启用条目解析后的生效 Mod（钉住版本时为历史快照） */
 let effectivePool: Map<string, WritingMod> = new Map()
 let currentProjectPath: string | null = null
+let currentApplyScope: ModApplyScope | undefined
+let modRevision = 0
+const modListeners = new Set<() => void>()
+
+function notifyModListeners(): void {
+  modRevision += 1
+  for (const fn of modListeners) fn()
+}
+
+export function getModRevision(): number {
+  return modRevision
+}
+
+export function subscribeModChanges(listener: () => void): () => void {
+  modListeners.add(listener)
+  return () => {
+    modListeners.delete(listener)
+  }
+}
+
+export function runWithModScope<T>(scope: ModApplyScope | undefined, fn: () => T): T {
+  const prev = currentApplyScope
+  currentApplyScope = scope
+  try {
+    return fn()
+  } finally {
+    currentApplyScope = prev
+  }
+}
+
+export async function runWithModScopeAsync<T>(
+  scope: ModApplyScope | undefined,
+  fn: () => Promise<T>
+): Promise<T> {
+  const prev = currentApplyScope
+  currentApplyScope = scope
+  try {
+    return await fn()
+  } finally {
+    currentApplyScope = prev
+  }
+}
+
+function resolvedEnabledIds(scope?: ModApplyScope): string[] {
+  const s = scope ?? currentApplyScope
+  return applyModScope(getEnabledModIds(), {
+    chapterExclude: s?.chapterNumber != null ? chapterExclude[String(s.chapterNumber)] : undefined,
+    sceneExclude: s?.sceneId != null ? sceneExclude[String(s.sceneId)] : undefined,
+  })
+}
 
 // ===== 纯函数（可测） =====
+
+export type ModApplyScope = { chapterNumber?: number; sceneId?: number }
+
+export type ProjectModsConfig = {
+  enabled: ModEnableEntry[]
+  chapterExclude: Record<string, string[]>
+  sceneExclude: Record<string, string[]>
+}
+
+/** 把已启用项拖到目标项所在位置（目标仍留在列表里，被拖项插入其位）。 */
+export function moveEnabledEntry(
+  list: ModEnableEntry[],
+  fromId: string,
+  toId: string
+): ModEnableEntry[] {
+  if (fromId === toId) return list
+  const from = list.findIndex((e) => e.id === fromId)
+  const to = list.findIndex((e) => e.id === toId)
+  if (from < 0 || to < 0) return list
+  const next = list.slice()
+  const [item] = next.splice(from, 1)
+  next.splice(to, 0, item)
+  return next
+}
+
+/** 从本书启用列表里去掉章/场排除项，顺序不变。 */
+export function applyModScope(
+  enabledIds: string[],
+  scope?: { chapterExclude?: string[]; sceneExclude?: string[] }
+): string[] {
+  const drop = new Set([...(scope?.chapterExclude ?? []), ...(scope?.sceneExclude ?? [])])
+  if (drop.size === 0) return enabledIds
+  return enabledIds.filter((id) => !drop.has(id))
+}
+
+/** 只保留数字键 + 非空 id 列表 */
+export function normalizeIdMap(raw: unknown): Record<string, string[]> {
+  if (!raw || typeof raw !== 'object') return {}
+  const out: Record<string, string[]> = {}
+  for (const [key, value] of Object.entries(raw as Record<string, unknown>)) {
+    if (!/^\d+$/.test(key) || !Array.isArray(value)) continue
+    const ids = [...new Set(value.filter((x): x is string => typeof x === 'string' && x.trim() !== ''))]
+    if (ids.length) out[key] = ids
+  }
+  return out
+}
+
+export function parseProjectModsConfig(raw: unknown): ProjectModsConfig {
+  const obj = raw && typeof raw === 'object' ? (raw as Record<string, unknown>) : {}
+  return {
+    enabled: normalizeEnabledEntries(obj.enabled),
+    chapterExclude: normalizeIdMap(obj.chapterExclude),
+    sceneExclude: normalizeIdMap(obj.sceneExclude),
+  }
+}
 
 /** 归一化 mods.json 的 enabled 字段：兼容旧版 string[] 与新版 {id,version}[] */
 export function normalizeEnabledEntries(raw: unknown): ModEnableEntry[] {
@@ -90,12 +208,37 @@ export function resolveModTemplate(
   return undefined
 }
 
-/** 聚合启用 Mod 的行文指导追加段（按启用顺序拼接） */
+export function normalizeModInject(raw: unknown): ModInjectSlot {
+  return raw === 'system' ? 'system' : 'post_history'
+}
+
+/** 按投放槽位拆分启用 Mod 的行文指导 */
+export function splitModGuidance(
+  enabled: string[],
+  pool: Map<string, WritingMod>
+): { system: string; postHistory: string; parts: ModGuidancePart[] } {
+  const parts: ModGuidancePart[] = []
+  for (const id of enabled) {
+    const m = pool.get(id)
+    const text = m?.guidanceAppend?.trim()
+    if (!text) continue
+    parts.push({
+      id,
+      name: m.name,
+      inject: normalizeModInject(m.inject),
+      text,
+    })
+  }
+  return {
+    system: parts.filter((p) => p.inject === 'system').map((p) => p.text).join('\n\n'),
+    postHistory: parts.filter((p) => p.inject === 'post_history').map((p) => p.text).join('\n\n'),
+    parts,
+  }
+}
+
+/** 聚合贴底槽的行文指导（按启用顺序拼接） */
 export function mergeModGuidance(enabled: string[], pool: Map<string, WritingMod>): string {
-  return enabled
-    .map((id) => pool.get(id)?.guidanceAppend?.trim())
-    .filter((s): s is string => Boolean(s))
-    .join('\n\n')
+  return splitModGuidance(enabled, pool).postHistory
 }
 
 /** 聚合全部标签及使用数（按数量降序，同数按名称） */
@@ -140,7 +283,9 @@ export async function loadMods(): Promise<void> {
       if (result.success && result.content.trim()) {
         try {
           const mod = JSON.parse(result.content) as WritingMod
-          if (mod.id && mod.name) mods.set(mod.id, mod)
+          if (mod.id && mod.name) {
+            mods.set(mod.id, { ...mod, inject: normalizeModInject(mod.inject) })
+          }
         } catch { /* 无效 JSON 忽略 */ }
       }
     }
@@ -160,41 +305,83 @@ async function rebuildEffectivePool(): Promise<void> {
     if (effective) next.set(entry.id, effective)
   }
   effectivePool = next
+  notifyModListeners()
 }
 
 /** 加载工程的启用清单（打开项目时调用） */
 export async function loadProjectEnabledMods(projectPath: string): Promise<void> {
   currentProjectPath = projectPath
   enabledEntries = []
+  chapterExclude = {}
+  sceneExclude = {}
   effectivePool = new Map()
   try {
     const filePath = `${projectPath}/.vela/mods.json`
     if (await ipc.invoke('fs:check-exists', filePath)) {
       const result = await ipc.invoke('fs:read-file', filePath)
       if (result.success && result.content.trim()) {
-        const parsed = JSON.parse(result.content)
-        enabledEntries = normalizeEnabledEntries(parsed?.enabled)
+        const parsed = parseProjectModsConfig(JSON.parse(result.content))
+        enabledEntries = parsed.enabled
+        chapterExclude = parsed.chapterExclude
+        sceneExclude = parsed.sceneExclude
       }
     }
   } catch { /* 忽略 */ }
   await rebuildEffectivePool()
 }
 
-/** 保存工程启用清单（含版本钉住） */
-export async function saveProjectEnabledMods(enabled: ModEnableEntry[]): Promise<boolean> {
+async function persistProjectMods(): Promise<boolean> {
   if (!currentProjectPath) return false
   try {
-    enabledEntries = enabled.map((e) => ({ id: e.id, version: e.version ?? null }))
+    const payload: Record<string, unknown> = { enabled: enabledEntries }
+    if (Object.keys(chapterExclude).length) payload.chapterExclude = chapterExclude
+    if (Object.keys(sceneExclude).length) payload.sceneExclude = sceneExclude
     const res = await ipc.invoke(
       'fs:write-file',
       `${currentProjectPath}/.vela/mods.json`,
-      JSON.stringify({ enabled: enabledEntries }, null, 2)
+      JSON.stringify(payload, null, 2)
     )
     await rebuildEffectivePool()
     return res.success
   } catch {
     return false
   }
+}
+
+/** 保存工程启用清单（含版本钉住）；章/场排除一并保留 */
+export async function saveProjectEnabledMods(enabled: ModEnableEntry[]): Promise<boolean> {
+  enabledEntries = enabled.map((e) => ({ id: e.id, version: e.version ?? null }))
+  return persistProjectMods()
+}
+
+function setExcludeMap(
+  map: Record<string, string[]>,
+  key: string,
+  ids: string[]
+): Record<string, string[]> {
+  const next = { ...map }
+  const unique = [...new Set(ids.filter((id) => id.trim()))]
+  if (unique.length === 0) delete next[key]
+  else next[key] = unique
+  return next
+}
+
+export function getChapterExcludedMods(chapterNumber: number): string[] {
+  return chapterExclude[String(chapterNumber)] ?? []
+}
+
+export function getSceneExcludedMods(sceneId: number): string[] {
+  return sceneExclude[String(sceneId)] ?? []
+}
+
+export async function setChapterExcludedMods(chapterNumber: number, ids: string[]): Promise<boolean> {
+  chapterExclude = setExcludeMap(chapterExclude, String(chapterNumber), ids)
+  return persistProjectMods()
+}
+
+export async function setSceneExcludedMods(sceneId: number, ids: string[]): Promise<boolean> {
+  sceneExclude = setExcludeMap(sceneExclude, String(sceneId), ids)
+  return persistProjectMods()
 }
 
 export function listMods(): WritingMod[] {
@@ -211,12 +398,22 @@ export function getEnabledEntries(): ModEnableEntry[] {
 
 /** 当前生效的模板覆盖（供 prompt-templates 优先级链调用） */
 export function getModTemplateOverride(key: string): string | undefined {
-  return resolveModTemplate(key, getEnabledModIds(), effectivePool)
+  return resolveModTemplate(key, resolvedEnabledIds(), effectivePool)
 }
 
-/** 当前生效的行文指导追加段 */
-export function getActiveModGuidance(): string {
-  return mergeModGuidance(getEnabledModIds(), effectivePool)
+/** 当前生效的行文指导（按槽位拆分）；可传入章/场以套用排除 */
+export function getActiveModLayers(scope?: ModApplyScope): ReturnType<typeof splitModGuidance> {
+  return splitModGuidance(resolvedEnabledIds(scope), effectivePool)
+}
+
+/** 当前生效的贴底段 */
+export function getActiveModGuidance(scope?: ModApplyScope): string {
+  return getActiveModLayers(scope).postHistory
+}
+
+/** 当前生效的顶部 system 追加段 */
+export function getActiveModSystemGuidance(scope?: ModApplyScope): string {
+  return getActiveModLayers(scope).system
 }
 
 /** 新建/保存 Mod：版本自增并写入历史 */
@@ -228,6 +425,7 @@ export async function saveMod(
     const prev = mods.get(mod.id)
     const next: WritingMod = {
       ...mod,
+      inject: normalizeModInject(mod.inject),
       version: (prev?.version ?? 0) + 1,
       updatedAt: new Date().toISOString(),
     }
@@ -343,6 +541,7 @@ export function exportModToJson(mod: WritingMod): string {
       description: mod.description,
       templates: mod.templates,
       guidanceAppend: mod.guidanceAppend,
+      inject: normalizeModInject(mod.inject),
       tags: mod.tags ?? [],
     },
     null,
@@ -353,7 +552,7 @@ export function exportModToJson(mod: WritingMod): string {
 /** 解析导入 JSON（纯函数可测）：宽松归一，name 必须存在 */
 export function parseModImport(
   json: string
-): Pick<WritingMod, 'name' | 'description' | 'templates' | 'guidanceAppend' | 'tags'> | null {
+): Pick<WritingMod, 'name' | 'description' | 'templates' | 'guidanceAppend' | 'inject' | 'tags'> | null {
   try {
     const raw = JSON.parse(json)
     if (!raw || typeof raw !== 'object') return null
@@ -373,6 +572,7 @@ export function parseModImport(
       description: String(raw.description ?? ''),
       templates,
       guidanceAppend: typeof raw.guidanceAppend === 'string' ? raw.guidanceAppend : '',
+      inject: normalizeModInject(raw.inject),
       tags,
     }
   } catch {

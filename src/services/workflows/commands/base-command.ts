@@ -2,6 +2,8 @@ import type { WorkflowContext, StepCallbacks } from '../../../stores/workflow-st
 import { useLLMStore } from '../../../stores/llm-store'
 import { globalEventBus, EventPayloadMap } from '../../../shared/event-bus'
 import type { BasePromptBuilder } from '../../prompts/prompt-builder'
+import { pinWorkflowMessages } from '../../llm-request-inspect'
+import { getActiveModLayers, type ModApplyScope } from '../../mods'
 import { parseJSONWithRepair } from '../json-repair'
 import i18n from '../../../i18n'
 
@@ -22,6 +24,14 @@ export abstract class BaseWorkflowCommand<TResult = string> {
 
   /** 单次 LLM 调用的重试上限（不含首次） */
   protected maxLLMRetries = 2
+
+  /** 写稿/精修等正文命令打开后，启用 Mod 会按槽位挂到 system / 贴底 */
+  protected attachModGuidance = false
+
+  /** 章/场排除用的作用域；写稿命令覆写成当前章节 */
+  protected modScope(): ModApplyScope | undefined {
+    return undefined
+  }
 
   /**
    * 调用 LLM（带瞬时错误自动重试）。
@@ -188,11 +198,14 @@ export abstract class BaseWorkflowCommand<TResult = string> {
         }
       }
 
+      const extras = this.attachModGuidance
+        ? (() => {
+            const layers = getActiveModLayers(this.modScope())
+            return { systemAppend: layers.system, postHistory: layers.postHistory }
+          })()
+        : undefined
       llmStore.generateStream(
-        [
-          { role: 'system', content: systemPrompt },
-          { role: 'user', content: prompt }
-        ],
+        pinWorkflowMessages(systemPrompt, prompt, extras),
         {
           onChunk: (chunk) => {
             // 取消后不再追加输出

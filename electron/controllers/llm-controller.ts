@@ -80,11 +80,25 @@ export function registerLLMController() {
     // 阈值取 240s：kiro 类中转跑大提示词（蒸馏）首字可能超过 90s，实测会误杀，
     // 故放宽到仍先于底层 5 分钟超时、但能容纳慢中转的水位
     const FIRST_BYTE_TIMEOUT_MS = 240_000
+    const STALL_TIMEOUT_MS = 120_000
     let firstByteTimedOut = false
+    let stalled = false
+    let stallTimer: ReturnType<typeof setTimeout> | null = null
     const firstByteTimer = setTimeout(() => {
       firstByteTimedOut = true
       abortController.abort()
     }, FIRST_BYTE_TIMEOUT_MS)
+    const armStallTimer = () => {
+      if (stallTimer) clearTimeout(stallTimer)
+      stallTimer = setTimeout(() => {
+        stalled = true
+        abortController.abort()
+      }, STALL_TIMEOUT_MS)
+    }
+    const clearTimers = () => {
+      clearTimeout(firstByteTimer)
+      if (stallTimer) clearTimeout(stallTimer)
+    }
 
     // We do not await this globally since it's streaming independently
     provider.generateStream(model, request.messages, {
@@ -99,19 +113,22 @@ export function registerLLMController() {
           clearTimeout(firstByteTimer)
           console.log(`[LLM] ⋯ ${model.name} 首字 ${Date.now() - t0}ms req=${rid}`)
         }
+        armStallTimer()
         win?.webContents.send('llm:stream-chunk', { requestId, chunk })
       },
       onDone: (fullText: string, usage?: { promptTokens: number; completionTokens: number; totalTokens: number }) => {
-        clearTimeout(firstByteTimer)
+        clearTimers()
         console.log(`[LLM] ✓ ${model.name} ${Date.now() - t0}ms ${fullText.length} 字 req=${rid}`)
         win?.webContents.send('llm:stream-done', { requestId, fullText, usage })
         activeStreams.delete(requestId)
       },
       onError: (error: string) => {
-        clearTimeout(firstByteTimer)
+        clearTimers()
         const finalError = firstByteTimedOut
           ? `模型 ${FIRST_BYTE_TIMEOUT_MS / 1000} 秒无首字节响应，已自动断开（中转可能挂起，可重试或换模型）`
-          : error
+          : stalled
+            ? `模型 ${STALL_TIMEOUT_MS / 1000} 秒无新输出，已自动断开（流可能被中转挂起，可重试）`
+            : error
         console.error(`[LLM] ✗ ${model.name} ${Date.now() - t0}ms req=${rid} ${finalError}`)
         win?.webContents.send('llm:stream-error', { requestId, error: finalError })
         activeStreams.delete(requestId)
@@ -121,14 +138,16 @@ export function registerLLMController() {
     return { requestId, started: true }
   })
 
-  ipcMain.handle('llm:cancel', async (_event, requestId: string) => {
+  ipcMain.handle('llm:cancel', async (event, requestId: string) => {
     const controller = activeStreams.get(requestId)
     if (controller) {
       controller.abort()
       activeStreams.delete(requestId)
-      return { success: true }
     }
-    return { success: false }
+    // 立刻通知渲染进程：有的中转 abort 后不会走 onError，不发这包界面会一直停在「生成中」
+    const win = BrowserWindow.fromWebContents(event.sender)
+    win?.webContents.send('llm:stream-error', { requestId, error: '已取消生成' })
+    return { success: Boolean(controller) }
   })
 
   ipcMain.handle('llm:list-models', async () => loadModelConfigs())

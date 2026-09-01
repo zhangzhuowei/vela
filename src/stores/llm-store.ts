@@ -65,6 +65,8 @@ interface LLMState {
   ) => Promise<string>
   /** 取消生成 */
   cancelGeneration: (requestId: string) => Promise<void>
+  /** 只记一条请求快照（预览组装，不调模型） */
+  recordTrace: (input: { messages: LlmChatMessage[]; modelId?: string; stream?: boolean }) => void
   /** 测试模型连接（embedding 模型会额外返回向量维度） */
   testConnection: (model: ModelProfile) => Promise<{ success: boolean; error?: string; dimension?: number }>
 }
@@ -240,6 +242,18 @@ export const useLLMStore = create<LLMState>()((set, get) => ({
 
   cancelGeneration: async (requestId) => {
     await ipc.invoke('llm:cancel', requestId)
+  },
+
+  recordTrace: ({ messages, modelId, stream }) => {
+    set({
+      lastTraces: prependRequestTrace(get().lastTraces, {
+        id: crypto.randomUUID(),
+        at: Date.now(),
+        modelId: modelId ?? 'preview',
+        stream: stream ?? false,
+        messages,
+      }),
+    })
   },
 
   testConnection: async (model) => {

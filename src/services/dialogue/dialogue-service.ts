@@ -13,6 +13,8 @@ import type { SceneData, SceneTurnData } from '../../../electron/repositories/sc
 import {
   buildDistillMessages,
   buildSceneMessages,
+  composeDialoguePostHistory,
+  dialogueFormatContract,
   pinPostHistory,
   type ChatMessage,
   type DialogueCharacter,
@@ -24,8 +26,19 @@ import { assembleChapterBody } from './assemble'
 import { selectSceneCharacters } from './select-characters'
 import { getPromptTemplate, renderPrompt } from '../prompt-templates'
 import { logLLMCall } from '../stats-service'
+import { runWithModScopeAsync } from '../mods'
 
 type LLMUsage = { promptTokens: number; completionTokens: number; totalTokens: number }
+
+/** 正文不足目标八成且未达续写上限时自动再开一轮。 */
+export function shouldContinueTurn(
+  written: number,
+  target: number | undefined,
+  rounds: number,
+  maxContinuations = 2
+): boolean {
+  return Boolean(target && written < target * 0.8 && rounds < maxContinuations)
+}
 
 /** 对话模式的调用也记入 llm_calls，与写稿管线共用「模型调用」面板 */
 function logDialogueCall(
@@ -79,10 +92,11 @@ async function fetchConfig(): Promise<DialogueConfig> {
       }
     }
   }
+  const { getActiveModSystemGuidance } = await import('../mods')
   return {
     worldSetting,
     protagonistProfile,
-    globalGuidance: cfg?.globalGuidance,
+    globalGuidance: [cfg?.globalGuidance, getActiveModSystemGuidance()].filter(Boolean).join('\n\n'),
     writingStyle: cfg?.writingStyle,
   }
 }
@@ -210,12 +224,7 @@ export type GenerateTurnCallbacks = {
   onRoundEnd?: (proseSoFar: string) => void
 }
 
-/**
- * 场内生成一轮：控场指令 → 模型正文 + 状态补丁。
- * 成功后 user/assistant 两条回合与合并后的章状态一起落库。
- * retry=true 时不追加新 user（沿用现有历史，最后一条应为 user）。
- */
-export async function generateTurn(params: {
+export type AssembleTurnParams = {
   scene: SceneData
   chapterTitle: string
   chapterGoal: string
@@ -227,47 +236,85 @@ export async function generateTurn(params: {
   optionCount?: number
   /** 每条选项字数上限（0 = 不限） */
   optionMaxChars?: number
-  callbacks: GenerateTurnCallbacks
-}): Promise<string> {
-  const { scene, callbacks } = params
+  /** 停止按钮：中止后续续写与落库 */
+  signal?: AbortSignal
+}
+
+/** 组装本轮 core + 贴底（不调模型）。续写必须用 skipFormat 的 core，格式只钉在最后。 */
+export async function assembleTurnMessages(params: AssembleTurnParams): Promise<{
+  core: ChatMessage[]
+  postHistory: string
+  workingState: WorkingState
+  characters: DialogueCharacter[]
+}> {
+  const { scene } = params
   const turns = await ipc.invoke('db:scene-turn-list', scene.id)
   const workingState = await ensureWorkingState(scene.chapterNumber)
   const characters = await sceneCharacters(scene.chapterNumber, workingState)
-  // 召回 query：控场指令优先，其次场/章目标
   const lastUser = params.retry ? [...turns].reverse().find((t) => t.role === 'user')?.content : params.userInput
   const references = await retrieveReferences(
     [lastUser, scene.goal || scene.title, params.chapterGoal].filter(Boolean).join(' ')
   )
-
   const lineContext = await getLineContext(scene)
-
   const target = params.targetLength
-  // 提示词侧的控场消息附带篇幅要求（落库仍存干净原文）
   const promptInput =
     !params.retry && target
       ? `${params.userInput.trim()}\n（本轮篇幅目标约 ${target} 字，硬性下限 ${Math.round(target * 0.8)} 字，写满为止）`
       : params.userInput
-
-  const postHistory = await fetchModPostHistory()
-  const coreMessages = buildSceneMessages({
-    config: await fetchConfig(),
-    characters,
-    workingState,
-    chapterTitle: params.chapterTitle,
-    chapterGoal: params.chapterGoal,
-    sceneTitle: scene.title,
-    sceneGoal: scene.goal,
-    lineContext,
-    turns: turns.map((t) => ({ role: t.role, content: splitProseAndState(t.content).prose })),
-    userInput: params.retry ? undefined : promptInput,
-    references,
-    targetLength: target,
-    optionCount: params.optionCount,
-    optionMaxChars: params.optionMaxChars,
+  const scope = { chapterNumber: scene.chapterNumber, sceneId: scene.id }
+  return runWithModScopeAsync(scope, async () => {
+    const postHistory = composeDialoguePostHistory(
+      await fetchModPostHistory(),
+      dialogueFormatContract(params.optionCount, params.optionMaxChars)
+    )
+    const core = buildSceneMessages({
+      config: await fetchConfig(),
+      characters,
+      workingState,
+      chapterTitle: params.chapterTitle,
+      chapterGoal: params.chapterGoal,
+      sceneTitle: scene.title,
+      sceneGoal: scene.goal,
+      lineContext,
+      turns: turns.map((t) => ({ role: t.role, content: splitProseAndState(t.content).prose })),
+      userInput: params.retry ? undefined : promptInput,
+      references,
+      targetLength: target,
+      optionCount: params.optionCount,
+      optionMaxChars: params.optionMaxChars,
+      skipFormat: true,
+    })
+    return { core, postHistory, workingState, characters }
   })
+}
+
+/** 只组装并发一条监控快照，不调用模型。 */
+export async function previewTurn(params: AssembleTurnParams): Promise<ChatMessage[]> {
+  const { core, postHistory } = await assembleTurnMessages(params)
+  const messages = pinPostHistory(core, postHistory)
+  useLLMStore.getState().recordTrace({ modelId: 'preview', stream: false, messages })
+  return messages
+}
+
+/**
+ * 场内生成一轮：控场指令 → 模型正文 + 状态补丁。
+ * 成功后 user/assistant 两条回合与合并后的章状态一起落库。
+ * retry=true 时不追加新 user（沿用现有历史，最后一条应为 user）。
+ */
+export async function generateTurn(
+  params: AssembleTurnParams & { callbacks: GenerateTurnCallbacks }
+): Promise<string> {
+  const { scene, callbacks } = params
+  const abandoned = () => Boolean(params.signal?.aborted)
+  const { core: coreMessages, postHistory, workingState, characters } = await assembleTurnMessages(params)
+  if (abandoned()) {
+    callbacks.onError('已取消生成')
+    return ''
+  }
 
   // 篇幅闸门：正文不足目标八成时自动续写（最多 2 轮），与写稿链路同款策略
   const MAX_CONTINUATIONS = 2
+  const target = params.targetLength
   const parts: { prose: string; patch: WorkingState; options: string[] }[] = []
   let rounds = 0
 
@@ -275,6 +322,10 @@ export async function generateTurn(params: {
   const countChars = (s: string) => s.replace(/\s/g, '').length
 
   const finalize = async () => {
+    if (abandoned()) {
+      callbacks.onError('已取消生成')
+      return
+    }
     try {
       const prose = totalProse().trim()
       if (!prose) {
@@ -309,30 +360,41 @@ export async function generateTurn(params: {
       onChunk: callbacks.onChunk,
       onDone: (fullText, usage) => {
         logDialogueCall('DialogueTurn', undefined, t0, usage)
+        if (abandoned()) {
+          callbacks.onError('已取消生成')
+          return
+        }
         void (async () => {
-          const { prose, patch } = splitProseAndState(fullText)
-          const options = parseOptionHints(fullText, params.optionCount)
-          if (prose) parts.push({ prose, patch, options })
-          const written = countChars(totalProse())
-          if (target && prose && written < target * 0.8 && rounds < MAX_CONTINUATIONS) {
-            rounds++
-            // UI 重置流式区为已清洗正文，续写无缝接着长
-            callbacks.onRoundEnd?.(totalProse())
-            const contMsgs = [
-              ...coreMsgs,
-              { role: 'assistant' as const, content: fullText },
-              {
-                role: 'user' as const,
-                content:
-                  `目前正文共约 ${written} 字，尚未达到本轮目标（约 ${target} 字，硬性下限 ${Math.round(target * 0.8)} 字）。` +
-                  '继续写下去补足篇幅：无缝衔接上文，不要重复已写内容、不要总结、不要重新开头；写完后同样输出 <state> 状态块（只含相对最新状态的变化）。',
-              },
-            ]
-            const rid = await runRound(contMsgs)
-            callbacks.onRequest?.(rid)
-            return
+          try {
+            if (abandoned()) {
+              callbacks.onError('已取消生成')
+              return
+            }
+            const { prose, patch } = splitProseAndState(fullText)
+            const options = parseOptionHints(fullText, params.optionCount)
+            if (prose) parts.push({ prose, patch, options })
+            const written = countChars(totalProse())
+            if (target && prose && shouldContinueTurn(written, target, rounds, MAX_CONTINUATIONS) && !abandoned()) {
+              rounds++
+              callbacks.onRoundEnd?.(totalProse())
+              const contMsgs = [
+                ...coreMsgs,
+                { role: 'assistant' as const, content: fullText },
+                {
+                  role: 'user' as const,
+                  content:
+                    `目前正文共约 ${written} 字，尚未达到本轮目标（约 ${target} 字，硬性下限 ${Math.round(target * 0.8)} 字）。` +
+                    '继续写下去补足篇幅：无缝衔接上文，不要重复已写内容、不要总结、不要重新开头；写完后同样输出 <state> 状态块（只含相对最新状态的变化）。',
+                },
+              ]
+              const rid = await runRound(contMsgs)
+              callbacks.onRequest?.(rid)
+              return
+            }
+            await finalize()
+          } catch (err) {
+            callbacks.onError(String(err))
           }
-          await finalize()
         })()
       },
       onError: (error) => {
@@ -364,9 +426,14 @@ export async function distillScene(params: {
   modelId?: string
   /** 蒸馏目标字数（不传则忠实草稿体量） */
   targetLength?: number
+  signal?: AbortSignal
   callbacks: DistillCallbacks
 }): Promise<string> {
   const { callbacks } = params
+  if (params.signal?.aborted) {
+    callbacks.onError('已取消生成')
+    return ''
+  }
   const turns = await ipc.invoke('db:scene-turn-list', params.scene.id)
   if (turns.length === 0) throw new Error('本场还没有对话，不能收场')
   const references = await retrieveReferences(
@@ -374,31 +441,43 @@ export async function distillScene(params: {
   )
   const workingState = await ipc.invoke('db:chapter-working-state-get', params.scene.chapterNumber)
   const cast = await sceneCharacters(params.scene.chapterNumber, workingState)
-  const messages = buildDistillMessages({
-    config: await fetchConfig(),
-    characterNames: cast.map((c) => c.name),
-    chapterTitle: params.chapterTitle,
-    chapterGoal: params.chapterGoal,
-    sceneTitle: params.scene.title,
-    sceneGoal: params.scene.goal,
-    turns: turns.map((t) => ({ role: t.role, content: t.content })),
-    references,
-    targetLength: params.targetLength,
-    postHistory: await fetchModPostHistory(),
-  })
+  const messages = await runWithModScopeAsync(
+    { chapterNumber: params.scene.chapterNumber, sceneId: params.scene.id },
+    async () =>
+      buildDistillMessages({
+        config: await fetchConfig(),
+        characterNames: cast.map((c) => c.name),
+        chapterTitle: params.chapterTitle,
+        chapterGoal: params.chapterGoal,
+        sceneTitle: params.scene.title,
+        sceneGoal: params.scene.goal,
+        turns: turns.map((t) => ({ role: t.role, content: t.content })),
+        references,
+        targetLength: params.targetLength,
+        postHistory: await fetchModPostHistory(),
+      })
+  )
   const t0 = Date.now()
   return useLLMStore.getState().generateStream(
     messages,
     {
       onChunk: callbacks.onChunk,
       onDone: (fullText, usage) => {
-        logDialogueCall('DialogueDistill', params.modelId, t0, usage)
-        const { prose } = splitProseAndState(fullText)
-        if (!prose.trim()) {
-          callbacks.onError('蒸馏没有写出正文')
-          return
+        try {
+          logDialogueCall('DialogueDistill', params.modelId, t0, usage)
+          if (params.signal?.aborted) {
+            callbacks.onError('已取消生成')
+            return
+          }
+          const { prose } = splitProseAndState(fullText)
+          if (!prose.trim()) {
+            callbacks.onError('蒸馏没有写出正文')
+            return
+          }
+          callbacks.onDone(prose.trim())
+        } catch (err) {
+          callbacks.onError(String(err))
         }
-        callbacks.onDone(prose.trim())
       },
       onError: (error) => {
         logDialogueCall('DialogueDistill', params.modelId, t0, undefined, error)

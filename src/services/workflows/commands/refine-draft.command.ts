@@ -25,6 +25,10 @@ export interface RefineDraftParams {
 }
 
 export class RefineDraftCommand extends BaseWorkflowCommand<string> {
+  protected attachModGuidance = true
+  protected modScope() {
+    return { chapterNumber: this.params.chapterNumber }
+  }
   constructor(private params: RefineDraftParams) {
     super()
   }

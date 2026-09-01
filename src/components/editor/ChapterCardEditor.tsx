@@ -22,6 +22,7 @@ import {
 } from '../../services/workflows/directory-workflow'
 import { guardDirectoryGeneration } from '../../services/workflow-guards'
 import DirectoryConfigDialog from '../dialogs/DirectoryConfigDialog'
+import ModScopeBar from './ModScopeBar'
 import { Button } from '../ui/Button'
 import { Input } from '../ui/Input'
 import { Textarea } from '../ui/Textarea'
@@ -454,6 +455,9 @@ export default function ChapterCardEditor() {
           {selected ? (
             <div className="max-w-2xl mx-auto px-5 py-4">
               {/* 编辑区头部 */}
+              <div className="mb-3">
+                <ModScopeBar chapterNumber={selected.chapterNumber} />
+              </div>
               <div className="flex items-start justify-between gap-2 mb-4">
                 <h3 className="text-sm font-bold flex-shrink-0 pt-1" style={{ color: 'var(--color-text)' }}>
                   {t('chapterCard.chapterTitle', { chapter: selected.chapterNumber, title: selected.title || t('chapterCard.unnamed') })}

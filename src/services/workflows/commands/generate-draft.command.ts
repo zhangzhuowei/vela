@@ -17,6 +17,10 @@ import {
 import i18n from '../../../i18n'
 
 export class GenerateDraftCommand extends BaseWorkflowCommand {
+  protected attachModGuidance = true
+  protected modScope() {
+    return { chapterNumber: this.chapterInfo.chapterNumber }
+  }
 
   constructor(private chapterInfo: ChapterInfo, private modelId?: string, private silent = false) {
     super()

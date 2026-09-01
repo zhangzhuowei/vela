@@ -7,7 +7,7 @@
  */
 import { useEffect, useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
-import { Search } from 'lucide-react'
+import { ChevronDown, ChevronUp, GripVertical, Search } from 'lucide-react'
 import {
   collectTags,
   getEnabledEntries,
@@ -15,6 +15,7 @@ import {
   loadModHistory,
   loadMods,
   loadProjectEnabledMods,
+  moveEnabledEntry,
   saveProjectEnabledMods,
   type ModEnableEntry,
   type ModVersion,
@@ -31,6 +32,7 @@ export default function ModEnablePanel() {
   const [historyByMod, setHistoryByMod] = useState<Record<string, ModVersion[]>>({})
   const [query, setQuery] = useState('')
   const [filterTag, setFilterTag] = useState<string | null>(null)
+  const [draggingId, setDraggingId] = useState<string | null>(null)
   const projectPath = useProjectStore((s) => s.currentProject?.path)
 
   useEffect(() => {
@@ -70,6 +72,19 @@ export default function ModEnablePanel() {
 
   const pinVersion = (id: string, version: number | null) => {
     void persist(entries.map((e) => (e.id === id ? { ...e, version } : e)))
+  }
+
+  const moveTo = (fromId: string, toId: string) => {
+    const next = moveEnabledEntry(entries, fromId, toId)
+    if (next === entries) return
+    void persist(next)
+  }
+
+  const moveBy = (id: string, delta: number) => {
+    const from = entries.findIndex((e) => e.id === id)
+    const to = from + delta
+    if (from < 0 || to < 0 || to >= entries.length) return
+    moveTo(id, entries[to].id)
   }
 
   const active = useMemo(() => mods.filter((m) => !m.disabled), [mods])
@@ -155,8 +170,36 @@ export default function ModEnablePanel() {
             <div
               key={mod.id}
               className="flex items-center gap-2.5 rounded-lg px-3 py-2 transition-colors hover:bg-[var(--color-hover)]"
-              style={{ border: '1px solid var(--color-border)' }}
+              style={{
+                border: `1px solid ${draggingId === mod.id ? 'var(--color-accent)' : 'var(--color-border)'}`,
+                opacity: draggingId && draggingId !== mod.id && entry ? 0.7 : 1,
+              }}
+              draggable={Boolean(entry)}
+              onDragStart={() => {
+                if (entry) setDraggingId(mod.id)
+              }}
+              onDragEnd={() => setDraggingId(null)}
+              onDragOver={(e) => {
+                if (!entry || !draggingId || draggingId === mod.id) return
+                e.preventDefault()
+              }}
+              onDrop={(e) => {
+                e.preventDefault()
+                if (draggingId && entry) moveTo(draggingId, mod.id)
+                setDraggingId(null)
+              }}
             >
+              {entry ? (
+                <span
+                  className="cursor-grab text-[var(--color-text-muted)]"
+                  title={t('novelConfig.modsDragHandle')}
+                  onPointerDown={(e) => e.stopPropagation()}
+                >
+                  <GripVertical size={13} />
+                </span>
+              ) : (
+                <span className="w-[13px]" />
+              )}
               <input
                 type="checkbox"
                 className="cursor-pointer"
@@ -199,12 +242,32 @@ export default function ModEnablePanel() {
                   </NativeSelect>
                 )}
                 {entry && (
-                  <span
-                    className="rounded-full px-1.5 py-0.5 text-[0.65rem]"
-                    style={{ color: 'var(--color-success)', backgroundColor: 'rgba(74,222,128,0.1)' }}
-                  >
-                    #{idx + 1}
-                  </span>
+                  <>
+                    <button
+                      type="button"
+                      className="icon-btn"
+                      disabled={idx <= 0}
+                      title={t('novelConfig.modsMoveUp')}
+                      onClick={() => moveBy(mod.id, -1)}
+                    >
+                      <ChevronUp size={12} />
+                    </button>
+                    <button
+                      type="button"
+                      className="icon-btn"
+                      disabled={idx >= entries.length - 1}
+                      title={t('novelConfig.modsMoveDown')}
+                      onClick={() => moveBy(mod.id, 1)}
+                    >
+                      <ChevronDown size={12} />
+                    </button>
+                    <span
+                      className="rounded-full px-1.5 py-0.5 text-[0.65rem]"
+                      style={{ color: 'var(--color-success)', backgroundColor: 'rgba(74,222,128,0.1)' }}
+                    >
+                      #{idx + 1}
+                    </span>
+                  </>
                 )}
                 {!entry && (
                   <span
@@ -219,6 +282,9 @@ export default function ModEnablePanel() {
           )
         })}
       </div>
+      <p className="text-[0.68rem]" style={{ color: 'var(--color-text-muted)' }}>
+        {t('novelConfig.modsDragHint')}
+      </p>
       <p className="text-[0.68rem]" style={{ color: 'var(--color-text-muted)' }}>
         {t('novelConfig.modsManageHint')}
       </p>

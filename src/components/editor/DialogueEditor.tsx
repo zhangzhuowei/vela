@@ -6,7 +6,7 @@
  */
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
-import { Eye, PanelRightClose, PanelRightOpen, Plus, RefreshCw, Send, Square, Trash2, Undo2 } from 'lucide-react'
+import { Eye, ListTree, PanelRightClose, PanelRightOpen, Plus, RefreshCw, Send, Square, Trash2, Undo2 } from 'lucide-react'
 import { ipc } from '../../services/ipc-client'
 import { getModelSpeeds } from '../../services/stats-service'
 import { useDialogueStream } from '../../stores/dialogue-stream-store'
@@ -19,7 +19,9 @@ import {
   distillScene,
   generateTurn,
   previewChapterBody,
+  previewTurn,
 } from '../../services/dialogue/dialogue-service'
+import ModScopeBar from './ModScopeBar'
 import { resolveOptionCount, resolveOptionMaxChars } from '../../services/dialogue/option-hints'
 import { parseOptionHints, splitProseAndState } from '../../services/dialogue/state-protocol'
 import RequestMonitor from './RequestMonitor'
@@ -123,7 +125,12 @@ export default function DialogueEditor({ chapterNumber }: { chapterNumber: numbe
       return !prev
     })
   }
+  const openRequestMonitor = () => {
+    localStorage.setItem('vela-dialogue-request-monitor', 'open')
+    setRequestOpen(true)
+  }
   const scrollRef = useRef<HTMLDivElement>(null)
+  const genAbortRef = useRef<AbortController | null>(null)
   // 是否贴底：用户上滑阅读时置 false，暂停自动跟随；滑回底部再恢复
   const stickToBottom = useRef(true)
   const onScroll = () => {
@@ -213,6 +220,9 @@ export default function DialogueEditor({ chapterNumber }: { chapterNumber: numbe
     const text = input.trim()
     if (!retry && !text) return
     setError('')
+    genAbortRef.current?.abort()
+    const ac = new AbortController()
+    genAbortRef.current = ac
     stream.beginGenerate(sid)
     void generateTurn({
       scene,
@@ -223,6 +233,7 @@ export default function DialogueEditor({ chapterNumber }: { chapterNumber: numbe
       targetLength: turnLength || undefined,
       optionCount: optionCount || undefined,
       optionMaxChars: optionCount ? optionMaxChars : undefined,
+      signal: ac.signal,
       callbacks: {
         onChunk: (chunk) => stream.appendStreaming(sid, chunk),
         onRequest: (requestId) => stream.setRequest(sid, requestId || null),
@@ -236,11 +247,43 @@ export default function DialogueEditor({ chapterNumber }: { chapterNumber: numbe
           setError(msg)
         },
       },
-    }).then((requestId) => stream.setRequest(sid, requestId || null))
+    }).then((requestId) => {
+      if (ac.signal.aborted) return
+      stream.setRequest(sid, requestId || null)
+    }).catch((err) => {
+      stream.fail(sid)
+      setError(err instanceof Error ? err.message : String(err))
+    })
+  }
+
+  const handlePreviewRequest = () => {
+    if (!scene) return
+    const text = input.trim()
+    const retry = !text && turns[turns.length - 1]?.role === 'user'
+    if (!text && !retry) return
+    setError('')
+    openRequestMonitor()
+    void previewTurn({
+      scene,
+      chapterTitle,
+      chapterGoal,
+      userInput: text,
+      retry,
+      targetLength: turnLength || undefined,
+      optionCount: optionCount || undefined,
+      optionMaxChars: optionCount ? optionMaxChars : undefined,
+    }).catch((err) => {
+      setError(err instanceof Error ? err.message : String(err))
+    })
   }
 
   const handleStop = () => {
+    if (!scene) return
+    genAbortRef.current?.abort()
+    genAbortRef.current = null
     if (activeRequestId) void useLLMStore.getState().cancelGeneration(activeRequestId)
+    stream.fail(scene.id, session?.phase === 'distilling')
+    setError(t('dialogue.stopped'))
   }
 
   // 蒸馏（流式）：草稿区实时增长，完成后替换为剥离状态块的干净稿
@@ -248,6 +291,9 @@ export default function DialogueEditor({ chapterNumber }: { chapterNumber: numbe
     if (!scene) return
     const sid = scene.id
     setError('')
+    genAbortRef.current?.abort()
+    const ac = new AbortController()
+    genAbortRef.current = ac
     stream.beginDistill(sid)
     void distillScene({
       scene,
@@ -255,6 +301,7 @@ export default function DialogueEditor({ chapterNumber }: { chapterNumber: numbe
       chapterGoal,
       modelId: distillModelId || undefined,
       targetLength: distillLength || undefined,
+      signal: ac.signal,
       callbacks: {
         onChunk: (chunk) => stream.appendDistill(sid, chunk),
         onDone: (draft) => stream.finishDistill(sid, draft),
@@ -264,7 +311,10 @@ export default function DialogueEditor({ chapterNumber }: { chapterNumber: numbe
         },
       },
     })
-      .then((requestId) => stream.setRequest(sid, requestId || null))
+      .then((requestId) => {
+        if (ac.signal.aborted) return
+        stream.setRequest(sid, requestId || null)
+      })
       .catch((err) => {
         stream.fail(sid)
         setError(err instanceof Error ? err.message : String(err))
@@ -292,7 +342,7 @@ export default function DialogueEditor({ chapterNumber }: { chapterNumber: numbe
       : []
 
   return (
-    <div className="flex h-full">
+    <div className="flex h-full min-h-0 overflow-hidden">
       {/* 场列表 */}
       <aside
         className="flex w-56 flex-shrink-0 flex-col"
@@ -388,7 +438,7 @@ export default function DialogueEditor({ chapterNumber }: { chapterNumber: numbe
       </aside>
 
       {/* 对话区 */}
-      <main className="flex min-w-0 flex-1 flex-col" style={{ backgroundColor: 'var(--color-editor-bg)' }}>
+      <main className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden" style={{ backgroundColor: 'var(--color-editor-bg)' }}>
         <div className="panel-header justify-between">
           <span className="truncate">
             {projectName} · {chapterTitle}
@@ -459,11 +509,13 @@ export default function DialogueEditor({ chapterNumber }: { chapterNumber: numbe
                 </>
               )}
             </div>
-            <div ref={scrollRef} onScroll={onScroll} className="min-h-0 flex-1 space-y-3 overflow-y-auto px-6 py-4">
+            <div ref={scrollRef} onScroll={onScroll} className="min-h-0 flex-1 space-y-3 overflow-y-auto px-4 py-4 pb-10">
               {turns.map((turn) => (
                 <div key={turn.id} className={turn.role === 'user' ? 'text-right' : 'text-left'}>
                   <div
-                    className="inline-block max-w-[82%] whitespace-pre-wrap rounded-xl px-4 py-2.5 text-left text-sm leading-7"
+                    className={`inline-block whitespace-pre-wrap rounded-xl px-4 py-2.5 text-left text-sm leading-7 ${
+                      turn.role === 'assistant' ? 'w-full max-w-none' : 'max-w-[90%]'
+                    }`}
                     style={{
                       backgroundColor:
                         turn.role === 'user' ? 'var(--color-active)' : 'var(--color-sidebar)',
@@ -477,7 +529,7 @@ export default function DialogueEditor({ chapterNumber }: { chapterNumber: numbe
               {session?.phase === 'generating' && (
                 <div className="text-left">
                   <div
-                    className="inline-block max-w-[82%] whitespace-pre-wrap rounded-xl px-4 py-2.5 text-sm leading-7"
+                    className="inline-block w-full max-w-none whitespace-pre-wrap rounded-xl px-4 py-2.5 text-sm leading-7"
                     style={{ backgroundColor: 'var(--color-sidebar)', fontFamily: 'var(--font-writing)' }}
                   >
                     {liveProse(streaming) || (
@@ -552,11 +604,17 @@ export default function DialogueEditor({ chapterNumber }: { chapterNumber: numbe
               )}
             </div>
             {requestOpen && (
-              <div style={{ borderTop: '1px solid var(--color-border)' }}>
-                <RequestMonitor />
+              <div
+                className="flex h-36 flex-shrink-0 flex-col overflow-hidden"
+                style={{
+                  borderTop: '1px solid var(--color-border)',
+                  backgroundColor: 'var(--color-panel, var(--color-editor-bg))',
+                }}
+              >
+                <RequestMonitor chapterNumber={chapterNumber} sceneId={sceneId ?? undefined} />
               </div>
             )}
-            <div className="space-y-2 p-3" style={{ borderTop: '1px solid var(--color-border)' }}>
+            <div className="flex-shrink-0 space-y-2 p-3" style={{ borderTop: '1px solid var(--color-border)' }}>
               {/* 控场快捷板：点击填入输入框，可继续编辑 */}
               {scene.status === 'open' && (
                 <div className="flex flex-wrap gap-1.5">
@@ -577,6 +635,7 @@ export default function DialogueEditor({ chapterNumber }: { chapterNumber: numbe
                   ))}
                 </div>
               )}
+              <ModScopeBar chapterNumber={chapterNumber} sceneId={scene?.id} />
               <textarea
                 className="config-input h-16"
                 placeholder={t('dialogue.inputPlaceholder')}
@@ -664,7 +723,7 @@ export default function DialogueEditor({ chapterNumber }: { chapterNumber: numbe
                     ))}
                   </NativeSelect>
                 )}
-                {streamBusy && activeRequestId && (
+                {streamBusy && (
                   <Button variant="destructive" size="sm" onClick={handleStop}>
                     <Square size={12} /> {t('dialogue.stop')}
                   </Button>
@@ -687,6 +746,20 @@ export default function DialogueEditor({ chapterNumber }: { chapterNumber: numbe
                   onClick={handleUndoTurn}
                 >
                   <Undo2 size={12} /> {t('dialogue.undoTurn')}
+                </Button>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  disabled={
+                    busy ||
+                    streamBusy ||
+                    scene.status !== 'open' ||
+                    (!input.trim() && turns[turns.length - 1]?.role !== 'user')
+                  }
+                  title={t('dialogue.requestPreviewTooltip')}
+                  onClick={handlePreviewRequest}
+                >
+                  <ListTree size={12} /> {t('dialogue.requestPreview')}
                 </Button>
                 <Button
                   variant={requestOpen ? 'outline' : 'ghost'}

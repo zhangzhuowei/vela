@@ -20,8 +20,10 @@ import {
   removeTagEverywhere,
   renameTagEverywhere,
   rollbackMod,
+  normalizeModInject,
   saveMod,
   setModDisabled,
+  type ModInjectSlot,
   type ModVersion,
   type WritingMod,
 } from '../../services/mods'
@@ -297,6 +299,7 @@ function ModItem({
   const [name, setName] = useState(mod.name)
   const [description, setDescription] = useState(mod.description)
   const [guidance, setGuidance] = useState(mod.guidanceAppend)
+  const [inject, setInject] = useState<ModInjectSlot>(normalizeModInject(mod.inject))
   const [templates, setTemplates] = useState<Record<string, string>>(mod.templates)
   const [tags, setTags] = useState<string[]>(mod.tags ?? [])
   const [tagInput, setTagInput] = useState('')
@@ -313,6 +316,7 @@ function ModItem({
       setName(mod.name)
       setDescription(mod.description)
       setGuidance(mod.guidanceAppend)
+      setInject(normalizeModInject(mod.inject))
       setTemplates(mod.templates)
       setTags(mod.tags ?? [])
       setMsg('')
@@ -339,6 +343,7 @@ function ModItem({
       name: name.trim() || mod.name,
       description,
       guidanceAppend: guidance,
+      inject,
       templates,
       tags,
     })
@@ -418,6 +423,16 @@ function ModItem({
               {t('mods.enabledBadge', { order: enabledIndex + 1 })}
             </span>
           )}
+          {mod.guidanceAppend.trim() && (
+            <span
+              className="rounded-full px-1.5 py-0.5 text-[0.62rem]"
+              style={{ color: 'var(--color-text-muted)', backgroundColor: 'var(--color-hover)' }}
+            >
+              {normalizeModInject(mod.inject) === 'system'
+                ? t('mods.injectSystemShort')
+                : t('mods.injectPostHistoryShort')}
+            </span>
+          )}
         </button>
       </div>
 
@@ -474,6 +489,19 @@ function ModItem({
               />
             </div>
           </div>
+
+          <label className="block text-xs" style={{ color: 'var(--color-text-muted)' }}>
+            {t('mods.inject')}
+            <NativeSelect
+              className="mt-1 w-full"
+              value={inject}
+              onChange={(e) => setInject(normalizeModInject(e.target.value))}
+            >
+              <option value="post_history">{t('mods.injectPostHistory')}</option>
+              <option value="system">{t('mods.injectSystem')}</option>
+            </NativeSelect>
+            <span className="mt-1 block text-[0.68rem] leading-relaxed">{t('mods.injectHint')}</span>
+          </label>
 
           <label className="block text-xs" style={{ color: 'var(--color-text-muted)' }}>
             {t('mods.guidance')}

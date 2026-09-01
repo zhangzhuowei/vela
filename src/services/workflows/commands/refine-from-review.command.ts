@@ -28,6 +28,10 @@ export interface RefineFromReviewParams {
 }
 
 export class RefineFromReviewCommand extends BaseWorkflowCommand<string> {
+  protected attachModGuidance = true
+  protected modScope() {
+    return { chapterNumber: this.params.chapterNumber }
+  }
   /** 最近一次执行生成的修订稿 id（供自动闭环读取以合并版本） */
   lastRevisionId?: number
   /** 最近一次执行生成的清洗后修订正文（供自动闭环读取） */
