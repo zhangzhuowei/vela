@@ -15,6 +15,7 @@ import { ipc } from '../../../services/ipc-client'
 import { Button } from '../../ui/Button'
 import { EmptyState } from '../../ui/EmptyState'
 import { useTranslation } from 'react-i18next'
+import { globalEventBus } from '../../../shared/event-bus'
 
 
 
@@ -79,6 +80,14 @@ export default function ProjectTree() {
     // ✅ 依赖 path 字符串而非 currentProject 对象引用
     //    避免 updateNovelConfig 改变对象引用后触发不必要的 refreshAll
   }, [workflowKey, currentProject?.path, refreshAll]) // eslint-disable-line react-hooks/exhaustive-deps -- currentProject 对象引用变化不触发，仅 path 变化需响应
+
+  useEffect(() => {
+    return globalEventBus.on('REFRESH_RESOURCE', (payload) => {
+      if (payload.resources.includes('all') || payload.resources.includes('blueprints')) {
+        void refreshAll()
+      }
+    })
+  }, [refreshAll])
 
   if (!currentProject) {
     return (

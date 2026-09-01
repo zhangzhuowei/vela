@@ -306,6 +306,7 @@ export interface DatabaseChannels {
   'db:blueprint-get': { args: [chapterNumber: number]; return: BlueprintData | null }
   'db:blueprint-upsert': { args: [data: BlueprintData]; return: { success: boolean; error?: string } }
   'db:blueprint-upsert-many': { args: [items: BlueprintData[]]; return: { success: boolean; error?: string } }
+  'db:blueprint-delete': { args: [chapterNumber: number]; return: { success: boolean; error?: string } }
   'db:blueprint-update-notes': { args: [chapterNumber: number, notes: string]; return: { success: boolean; error?: string } }
 
   // 2b. 对话创作模式：场 / 回合 / 章级进行中状态

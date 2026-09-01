@@ -14,6 +14,8 @@ import {
   loadDirectoryBlueprints,
   saveChapterBlueprint,
   saveAllBlueprints,
+  deleteChapterBlueprint,
+  chapterNumbersMissing,
   createDirectoryWorkflow,
   type ChapterBlueprint,
   type DirectoryWorkflowParams,
@@ -169,7 +171,16 @@ export default function ChapterCardEditor() {
   const handleSaveAll = async () => {
     if (!currentProject) return
     setSaving(true)
+    const existing = await loadDirectoryBlueprints()
+    const removed = chapterNumbersMissing(
+      existing.map((b) => b.chapterNumber),
+      blueprints.map((b) => b.chapterNumber),
+    )
+    for (const n of removed) {
+      await deleteChapterBlueprint(n)
+    }
     await saveAllBlueprints(blueprints)
+    globalEventBus.emit('REFRESH_RESOURCE', { resources: ['blueprints', 'fileTree'] })
     setSaving(false)
     setDirty(false)
     addLog('info', t('chapterCard.allBlueprintsSaved', { count: blueprints.length }))
@@ -204,10 +215,16 @@ export default function ChapterCardEditor() {
       danger: true,
     })
     if (!ok) return
+    const chapterNumber = selected.chapterNumber
+    const res = await deleteChapterBlueprint(chapterNumber)
+    if (!res.success) {
+      addLog('error', res.error || t('chapterCard.deleteFailed'))
+      return
+    }
     const newList = blueprints.filter((_, i) => i !== selectedIdx)
     setBlueprints(newList)
-    setSelectedIdx(Math.max(0, selectedIdx - 1))
-    setDirty(true)
+    setSelectedIdx(Math.max(0, Math.min(selectedIdx, newList.length - 1)))
+    globalEventBus.emit('REFRESH_RESOURCE', { resources: ['blueprints', 'fileTree'] })
   }
 
   /** 触发蓝图批量生成（来自 DirectoryConfigDialog 的确认回调） */

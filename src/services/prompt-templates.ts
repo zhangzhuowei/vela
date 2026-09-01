@@ -727,6 +727,7 @@ Rigorously derive a plot synopsis covering the entire novel. Write "structural t
     {
       "chapterNumber": 1,
       "title": "引人入胜的标题",
+      "role": "建置",
       "purpose": "本章主角最想解决的一件事",
       "characters": ["本章互动的要人A", "要人B"],
       "keyEvents": "主角做了什么，遭遇了什么反转，金手指怎么用的。100字左右具体说明",
@@ -739,6 +740,7 @@ Rigorously derive a plot synopsis covering the entire novel. Write "structural t
 }
 
 要求：
+- 每章必须给出 role，且只能是：建置、铺垫、发展、冲突、高潮、转折、收尾。按本章在全书中的功能选，不要整本都填发展。
 - 每章的 keyEvents 控制在 100-150 字以内，信息密度必须极高。
 - 仅给出最终的 JSON 文本，不要任何客套解释。
 
@@ -768,6 +770,7 @@ Output each chapter strictly and exclusively in the following JSON array format:
     {
       "chapterNumber": 1,
       "title": "An engaging title",
+      "role": "建置",
       "purpose": "The one thing the protagonist most wants to resolve this chapter",
       "characters": ["Key person A interacting this chapter", "Person B"],
       "keyEvents": "What the protagonist did, what reversal they encountered, how the golden finger was used. Explain in about 100 words",
@@ -780,6 +783,7 @@ Output each chapter strictly and exclusively in the following JSON array format:
 }
 
 Requirements:
+- Each chapter must include role, one of: 建置, 铺垫, 发展, 冲突, 高潮, 转折, 收尾. Pick by this chapter's function; do not fill the whole book with 发展.
 - Keep each chapter's keyEvents within 100–150 words with maximum information density.
 - Output only the final JSON text — no pleasantries or explanations.
 
@@ -808,6 +812,7 @@ Requirements:
     {
       "chapterNumber": 1,
       "title": "Интересный заголовок",
+      "role": "建置",
       "purpose": "То, что герой хочет решить больше всего в этой главе",
       "characters": ["Ключевой персонаж A", "Персонаж B"],
       "keyEvents": "Что сделал герой, какой контратаки он столкнулся, как был использован золотой палец. Опишите примерно 100 слов",
@@ -817,6 +822,7 @@ Requirements:
 }
 
 Требования:
+- У каждой главы должно быть поле role, только одно из: 建置, 铺垫, 发展, 冲突, 高潮, 转折, 收尾. Выбирайте по функции главы, не ставьте 发展 на всю книгу.
 - Удерживайте keyEvents каждой главы в пределах 100–150 слов с максимальной плотностью информации.
 - Выводите только финальный JSON — никаких вступлений или объяснений.
 
@@ -872,6 +878,7 @@ Requirements:
     {
       "chapterNumber": n,
       "title": "引人入胜的标题",
+      "role": "发展",
       "purpose": "本章主角最想解决的一件事",
       "characters": ["本章互动的要人A", "要人B"],
       "keyEvents": "具体发生了什么，金手指怎么运作的。100字左右",
@@ -881,6 +888,7 @@ Requirements:
 }
 
 要求：
+- 每章必须给出 role，且只能是：建置、铺垫、发展、冲突、高潮、转折、收尾。按本章功能选，不要连续多章都填同一个。
 - 严格遵循上下文连贯，不要前后矛盾。
 - 仅给出最终的 JSON 文本，不要解释。
 
@@ -915,6 +923,7 @@ Output each chapter strictly and exclusively in the following JSON array format:
     {
       "chapterNumber": n,
       "title": "An engaging title",
+      "role": "发展",
       "purpose": "The one thing the protagonist most wants to resolve this chapter",
       "characters": ["Key person A interacting this chapter", "Person B"],
       "keyEvents": "What specifically happened, how the golden finger operated. About 100 words",
@@ -924,6 +933,7 @@ Output each chapter strictly and exclusively in the following JSON array format:
 }
 
 Requirements:
+- Each chapter must include role, one of: 建置, 铺垫, 发展, 冲突, 高潮, 转折, 收尾. Vary by function; do not repeat the same role for many chapters in a row.
 - Strictly maintain contextual continuity — no contradictions.
 - Output only the final JSON text — no explanations.
 
@@ -957,6 +967,7 @@ Requirements:
     {
       "chapterNumber": n,
       "title": "Интересный заголовок",
+      "role": "发展",
       "purpose": "То, что герой хочет решить больше всего в этой главе",
       "characters": ["Ключевой персонаж A", "Персонаж B"],
       "keyEvents": "Что конкретно произошло, как работал золотой палец. Примерно 100 слов",
@@ -966,6 +977,7 @@ Requirements:
 }
 
 Требования:
+- У каждой главы должно быть поле role, только одно из: 建置, 铺垫, 发展, 冲突, 高潮, 转折, 收尾. Меняйте по функции, не повторяйте одно и то же много глав подряд.
 - Строго соблюдайте контекстуальную непрерывность — никаких противоречий.
 - Выводите только финальный JSON — никаких объяснений.
 

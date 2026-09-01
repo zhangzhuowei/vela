@@ -6,18 +6,18 @@ function clampCount(n: number): number {
   return Math.min(MAX, Math.max(MIN, Math.round(n)))
 }
 
-/** 对话选项个数：书级默认 × 当场覆盖 → 实际注入提示词的条数 */
+/** 对话选项个数：书级总开关优先，开启后再套当场覆盖 */
 export function resolveOptionCount(params: {
   bookEnabled?: boolean
   bookCount?: number
-  /** null = 跟随书；0 = 当场关掉；3/4/5 = 当场覆盖 */
+  /** null = 跟随书；0 = 当场关掉；3/4/5 = 当场覆盖。书级关闭时忽略 */
   localOverride?: number | null
 }): number {
+  if (!params.bookEnabled) return 0
   if (params.localOverride != null) {
     if (params.localOverride <= 0) return 0
     return clampCount(params.localOverride)
   }
-  if (!params.bookEnabled) return 0
   return clampCount(params.bookCount ?? MIN)
 }
 

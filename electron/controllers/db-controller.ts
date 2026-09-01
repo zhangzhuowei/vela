@@ -87,6 +87,15 @@ export function registerDatabaseController() {
     }
   })
 
+  ipcMain.handle('db:blueprint-delete', async (_event, chapterNumber: number) => {
+    try {
+      BlueprintRepository.delete(chapterNumber)
+      return { success: true }
+    } catch (err) {
+      return { success: false, error: String(err) }
+    }
+  })
+
   ipcMain.handle('db:blueprint-update-notes', async (_event, chapterNumber: number, notes: string) => {
     try {
       BlueprintRepository.updateNotes(chapterNumber, notes)

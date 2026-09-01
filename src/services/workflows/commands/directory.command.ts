@@ -2,7 +2,7 @@ import { BaseWorkflowCommand, CommandExecuteParams } from './base-command'
 import { useProjectStore } from '../../../stores/project-store'
 import { getPromptTemplate } from '../../prompt-templates'
 import { DirectoryPromptBuilder } from '../../prompts/prompt-builder'
-import { DirectoryWorkflowParams, ChapterBlueprint, parseTextBlueprints, saveAllBlueprints } from '../directory-workflow'
+import { DirectoryWorkflowParams, ChapterBlueprint, parseTextBlueprints, planDirectoryPrompt, saveAllBlueprints } from '../directory-workflow'
 import i18n from '../../../i18n'
 
 export class GenerateDirectoryCommand extends BaseWorkflowCommand<ChapterBlueprint[]> {
@@ -53,30 +53,35 @@ export class GenerateDirectoryCommand extends BaseWorkflowCommand<ChapterBluepri
       const batchEnd = Math.min(cursor + batchSize - 1, endChapter)
       callbacks.log(`  ${i18n.t('directory.generatingBatch', { ns: 'commands', from: cursor, to: batchEnd })}`)
 
+      const plan = planDirectoryPrompt({
+        mode: this.params.mode,
+        cursor,
+        batchEnd,
+        endChapter,
+        totalChapters,
+      })
+      const template = getPromptTemplate(plan.templateKey)
+      if (!template) throw new Error(i18n.t('common.templateMissing', { ns: 'commands' }))
+
       let prompt: string
-      if (cursor === 1 && this.params.mode === 'full') {
-        const template = getPromptTemplate('chapter_blueprint')
-        if (!template) throw new Error(i18n.t('common.templateMissing', { ns: 'commands' }))
+      if (plan.templateKey === 'chapter_blueprint') {
         prompt = new DirectoryPromptBuilder(template)
           .withNovelArchitecture(architecture)
-          .withNumberOfChapters(endChapter)
+          .withNumberOfChapters(plan.numberOfChapters)
           .withGlobalGuidance(globalGuidance)
           .withGenre(genre)
           .withPacingGuidance((context.data.pacingGuidance as string) || '')
           .build()
       } else {
-        const template = getPromptTemplate('chapter_blueprint_chunk')
-        if (!template) throw new Error(i18n.t('common.templateMissing', { ns: 'commands' }))
-
         const prevAll = [...existingBlueprints, ...newBlueprints]
         const chapterList = prevAll.slice(-100).map(c => `${i18n.t('generateDraft.chapterNumberTitle', { ns: 'commands', chapter: c.chapterNumber, title: c.title })}：${c.keyEvents}`).join('\n')
 
         prompt = new DirectoryPromptBuilder(template)
           .withNovelArchitecture(architecture)
           .withChapterList(chapterList || i18n.t('directory.firstBatchPlaceholder', { ns: 'commands' }))
-          .withNumberOfChapters(totalChapters)
-          .withN(cursor)
-          .withM(batchEnd)
+          .withNumberOfChapters(plan.numberOfChapters)
+          .withN(plan.from)
+          .withM(plan.to)
           .withGlobalGuidance(globalGuidance)
           .withGenre(genre)
           .withPacingGuidance((context.data.pacingGuidance as string) || '')
