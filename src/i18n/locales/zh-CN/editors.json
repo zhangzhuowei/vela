@@ -88,7 +88,16 @@
     "assembleConfirm": "确认汇入草稿箱",
     "undoTurn": "撤回上一轮",
     "undoTurnTooltip": "删除本场最后一条记录（角色状态不回滚，可在右侧手动修正）",
-    "stateEditHint": "可直接修改，失焦自动保存"
+    "stateEditHint": "可直接修改，失焦自动保存",
+    "requestMonitor": "请求",
+    "requestMonitorTitle": "发给模型的 messages",
+    "requestMonitorEmpty": "还没有请求。点「生成」或「收场蒸馏」后，这里会列出完整消息。",
+    "requestSlotSystem": "顶部 system",
+    "requestSlotHistory": "对话",
+    "requestSlotPostHistory": "贴底 / Mod",
+    "requestPinned": "最后一条已钉上启用 Mod",
+    "requestNotPinned": "未钉 Mod（没有启用行文指导，或内容未匹配）",
+    "requestMsgCount": "{{n}} 条"
   },
   "chapterCard": {
     "loadingBlueprints": "加载章节蓝图...",
@@ -146,6 +155,7 @@
     "deleteConfirmTitle": "删除章节蓝图",
     "deleteConfirmText": "确认删除第 {{chapter}} 章蓝图？\n此操作不可撤销。",
     "deleteConfirm": "删除",
+    "deleteFailed": "删除蓝图失败",
     "guardFailed": "⚠️ 前置条件未满足：{{message}}",
     "cannotStart": "无法出发\n\n{{message}}",
     "guardWarning": "{{message}}\n\n是否仍要继续生成？",

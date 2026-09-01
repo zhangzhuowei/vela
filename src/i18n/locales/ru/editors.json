@@ -88,7 +88,16 @@
     "assembleConfirm": "Подтвердить в черновики",
     "undoTurn": "Отменить последний ход",
     "undoTurnTooltip": "Удалить последнюю запись сцены (состояния не откатываются; правьте их справа)",
-    "stateEditHint": "Можно править — сохраняется при потере фокуса"
+    "stateEditHint": "Можно править — сохраняется при потере фокуса",
+    "requestMonitor": "Запрос",
+    "requestMonitorTitle": "Сообщения, ушедшие в модель",
+    "requestMonitorEmpty": "Запросов ещё нет. Сгенерируйте или дистиллируйте сцену, чтобы увидеть полный список.",
+    "requestSlotSystem": "верхний system",
+    "requestSlotHistory": "история",
+    "requestSlotPostHistory": "post_history / Mod",
+    "requestPinned": "Последнее сообщение — активный Mod",
+    "requestNotPinned": "Mod не прижат (нет guidance или текст не совпал)",
+    "requestMsgCount": "{{n}} сообщ."
   },
   "chapterCard": {
     "loadingBlueprints": "Загрузка черновиков глав...",
@@ -146,6 +155,7 @@
     "deleteConfirmTitle": "Удалить черновик главы",
     "deleteConfirmText": "Удалить черновик главы {{chapter}}?\nЭто действие нельзя отменить.",
     "deleteConfirm": "Удалить",
+    "deleteFailed": "Не удалось удалить план главы",
     "guardFailed": "⚠️ Предварительные условия не выполнены: {{message}}",
     "cannotStart": "Невозможно начать\n\n{{message}}",
     "guardWarning": "{{message}}\n\nПродолжить генерацию?",

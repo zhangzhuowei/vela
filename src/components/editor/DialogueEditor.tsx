@@ -6,7 +6,7 @@
  */
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
-import { PanelRightClose, PanelRightOpen, Plus, RefreshCw, Send, Square, Trash2, Undo2 } from 'lucide-react'
+import { Eye, PanelRightClose, PanelRightOpen, Plus, RefreshCw, Send, Square, Trash2, Undo2 } from 'lucide-react'
 import { ipc } from '../../services/ipc-client'
 import { getModelSpeeds } from '../../services/stats-service'
 import { useDialogueStream } from '../../stores/dialogue-stream-store'
@@ -22,6 +22,7 @@ import {
 } from '../../services/dialogue/dialogue-service'
 import { resolveOptionCount, resolveOptionMaxChars } from '../../services/dialogue/option-hints'
 import { parseOptionHints, splitProseAndState } from '../../services/dialogue/state-protocol'
+import RequestMonitor from './RequestMonitor'
 import { NativeSelect } from '../ui/NativeSelect'
 import { Button } from '../ui/Button'
 import { Input } from '../ui/Input'
@@ -110,6 +111,15 @@ export default function DialogueEditor({ chapterNumber }: { chapterNumber: numbe
   const toggleStatePanel = () => {
     setStatePanelOpen((prev) => {
       localStorage.setItem('vela-dialogue-state-panel', prev ? 'closed' : 'open')
+      return !prev
+    })
+  }
+  const [requestOpen, setRequestOpen] = useState(
+    () => localStorage.getItem('vela-dialogue-request-monitor') === 'open'
+  )
+  const toggleRequestMonitor = () => {
+    setRequestOpen((prev) => {
+      localStorage.setItem('vela-dialogue-request-monitor', prev ? 'closed' : 'open')
       return !prev
     })
   }
@@ -541,6 +551,11 @@ export default function DialogueEditor({ chapterNumber }: { chapterNumber: numbe
                 </div>
               )}
             </div>
+            {requestOpen && (
+              <div style={{ borderTop: '1px solid var(--color-border)' }}>
+                <RequestMonitor />
+              </div>
+            )}
             <div className="space-y-2 p-3" style={{ borderTop: '1px solid var(--color-border)' }}>
               {/* 控场快捷板：点击填入输入框，可继续编辑 */}
               {scene.status === 'open' && (
@@ -597,30 +612,32 @@ export default function DialogueEditor({ chapterNumber }: { chapterNumber: numbe
                     </option>
                   ))}
                 </NativeSelect>
-                <NativeSelect
-                  className="w-36"
-                  title={t('dialogue.optionHintsTooltip')}
-                  value={optionOverride == null ? '' : String(optionOverride)}
-                  onChange={(e) => {
-                    const raw = e.target.value
-                    if (raw === '') {
-                      setOptionOverride(null)
-                      localStorage.setItem('vela-dialogue-option-count', '')
-                      return
-                    }
-                    const v = Number(raw)
-                    setOptionOverride(v)
-                    localStorage.setItem('vela-dialogue-option-count', String(v))
-                  }}
-                >
-                  <option value="">{t('dialogue.optionHintsInherit')}</option>
-                  <option value="0">{t('dialogue.optionHintsOff')}</option>
-                  {[3, 4, 5].map((n) => (
-                    <option key={n} value={n}>
-                      {t('dialogue.optionHintsCountLive', { n })}
-                    </option>
-                  ))}
-                </NativeSelect>
+                {bookOptionEnabled && (
+                  <NativeSelect
+                    className="w-36"
+                    title={t('dialogue.optionHintsTooltip')}
+                    value={optionOverride == null ? '' : String(optionOverride)}
+                    onChange={(e) => {
+                      const raw = e.target.value
+                      if (raw === '') {
+                        setOptionOverride(null)
+                        localStorage.setItem('vela-dialogue-option-count', '')
+                        return
+                      }
+                      const v = Number(raw)
+                      setOptionOverride(v)
+                      localStorage.setItem('vela-dialogue-option-count', String(v))
+                    }}
+                  >
+                    <option value="">{t('dialogue.optionHintsInherit')}</option>
+                    <option value="0">{t('dialogue.optionHintsOff')}</option>
+                    {[3, 4, 5].map((n) => (
+                      <option key={n} value={n}>
+                        {t('dialogue.optionHintsCountLive', { n })}
+                      </option>
+                    ))}
+                  </NativeSelect>
+                )}
                 {optionCount > 0 && (
                   <NativeSelect
                     className="w-36"
@@ -670,6 +687,14 @@ export default function DialogueEditor({ chapterNumber }: { chapterNumber: numbe
                   onClick={handleUndoTurn}
                 >
                   <Undo2 size={12} /> {t('dialogue.undoTurn')}
+                </Button>
+                <Button
+                  variant={requestOpen ? 'outline' : 'ghost'}
+                  size="sm"
+                  title={t('dialogue.requestMonitorTitle')}
+                  onClick={toggleRequestMonitor}
+                >
+                  <Eye size={12} /> {t('dialogue.requestMonitor')}
                 </Button>
                 {scene.status === 'open' && distillDraft === null && (
                   <>

@@ -88,7 +88,16 @@
     "assembleConfirm": "Confirm to draft box",
     "undoTurn": "Undo last turn",
     "undoTurnTooltip": "Delete the last record of this scene (states are not rolled back; edit them on the right)",
-    "stateEditHint": "Editable — saves on blur"
+    "stateEditHint": "Editable — saves on blur",
+    "requestMonitor": "Request",
+    "requestMonitorTitle": "Messages sent to the model",
+    "requestMonitorEmpty": "No request yet. Generate or distill a scene to see the full message list.",
+    "requestSlotSystem": "top system",
+    "requestSlotHistory": "history",
+    "requestSlotPostHistory": "post_history / Mod",
+    "requestPinned": "Last message is the enabled Mod",
+    "requestNotPinned": "No Mod pinned (no guidance, or it did not match)",
+    "requestMsgCount": "{{n}} messages"
   },
   "chapterCard": {
     "loadingBlueprints": "Loading chapter blueprints...",
@@ -146,6 +155,7 @@
     "deleteConfirmTitle": "Delete Chapter Blueprint",
     "deleteConfirmText": "Delete the blueprint for Chapter {{chapter}}?\nThis action cannot be undone.",
     "deleteConfirm": "Delete",
+    "deleteFailed": "Failed to delete blueprint",
     "guardFailed": "⚠️ Prerequisites not met: {{message}}",
     "cannotStart": "Cannot start\n\n{{message}}",
     "guardWarning": "{{message}}\n\nContinue generation anyway?",

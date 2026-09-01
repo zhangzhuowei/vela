@@ -13,6 +13,7 @@ import type { SceneData, SceneTurnData } from '../../../electron/repositories/sc
 import {
   buildDistillMessages,
   buildSceneMessages,
+  pinPostHistory,
   type ChatMessage,
   type DialogueCharacter,
   type DialogueConfig,
@@ -78,15 +79,18 @@ async function fetchConfig(): Promise<DialogueConfig> {
       }
     }
   }
-  // 启用的 Mod 行文指导追加段（按书叠加）
-  const { getActiveModGuidance } = await import('../mods')
-  const modGuidance = getActiveModGuidance()
   return {
     worldSetting,
     protagonistProfile,
-    globalGuidance: [cfg?.globalGuidance, modGuidance].filter(Boolean).join('\n\n'),
+    globalGuidance: cfg?.globalGuidance,
     writingStyle: cfg?.writingStyle,
   }
+}
+
+/** 当前工程启用 Mod 的贴底段；空串表示不钉 */
+async function fetchModPostHistory(): Promise<string> {
+  const { getActiveModGuidance } = await import('../mods')
+  return getActiveModGuidance()
 }
 
 /** 本场出场角色（主角 + 蓝图出场表 + 有进行中状态者，截断防爆上下文） */
@@ -244,7 +248,8 @@ export async function generateTurn(params: {
       ? `${params.userInput.trim()}\n（本轮篇幅目标约 ${target} 字，硬性下限 ${Math.round(target * 0.8)} 字，写满为止）`
       : params.userInput
 
-  const messages = buildSceneMessages({
+  const postHistory = await fetchModPostHistory()
+  const coreMessages = buildSceneMessages({
     config: await fetchConfig(),
     characters,
     workingState,
@@ -298,9 +303,9 @@ export async function generateTurn(params: {
     }
   }
 
-  const runRound = (msgs: ChatMessage[]): Promise<string> => {
+  const runRound = (coreMsgs: ChatMessage[]): Promise<string> => {
     const t0 = Date.now()
-    return useLLMStore.getState().generateStream(msgs, {
+    return useLLMStore.getState().generateStream(pinPostHistory(coreMsgs, postHistory), {
       onChunk: callbacks.onChunk,
       onDone: (fullText, usage) => {
         logDialogueCall('DialogueTurn', undefined, t0, usage)
@@ -314,7 +319,7 @@ export async function generateTurn(params: {
             // UI 重置流式区为已清洗正文，续写无缝接着长
             callbacks.onRoundEnd?.(totalProse())
             const contMsgs = [
-              ...msgs,
+              ...coreMsgs,
               { role: 'assistant' as const, content: fullText },
               {
                 role: 'user' as const,
@@ -337,7 +342,7 @@ export async function generateTurn(params: {
     })
   }
 
-  const requestId = await runRound(messages)
+  const requestId = await runRound(coreMessages)
   callbacks.onRequest?.(requestId)
   return requestId
 }
@@ -379,6 +384,7 @@ export async function distillScene(params: {
     turns: turns.map((t) => ({ role: t.role, content: t.content })),
     references,
     targetLength: params.targetLength,
+    postHistory: await fetchModPostHistory(),
   })
   const t0 = Date.now()
   return useLLMStore.getState().generateStream(

@@ -1,7 +1,16 @@
 import { create } from 'zustand'
 import { ipc } from '../services/ipc-client'
+import { prependRequestTrace, type LlmChatMessage } from '../services/llm-request-inspect'
 import type { ModelProfile, LLMResponse, TokenUsage } from '../shared/ipc-channels'
 import i18n from '../i18n'
+
+export type LlmRequestTrace = {
+  id: string
+  at: number
+  modelId: string
+  stream: boolean
+  messages: LlmChatMessage[]
+}
 
 /** 流式生成的回调 */
 interface StreamCallbacks {
@@ -21,6 +30,8 @@ interface LLMState {
   defaultImageModelId: string | null
   /** 正在进行的活跃请求 */
   activeRequests: Map<string, { status: 'running' | 'done' | 'error'; text: string }>
+  /** 最近发出的请求正文（仅内存，用于请求监控） */
+  lastTraces: LlmRequestTrace[]
   /** 是否已加载模型配置 */
   loaded: boolean
 
@@ -64,6 +75,7 @@ export const useLLMStore = create<LLMState>()((set, get) => ({
   defaultEmbeddingModelId: null,
   defaultImageModelId: null,
   activeRequests: new Map(),
+  lastTraces: [],
   loaded: false,
 
   init: async () => {
@@ -137,6 +149,15 @@ export const useLLMStore = create<LLMState>()((set, get) => ({
   generate: async (messages, modelId, options) => {
     const mid = modelId ?? get().defaultModelId
     if (!mid) return { success: false, content: '', error: i18n.t('llm.noDefaultModel', { ns: 'stores' }) }
+    set({
+      lastTraces: prependRequestTrace(get().lastTraces, {
+        id: crypto.randomUUID(),
+        at: Date.now(),
+        modelId: mid,
+        stream: false,
+        messages,
+      }),
+    })
     return ipc.invoke('llm:generate', {
       modelId: mid,
       messages,
@@ -153,6 +174,15 @@ export const useLLMStore = create<LLMState>()((set, get) => ({
     }
 
     const requestId = crypto.randomUUID()
+    set({
+      lastTraces: prependRequestTrace(get().lastTraces, {
+        id: requestId,
+        at: Date.now(),
+        modelId: mid,
+        stream: true,
+        messages,
+      }),
+    })
 
     // 注册流式事件监听
     const unsubChunk = ipc.on('llm:stream-chunk', (data) => {

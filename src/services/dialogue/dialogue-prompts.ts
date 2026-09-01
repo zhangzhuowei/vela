@@ -60,6 +60,13 @@ function sceneLine(title: string, goal: string): string {
   return title + (goal ? ` — ${goal}` : '')
 }
 
+/** 把 Mod 行文指导钉在整段对话之后（尾部 user，避免 Gemini 把尾部 system 提顶）。 */
+export function pinPostHistory(messages: ChatMessage[], postHistory?: string): ChatMessage[] {
+  const text = postHistory?.trim()
+  if (!text) return messages
+  return [...messages, { role: 'user', content: text }]
+}
+
 export function buildSceneMessages(params: {
   config: DialogueConfig
   characters: DialogueCharacter[]
@@ -79,6 +86,8 @@ export function buildSceneMessages(params: {
   optionCount?: number
   /** 每条选项的字数上限；0 = 不限；未传则默认 24 */
   optionMaxChars?: number
+  /** 启用 Mod 的行文指导，贴在整段对话之后 */
+  postHistory?: string
 }): ChatMessage[] {
   const { config, characters, workingState } = params
   const template = getPromptTemplate('dialogue_scene')
@@ -112,7 +121,7 @@ export function buildSceneMessages(params: {
   if (params.userInput?.trim()) {
     messages.push({ role: 'user', content: params.userInput.trim() })
   }
-  return messages
+  return pinPostHistory(messages, params.postHistory)
 }
 
 export function buildDistillMessages(params: {
@@ -126,6 +135,8 @@ export function buildDistillMessages(params: {
   references?: KnowledgeRef[]
   /** 蒸馏目标字数（未设置则忠实草稿体量） */
   targetLength?: number
+  /** 启用 Mod 的行文指导，贴在逐字稿之后 */
+  postHistory?: string
 }): ChatMessage[] {
   const { config } = params
   const template = getPromptTemplate('dialogue_distill')
@@ -149,8 +160,11 @@ export function buildDistillMessages(params: {
     .map((t) => `${t.role === 'user' ? '控场' : '草稿'}：${splitProseAndState(t.content).prose}`)
     .join('\n\n')
 
-  return [
-    { role: 'system', content: system },
-    { role: 'user', content: transcript },
-  ]
+  return pinPostHistory(
+    [
+      { role: 'system', content: system },
+      { role: 'user', content: transcript },
+    ],
+    params.postHistory
+  )
 }
