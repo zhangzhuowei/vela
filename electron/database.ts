@@ -163,6 +163,7 @@ function migrateSchema(db: BetterSqlite3.Database) {
   addColumnIfMissing('scenes', 'summary', `summary TEXT DEFAULT ''`)
   addColumnIfMissing('project_core', 'option_hints_enabled', `option_hints_enabled INTEGER DEFAULT 0`)
   addColumnIfMissing('project_core', 'option_hints_count', `option_hints_count INTEGER DEFAULT 3`)
+  addColumnIfMissing('project_core', 'option_hints_max_chars', `option_hints_max_chars INTEGER DEFAULT 24`)
 }
 
 /** 创建完整表结构（9 张核心表 + 2 张沿用表） */

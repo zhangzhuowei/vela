@@ -312,6 +312,19 @@ export default function NovelConfigEditor() {
                   </NativeSelect>
                 </Field>
               )}
+              {(config.creationMode || 'pipeline') === 'dialogue' && config.optionHintsEnabled && (
+                <Field label={t('novelConfig.optionHintsMaxChars')} tipItems={[t('novelConfig.optionHintsMaxCharsTip')]}>
+                  <NativeSelect
+                    value={String(config.optionHintsMaxChars ?? 24)}
+                    onChange={(e) => update('optionHintsMaxChars', Number(e.target.value))}
+                  >
+                    <option value="0">{t('novelConfig.optionHintsMaxCharsFree')}</option>
+                    {[12, 16, 24, 32, 40, 50].map((n) => (
+                      <option key={n} value={n}>{t('novelConfig.optionHintsMaxCharsOption', { n })}</option>
+                    ))}
+                  </NativeSelect>
+                </Field>
+              )}
             </div>
           </Section>
 

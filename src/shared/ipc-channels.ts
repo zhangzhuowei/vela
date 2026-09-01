@@ -231,6 +231,8 @@ export interface NovelConfig {
   optionHintsEnabled?: boolean
   /** 书级默认选项条数（3–5，默认 3） */
   optionHintsCount?: number
+  /** 书级默认每条选项字数上限（0 = 不限，默认 24） */
+  optionHintsMaxChars?: number
 }
 
 export interface FileNode {

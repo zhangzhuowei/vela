@@ -221,6 +221,8 @@ export async function generateTurn(params: {
   targetLength?: number
   /** 本轮结束后给出的控场选项条数（不传则不要求） */
   optionCount?: number
+  /** 每条选项字数上限（0 = 不限） */
+  optionMaxChars?: number
   callbacks: GenerateTurnCallbacks
 }): Promise<string> {
   const { scene, callbacks } = params
@@ -256,6 +258,7 @@ export async function generateTurn(params: {
     references,
     targetLength: target,
     optionCount: params.optionCount,
+    optionMaxChars: params.optionMaxChars,
   })
 
   // 篇幅闸门：正文不足目标八成时自动续写（最多 2 轮），与写稿链路同款策略

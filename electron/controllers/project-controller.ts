@@ -129,6 +129,7 @@ export function registerProjectController() {
           multilineMode: (updatedCoreData.multilineMode as 'off' | 'summary') || 'off',
           optionHintsEnabled: updatedCoreData.optionHintsEnabled ?? false,
           optionHintsCount: updatedCoreData.optionHintsCount ?? 3,
+          optionHintsMaxChars: updatedCoreData.optionHintsMaxChars ?? 24,
         },
         characterStates: updatedCoreData.characterStates,
         createdAt: new Date().toISOString(), // db 中实际上有，但这里先 mock 一下时间避免前端报错
@@ -172,6 +173,7 @@ export function registerProjectController() {
           multilineMode: data.novelConfig.multilineMode ?? 'off',
           optionHintsEnabled: data.novelConfig.optionHintsEnabled ?? false,
           optionHintsCount: data.novelConfig.optionHintsCount ?? 3,
+          optionHintsMaxChars: data.novelConfig.optionHintsMaxChars ?? 24,
         })
       }
 
@@ -221,6 +223,7 @@ export function registerProjectController() {
           multilineMode: data.novelConfig.multilineMode ?? 'off',
           optionHintsEnabled: data.novelConfig.optionHintsEnabled ?? false,
           optionHintsCount: data.novelConfig.optionHintsCount ?? 3,
+          optionHintsMaxChars: data.novelConfig.optionHintsMaxChars ?? 24,
         })
       }
       return { success: true }

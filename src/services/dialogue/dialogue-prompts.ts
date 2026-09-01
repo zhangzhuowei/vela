@@ -77,6 +77,8 @@ export function buildSceneMessages(params: {
   lineContext?: string
   /** 本轮结束后给出的控场选项条数（未设置则不要求输出选项） */
   optionCount?: number
+  /** 每条选项的字数上限；0 = 不限；未传则默认 24 */
+  optionMaxChars?: number
 }): ChatMessage[] {
   const { config, characters, workingState } = params
   const template = getPromptTemplate('dialogue_scene')
@@ -94,7 +96,9 @@ export function buildSceneMessages(params: {
       ? `本轮篇幅：目标约 ${params.targetLength} 字，硬性下限 ${Math.round(params.targetLength * 0.8)} 字，这是必须满足的要求。用足场景推进、动作细节与对白把篇幅写满，不要注水，也绝不允许提前收束。`
       : '',
     option_note: params.optionCount
-      ? `正文与状态块写完后，再输出恰好 ${params.optionCount} 条下一轮控场方向，每条不超过 24 字，互不重复，覆盖不同走向。只写方向，不要解释。格式：\n<options>\n${Array.from({ length: params.optionCount }, (_, i) => `${i + 1}. …`).join('\n')}\n</options>`
+      ? `正文与状态块写完后，再输出恰好 ${params.optionCount} 条下一轮控场方向${
+          params.optionMaxChars === 0 ? '' : `，每条不超过 ${params.optionMaxChars ?? 24} 字`
+        }，互不重复，覆盖不同走向。只写方向，不要解释。格式：\n<options>\n${Array.from({ length: params.optionCount }, (_, i) => `${i + 1}. …`).join('\n')}\n</options>`
       : '',
     characters_block:
       characters.map((c) => characterBlock(c, workingState[c.name])).join('\n') || '（暂无角色卡）',

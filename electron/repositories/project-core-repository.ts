@@ -36,6 +36,7 @@ export interface ProjectCoreRow {
     multiline_mode: string
     option_hints_enabled: number
     option_hints_count: number
+    option_hints_max_chars: number
     created_at: string
     updated_at: string
 }
@@ -69,6 +70,7 @@ export interface ProjectCoreData {
     multilineMode: string
     optionHintsEnabled: boolean
     optionHintsCount: number
+    optionHintsMaxChars: number
 }
 
 /** 数据库行 → 前端数据 */
@@ -101,6 +103,7 @@ function rowToData(row: ProjectCoreRow): ProjectCoreData {
         multilineMode: row.multiline_mode ?? 'off',
         optionHintsEnabled: Number(row.option_hints_enabled) === 1,
         optionHintsCount: row.option_hints_count ?? 3,
+        optionHintsMaxChars: row.option_hints_max_chars ?? 24,
     }
 }
 
@@ -162,6 +165,7 @@ export class ProjectCoreRepository {
             multilineMode: 'multiline_mode',
             optionHintsEnabled: 'option_hints_enabled',
             optionHintsCount: 'option_hints_count',
+            optionHintsMaxChars: 'option_hints_max_chars',
         }
 
         const setClauses: string[] = []

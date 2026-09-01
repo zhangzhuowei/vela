@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { mergeWorkingState, parseOptionHints, splitProseAndState } from '../state-protocol'
-import { resolveOptionCount } from '../option-hints'
+import { resolveOptionCount, resolveOptionMaxChars } from '../option-hints'
 import { buildDistillMessages, buildSceneMessages } from '../dialogue-prompts'
 import { assembleChapterBody } from '../assemble'
 import { selectSceneCharacters } from '../select-characters'
@@ -93,6 +93,23 @@ describe('resolveOptionCount', () => {
   it('clamps book count to 3–5', () => {
     expect(resolveOptionCount({ bookEnabled: true, bookCount: 9, localOverride: null })).toBe(5)
     expect(resolveOptionCount({ bookEnabled: true, bookCount: 1, localOverride: null })).toBe(3)
+  })
+})
+
+describe('resolveOptionMaxChars', () => {
+  it('uses the local override when set, including unlimited', () => {
+    expect(resolveOptionMaxChars({ bookMaxChars: 24, localOverride: 12 })).toBe(12)
+    expect(resolveOptionMaxChars({ bookMaxChars: 24, localOverride: 0 })).toBe(0)
+  })
+
+  it('follows the book default when local override inherits', () => {
+    expect(resolveOptionMaxChars({ bookMaxChars: 16, localOverride: null })).toBe(16)
+    expect(resolveOptionMaxChars({ bookMaxChars: undefined, localOverride: null })).toBe(24)
+  })
+
+  it('clamps oversized book values and treats non-positive as unlimited', () => {
+    expect(resolveOptionMaxChars({ bookMaxChars: 200, localOverride: null })).toBe(64)
+    expect(resolveOptionMaxChars({ bookMaxChars: 0, localOverride: null })).toBe(0)
   })
 })
 
@@ -213,6 +230,41 @@ describe('dialogue-prompts', () => {
     })
     expect(messages[0].content).toContain('<options>')
     expect(messages[0].content).toContain('3')
+    expect(messages[0].content).toContain('24 字')
+  })
+
+  it('injects a custom option max-char note', () => {
+    const messages = buildSceneMessages({
+      config,
+      characters: [],
+      workingState: {},
+      chapterTitle: '第1章',
+      chapterGoal: '',
+      sceneTitle: '夜谈',
+      sceneGoal: '',
+      turns: [],
+      optionCount: 3,
+      optionMaxChars: 12,
+    })
+    expect(messages[0].content).toContain('12 字')
+    expect(messages[0].content).not.toContain('24 字')
+  })
+
+  it('omits the option char cap when optionMaxChars is 0', () => {
+    const messages = buildSceneMessages({
+      config,
+      characters: [],
+      workingState: {},
+      chapterTitle: '第1章',
+      chapterGoal: '',
+      sceneTitle: '夜谈',
+      sceneGoal: '',
+      turns: [],
+      optionCount: 3,
+      optionMaxChars: 0,
+    })
+    expect(messages[0].content).toContain('<options>')
+    expect(messages[0].content).not.toContain('不超过')
   })
 
   it('omits the option-hint note when optionCount is not set', () => {

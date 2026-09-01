@@ -20,3 +20,27 @@ export function resolveOptionCount(params: {
   if (!params.bookEnabled) return 0
   return clampCount(params.bookCount ?? MIN)
 }
+
+const DEFAULT_CHARS = 24
+const MIN_CHARS = 8
+const MAX_CHARS = 64
+
+function clampChars(n: number): number {
+  if (!Number.isFinite(n) || n <= 0) return 0
+  return Math.min(MAX_CHARS, Math.max(MIN_CHARS, Math.round(n)))
+}
+
+/** 选项单条字数上限：0 = 不限；书级默认 × 当场覆盖 */
+export function resolveOptionMaxChars(params: {
+  bookMaxChars?: number
+  /** null = 跟随书；0 = 当场不限；正数 = 当场覆盖 */
+  localOverride?: number | null
+}): number {
+  if (params.localOverride != null) {
+    if (params.localOverride <= 0) return 0
+    return clampChars(params.localOverride)
+  }
+  if (params.bookMaxChars == null) return DEFAULT_CHARS
+  if (params.bookMaxChars <= 0) return 0
+  return clampChars(params.bookMaxChars)
+}

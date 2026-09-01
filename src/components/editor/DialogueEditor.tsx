@@ -20,7 +20,7 @@ import {
   generateTurn,
   previewChapterBody,
 } from '../../services/dialogue/dialogue-service'
-import { resolveOptionCount } from '../../services/dialogue/option-hints'
+import { resolveOptionCount, resolveOptionMaxChars } from '../../services/dialogue/option-hints'
 import { parseOptionHints, splitProseAndState } from '../../services/dialogue/state-protocol'
 import { NativeSelect } from '../ui/NativeSelect'
 import { Button } from '../ui/Button'
@@ -47,8 +47,15 @@ export default function DialogueEditor({ chapterNumber }: { chapterNumber: numbe
   const multilineOn = useProjectStore((s) => s.currentProject?.novelConfig?.multilineMode) === 'summary'
   const bookOptionEnabled = useProjectStore((s) => s.currentProject?.novelConfig?.optionHintsEnabled) ?? false
   const bookOptionCount = useProjectStore((s) => s.currentProject?.novelConfig?.optionHintsCount) ?? 3
+  const bookOptionMaxChars = useProjectStore((s) => s.currentProject?.novelConfig?.optionHintsMaxChars) ?? 24
   const [optionOverride, setOptionOverride] = useState<number | null>(() => {
     const raw = localStorage.getItem('vela-dialogue-option-count')
+    if (raw == null || raw === '') return null
+    const n = Number(raw)
+    return Number.isFinite(n) ? n : null
+  })
+  const [optionCharsOverride, setOptionCharsOverride] = useState<number | null>(() => {
+    const raw = localStorage.getItem('vela-dialogue-option-max-chars')
     if (raw == null || raw === '') return null
     const n = Number(raw)
     return Number.isFinite(n) ? n : null
@@ -57,6 +64,10 @@ export default function DialogueEditor({ chapterNumber }: { chapterNumber: numbe
     bookEnabled: bookOptionEnabled,
     bookCount: bookOptionCount,
     localOverride: optionOverride,
+  })
+  const optionMaxChars = resolveOptionMaxChars({
+    bookMaxChars: bookOptionMaxChars,
+    localOverride: optionCharsOverride,
   })
   // 流式态提到 store（按场 id），切页签卸载重挂后能接着显示
   const stream = useDialogueStream()
@@ -201,6 +212,7 @@ export default function DialogueEditor({ chapterNumber }: { chapterNumber: numbe
       retry,
       targetLength: turnLength || undefined,
       optionCount: optionCount || undefined,
+      optionMaxChars: optionCount ? optionMaxChars : undefined,
       callbacks: {
         onChunk: (chunk) => stream.appendStreaming(sid, chunk),
         onRequest: (requestId) => stream.setRequest(sid, requestId || null),
@@ -609,6 +621,32 @@ export default function DialogueEditor({ chapterNumber }: { chapterNumber: numbe
                     </option>
                   ))}
                 </NativeSelect>
+                {optionCount > 0 && (
+                  <NativeSelect
+                    className="w-36"
+                    title={t('dialogue.optionHintsCharsTooltip')}
+                    value={optionCharsOverride == null ? '' : String(optionCharsOverride)}
+                    onChange={(e) => {
+                      const raw = e.target.value
+                      if (raw === '') {
+                        setOptionCharsOverride(null)
+                        localStorage.setItem('vela-dialogue-option-max-chars', '')
+                        return
+                      }
+                      const v = Number(raw)
+                      setOptionCharsOverride(v)
+                      localStorage.setItem('vela-dialogue-option-max-chars', String(v))
+                    }}
+                  >
+                    <option value="">{t('dialogue.optionHintsCharsInherit')}</option>
+                    <option value="0">{t('dialogue.optionHintsCharsFree')}</option>
+                    {[12, 16, 24, 32, 40, 50].map((n) => (
+                      <option key={n} value={n}>
+                        {t('dialogue.optionHintsCharsLive', { n })}
+                      </option>
+                    ))}
+                  </NativeSelect>
+                )}
                 {streamBusy && activeRequestId && (
                   <Button variant="destructive" size="sm" onClick={handleStop}>
                     <Square size={12} /> {t('dialogue.stop')}
