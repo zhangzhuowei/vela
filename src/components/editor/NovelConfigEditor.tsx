@@ -287,6 +287,22 @@ export default function NovelConfigEditor() {
                 </Field>
               )}
               {(config.creationMode || 'pipeline') === 'dialogue' && (
+                <Field label={t('novelConfig.scenePreludeMode')} tipItems={[
+                  t('novelConfig.scenePreludeModeTips.off'),
+                  t('novelConfig.scenePreludeModeTips.prevEnding'),
+                  t('novelConfig.scenePreludeModeTips.chapterSummaries'),
+                ]}>
+                  <NativeSelect
+                    value={config.scenePreludeMode || 'chapter_summaries'}
+                    onChange={(e) => update('scenePreludeMode', e.target.value as NovelConfig['scenePreludeMode'])}
+                  >
+                    <option value="off">{t('novelConfig.scenePreludeModeOptions.off')}</option>
+                    <option value="prev_ending">{t('novelConfig.scenePreludeModeOptions.prevEnding')}</option>
+                    <option value="chapter_summaries">{t('novelConfig.scenePreludeModeOptions.chapterSummaries')}</option>
+                  </NativeSelect>
+                </Field>
+              )}
+              {(config.creationMode || 'pipeline') === 'dialogue' && (
                 <Field label={t('novelConfig.optionHints')} tipItems={[
                   t('novelConfig.optionHintsTips.off'),
                   t('novelConfig.optionHintsTips.on'),

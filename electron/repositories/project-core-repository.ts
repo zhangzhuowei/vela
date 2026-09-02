@@ -34,6 +34,7 @@ export interface ProjectCoreRow {
     character_states: string
     creation_mode: string
     multiline_mode: string
+    scene_prelude_mode: string
     option_hints_enabled: number
     option_hints_count: number
     option_hints_max_chars: number
@@ -68,6 +69,7 @@ export interface ProjectCoreData {
     characterStates: string
     creationMode: string
     multilineMode: string
+    scenePreludeMode: string
     optionHintsEnabled: boolean
     optionHintsCount: number
     optionHintsMaxChars: number
@@ -101,6 +103,7 @@ function rowToData(row: ProjectCoreRow): ProjectCoreData {
         characterStates: row.character_states,
         creationMode: row.creation_mode ?? 'pipeline',
         multilineMode: row.multiline_mode ?? 'off',
+        scenePreludeMode: row.scene_prelude_mode ?? 'chapter_summaries',
         optionHintsEnabled: Number(row.option_hints_enabled) === 1,
         optionHintsCount: row.option_hints_count ?? 3,
         optionHintsMaxChars: row.option_hints_max_chars ?? 24,
@@ -163,6 +166,7 @@ export class ProjectCoreRepository {
             characterStates: 'character_states',
             creationMode: 'creation_mode',
             multilineMode: 'multiline_mode',
+            scenePreludeMode: 'scene_prelude_mode',
             optionHintsEnabled: 'option_hints_enabled',
             optionHintsCount: 'option_hints_count',
             optionHintsMaxChars: 'option_hints_max_chars',

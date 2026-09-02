@@ -5,6 +5,7 @@
  * 章级进行中角色状态存放在 blueprints.working_state（每章一行）。
  */
 import { getProjectDb } from '../database'
+import { shouldResetChapterWorkingState } from '../../src/services/dialogue/working-state-policy'
 
 export interface SceneData {
     id: number
@@ -137,7 +138,14 @@ export class SceneRepository {
         if (scene.status === 'distilled') {
             throw new Error('场已收场，不能删除（先在草稿层处理）')
         }
+        const chapterNumber = scene.chapterNumber
         db.prepare('DELETE FROM scenes WHERE id = ?').run(id)
+        const left = db.prepare(
+            'SELECT COUNT(*) as n FROM scenes WHERE chapter_number = ?'
+        ).get(chapterNumber) as { n: number }
+        if (shouldResetChapterWorkingState(left.n)) {
+            SceneRepository.setWorkingState(chapterNumber, {})
+        }
     }
 
     /** 收场：写入蒸馏正文。空正文拒绝，保证失败不落盘 */

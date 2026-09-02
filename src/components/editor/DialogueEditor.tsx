@@ -17,10 +17,12 @@ import {
   assembleToDraft,
   commitScene,
   distillScene,
+  ensureWorkingState,
   generateTurn,
   previewChapterBody,
   previewTurn,
 } from '../../services/dialogue/dialogue-service'
+import { shouldResetChapterWorkingState } from '../../services/dialogue/working-state-policy'
 import ModScopeBar from './ModScopeBar'
 import { resolveOptionCount, resolveOptionMaxChars } from '../../services/dialogue/option-hints'
 import { parseOptionHints, splitProseAndState, stripProtocolLeak } from '../../services/dialogue/state-protocol'
@@ -147,6 +149,15 @@ export default function DialogueEditor({ chapterNumber }: { chapterNumber: numbe
     return items
   }, [chapterNumber])
 
+  const refreshWorkingState = useCallback(async (sceneCount: number) => {
+    if (shouldResetChapterWorkingState(sceneCount)) {
+      await ipc.invoke('db:chapter-working-state-set', chapterNumber, {})
+      setWorkingState(await ensureWorkingState(chapterNumber))
+      return
+    }
+    setWorkingState(await ipc.invoke('db:chapter-working-state-get', chapterNumber))
+  }, [chapterNumber])
+
   useEffect(() => {
     void (async () => {
       const bp = await ipc.invoke('db:blueprint-get', chapterNumber)
@@ -156,9 +167,9 @@ export default function DialogueEditor({ chapterNumber }: { chapterNumber: numbe
       }
       const items = await loadScenes()
       setSceneId((prev) => prev ?? items.find((s) => s.status === 'open')?.id ?? items[0]?.id ?? null)
-      setWorkingState(await ipc.invoke('db:chapter-working-state-get', chapterNumber))
+      await refreshWorkingState(items.length)
     })()
-  }, [chapterNumber, loadScenes])
+  }, [chapterNumber, loadScenes, refreshWorkingState])
 
   useEffect(() => {
     setError('')
@@ -409,6 +420,7 @@ export default function DialogueEditor({ chapterNumber }: { chapterNumber: numbe
                       const res = await ipc.invoke('db:scene-delete', s.id)
                       if (!res.success) throw new Error(res.error)
                       const items = await loadScenes()
+                      await refreshWorkingState(items.length)
                       if (sceneId === s.id) setSceneId(items[0]?.id ?? null)
                     })
                   }}

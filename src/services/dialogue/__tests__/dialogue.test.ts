@@ -5,6 +5,8 @@ import { buildDistillMessages, buildSceneMessages, pinPostHistory } from '../dia
 import { shouldContinueTurn } from '../dialogue-service'
 import { assembleChapterBody } from '../assemble'
 import { selectSceneCharacters } from '../select-characters'
+import { buildScenePrelude, resolveScenePreludeMode } from '../scene-prelude'
+import { shouldResetChapterWorkingState } from '../working-state-policy'
 import type { SceneData } from '../../../../electron/repositories/scene-repository'
 
 describe('state-protocol', () => {
@@ -343,6 +345,39 @@ describe('dialogue-prompts', () => {
     expect(messages[0].content).not.toContain('本线')
   })
 
+  it('injects scene prelude when given', () => {
+    const messages = buildSceneMessages({
+      config,
+      characters: [],
+      workingState: {},
+      chapterTitle: '第1章',
+      chapterGoal: '',
+      sceneTitle: '发展',
+      sceneGoal: '',
+      turns: [],
+      scenePrelude: '本章已收场：\n【开场】独角兽在码头等指挥官。',
+    })
+    expect(messages[0].content).toContain('本章已收场')
+    expect(messages[0].content).toContain('独角兽在码头等指挥官')
+  })
+
+  it('keeps scene prelude and same-line context together', () => {
+    const messages = buildSceneMessages({
+      config,
+      characters: [],
+      workingState: {},
+      chapterTitle: '第1章',
+      chapterGoal: '',
+      sceneTitle: '发展',
+      sceneGoal: '',
+      turns: [],
+      scenePrelude: '上一场（开场）结尾：\n她没有躲开。',
+      lineContext: '柔柔在森林边缘。',
+    })
+    expect(messages[0].content).toContain('她没有躲开')
+    expect(messages[0].content).toContain('本线前情：柔柔在森林边缘。')
+  })
+
   it('keeps the state protocol suffix even without references', () => {
     const messages = buildSceneMessages({
       config,
@@ -591,6 +626,18 @@ describe('selectSceneCharacters', () => {
   })
 })
 
+describe('working-state-policy', () => {
+  it('resets when the chapter has no scenes left', () => {
+    expect(shouldResetChapterWorkingState(0)).toBe(true)
+    expect(shouldResetChapterWorkingState(-1)).toBe(true)
+  })
+
+  it('keeps working state while any scene remains', () => {
+    expect(shouldResetChapterWorkingState(1)).toBe(false)
+    expect(shouldResetChapterWorkingState(3)).toBe(false)
+  })
+})
+
 describe('assembleChapterBody', () => {
   const scene = (seq: number, status: 'open' | 'distilled', body: string): SceneData => ({
     id: seq,
@@ -619,5 +666,83 @@ describe('assembleChapterBody', () => {
     expect(() =>
       assembleChapterBody([scene(1, 'distilled', '第一场。'), scene(2, 'open', '')])
     ).toThrow(/未收场/)
+  })
+})
+
+describe('scene-prelude', () => {
+  const scene = (
+    seq: number,
+    status: 'open' | 'distilled',
+    extras: Partial<SceneData> = {},
+  ): SceneData => ({
+    id: seq,
+    chapterNumber: 1,
+    seq,
+    title: extras.title ?? `场${seq}`,
+    goal: '',
+    line: '',
+    summary: extras.summary ?? '',
+    status,
+    body: extras.body ?? '',
+    createdAt: '',
+    updatedAt: '',
+  })
+
+  it('resolves missing or unknown values to chapter summaries', () => {
+    expect(resolveScenePreludeMode(undefined)).toBe('chapter_summaries')
+    expect(resolveScenePreludeMode('nope')).toBe('chapter_summaries')
+    expect(resolveScenePreludeMode('off')).toBe('off')
+    expect(resolveScenePreludeMode('prev_ending')).toBe('prev_ending')
+    expect(resolveScenePreludeMode('chapter_summaries')).toBe('chapter_summaries')
+  })
+
+  it('returns empty when mode is off or nothing prior is distilled', () => {
+    const prior = [scene(1, 'distilled', { title: '开场', body: '第一场正文。' })]
+    expect(buildScenePrelude({ mode: 'off', currentSeq: 2, scenes: prior })).toBe('')
+    expect(buildScenePrelude({
+      mode: 'chapter_summaries',
+      currentSeq: 1,
+      scenes: prior,
+    })).toBe('')
+    expect(buildScenePrelude({
+      mode: 'prev_ending',
+      currentSeq: 2,
+      scenes: [scene(1, 'open', { title: '开场', body: '还没收场。' })],
+    })).toBe('')
+  })
+
+  it('uses the nearest prior distilled ending and keeps only the tail', () => {
+    const long = '前段。'.repeat(400) + '她转身离开码头。'
+    const out = buildScenePrelude({
+      mode: 'prev_ending',
+      currentSeq: 3,
+      scenes: [
+        scene(1, 'distilled', { title: '开场', body: '更早的一场。' }),
+        scene(2, 'distilled', { title: '发展', body: long }),
+        scene(4, 'distilled', { title: '更后', body: '不该读到。' }),
+      ],
+    })
+    expect(out).toContain('上一场（发展）结尾')
+    expect(out).toContain('她转身离开码头。')
+    expect(out).not.toContain('更早的一场')
+    expect(out).not.toContain('不该读到')
+    expect(out.length).toBeLessThan(long.length)
+  })
+
+  it('lists all prior distilled summaries and falls back to a body clip', () => {
+    const out = buildScenePrelude({
+      mode: 'chapter_summaries',
+      currentSeq: 3,
+      scenes: [
+        scene(2, 'distilled', { title: '发展', summary: '港区开始戒备。' }),
+        scene(1, 'distilled', { title: '开场', body: '独角兽在码头等指挥官。' }),
+        scene(3, 'open', { title: '高潮', summary: '本场不该出现。' }),
+      ],
+    })
+    expect(out).toMatch(/^本章已收场：/)
+    expect(out).toContain('【开场】独角兽在码头等指挥官。')
+    expect(out).toContain('【发展】港区开始戒备。')
+    expect(out.indexOf('【开场】')).toBeLessThan(out.indexOf('【发展】'))
+    expect(out).not.toContain('本场不该出现')
   })
 })

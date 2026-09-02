@@ -415,6 +415,17 @@
       "off": "关闭：场之间只靠共享的进行中角色状态联动（默认）",
       "summary": "同线摘要：给场标线名，生成时注入同一条线上一场的前情摘要（自动生成并缓存）"
     },
+    "scenePreludeMode": "场间前情",
+    "scenePreludeModeOptions": {
+      "off": "关",
+      "prevEnding": "上一场结尾",
+      "chapterSummaries": "本章已收场摘要"
+    },
+    "scenePreludeModeTips": {
+      "off": "关闭：后一场生成不读前面已收场的正文（只靠进行中角色状态）",
+      "prevEnding": "上一场结尾：注入场序上最近一场已收场正文的末尾（约 1000 字）",
+      "chapterSummaries": "本章已收场摘要：注入本章此前所有已收场场的短摘要（默认，收场时预生成）"
+    },
     "optionHints": "控场选项",
     "optionHintsOptions": {
       "off": "关",

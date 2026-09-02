@@ -415,6 +415,17 @@
       "off": "Off: scenes only link through the shared working character states (default)",
       "summary": "Same-line summary: tag scenes with a line; inject the previous same-line scene's recap into generation (auto-generated and cached)"
     },
+    "scenePreludeMode": "Scene prelude",
+    "scenePreludeModeOptions": {
+      "off": "Off",
+      "prevEnding": "Previous scene ending",
+      "chapterSummaries": "Chapter scene summaries"
+    },
+    "scenePreludeModeTips": {
+      "off": "Off: later scenes do not read earlier distilled prose (only shared working character states)",
+      "prevEnding": "Previous scene ending: inject the tail of the latest distilled scene by sequence (~1000 characters)",
+      "chapterSummaries": "Chapter scene summaries: inject short recaps of all earlier distilled scenes in this chapter (default; pre-generated on distill)"
+    },
     "optionHints": "Next-turn options",
     "optionHintsOptions": {
       "off": "Off",

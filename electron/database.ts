@@ -159,6 +159,7 @@ function migrateSchema(db: BetterSqlite3.Database) {
   addColumnIfMissing('blueprints', 'working_state', `working_state TEXT DEFAULT '{}'`)
   // 对话多线联动：工程级开关 + 场的线名与摘要缓存
   addColumnIfMissing('project_core', 'multiline_mode', `multiline_mode TEXT DEFAULT 'off'`)
+  addColumnIfMissing('project_core', 'scene_prelude_mode', `scene_prelude_mode TEXT DEFAULT 'chapter_summaries'`)
   addColumnIfMissing('scenes', 'line', `line TEXT DEFAULT ''`)
   addColumnIfMissing('scenes', 'summary', `summary TEXT DEFAULT ''`)
   addColumnIfMissing('project_core', 'option_hints_enabled', `option_hints_enabled INTEGER DEFAULT 0`)

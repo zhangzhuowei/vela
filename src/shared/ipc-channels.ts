@@ -227,6 +227,8 @@ export interface NovelConfig {
   creationMode?: 'pipeline' | 'dialogue'
   /** 对话多线联动：off = 关（默认）；summary = 线标签 + 同线上一场摘要注入 */
   multilineMode?: 'off' | 'summary'
+  /** 场间前情：off = 关；prev_ending = 上一场结尾；chapter_summaries = 本章已收场摘要（缺省） */
+  scenePreludeMode?: 'off' | 'prev_ending' | 'chapter_summaries'
   /** 对话结束后是否给出下一轮控场选项（默认关） */
   optionHintsEnabled?: boolean
   /** 书级默认选项条数（3–5，默认 3） */

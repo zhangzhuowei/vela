@@ -105,6 +105,8 @@ export function buildSceneMessages(params: {
   targetLength?: number
   /** 同线上一场前情摘要（多线联动，未启用则不传） */
   lineContext?: string
+  /** 场间前情（上一场结尾或本章已收场摘要，未启用则不传） */
+  scenePrelude?: string
   /** 本轮结束后给出的控场选项条数（未设置则不要求输出选项） */
   optionCount?: number
   /** 每条选项的字数上限；0 = 不限；未传则默认 24 */
@@ -125,7 +127,10 @@ export function buildSceneMessages(params: {
     chapter_title: params.chapterTitle,
     chapter_goal: params.chapterGoal || '（未写）',
     scene_line: sceneLine(params.sceneTitle, params.sceneGoal),
-    line_context: params.lineContext?.trim() ? `本线前情：${params.lineContext.trim()}` : '',
+    line_context: [
+      params.scenePrelude?.trim(),
+      params.lineContext?.trim() ? `本线前情：${params.lineContext.trim()}` : '',
+    ].filter(Boolean).join('\n'),
     length_note: params.targetLength
       ? `本轮篇幅：目标约 ${params.targetLength} 字，硬性下限 ${Math.round(params.targetLength * 0.8)} 字，这是必须满足的要求。用足场景推进、动作细节与对白把篇幅写满，不要注水，也绝不允许提前收束。`
       : '',

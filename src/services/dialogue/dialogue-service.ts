@@ -27,6 +27,7 @@ import { selectSceneCharacters } from './select-characters'
 import { getPromptTemplate, renderPrompt } from '../prompt-templates'
 import { logLLMCall } from '../stats-service'
 import { runWithModScopeAsync } from '../mods'
+import { buildScenePrelude, resolveScenePreludeMode } from './scene-prelude'
 
 type LLMUsage = { promptTokens: number; completionTokens: number; totalTokens: number }
 
@@ -191,6 +192,27 @@ export async function getLineContext(scene: SceneData): Promise<string> {
   return generateSceneSummary(prev.id, prev.body)
 }
 
+/**
+ * 场间前情：按书级开关注入上一场结尾或本章已收场摘要。
+ * 摘要优先复用收场时缓存；缺失则懒生成，失败时用正文开头顶一段。
+ */
+export async function getScenePrelude(scene: SceneData): Promise<string> {
+  const mode = resolveScenePreludeMode(
+    useProjectStore.getState().currentProject?.novelConfig?.scenePreludeMode,
+  )
+  if (mode === 'off') return ''
+  const scenes = await ipc.invoke('db:scene-list', scene.chapterNumber)
+  if (mode === 'chapter_summaries') {
+    for (const s of scenes) {
+      if (s.seq >= scene.seq || s.status !== 'distilled') continue
+      if (s.summary.trim()) continue
+      if (!s.body.trim()) continue
+      s.summary = await generateSceneSummary(s.id, s.body)
+    }
+  }
+  return buildScenePrelude({ mode, currentSeq: scene.seq, scenes })
+}
+
 /** 开章时若进行中状态为空，从角色卡当前状态拷贝一份作为起点 */
 export async function ensureWorkingState(chapterNumber: number): Promise<WorkingState> {
   const existing = await ipc.invoke('db:chapter-working-state-get', chapterNumber)
@@ -256,6 +278,7 @@ export async function assembleTurnMessages(params: AssembleTurnParams): Promise<
     [lastUser, scene.goal || scene.title, params.chapterGoal].filter(Boolean).join(' ')
   )
   const lineContext = await getLineContext(scene)
+  const scenePrelude = await getScenePrelude(scene)
   const target = params.targetLength
   const promptInput =
     !params.retry && target
@@ -276,6 +299,7 @@ export async function assembleTurnMessages(params: AssembleTurnParams): Promise<
       sceneTitle: scene.title,
       sceneGoal: scene.goal,
       lineContext,
+      scenePrelude,
       turns: turns.map((t) => ({ role: t.role, content: splitProseAndState(t.content).prose })),
       userInput: params.retry ? undefined : promptInput,
       references,
@@ -488,11 +512,14 @@ export async function distillScene(params: {
   )
 }
 
-/** 收场落盘；多线开启且本场有线名时，后台预生成前情摘要（下一场生成时直接复用，不再现场等一次模型） */
+/** 收场落盘；需要摘要的开关打开时后台预生成（下一场直接复用） */
 export async function commitScene(scene: SceneData, body: string): Promise<void> {
   const res = await ipc.invoke('db:scene-commit', scene.id, body)
   if (!res.success) throw new Error(res.error || '收场失败')
-  if (multilineSummaryOn() && scene.line) {
+  const preludeMode = resolveScenePreludeMode(
+    useProjectStore.getState().currentProject?.novelConfig?.scenePreludeMode,
+  )
+  if ((multilineSummaryOn() && scene.line) || preludeMode === 'chapter_summaries') {
     void generateSceneSummary(scene.id, body)
   }
 }

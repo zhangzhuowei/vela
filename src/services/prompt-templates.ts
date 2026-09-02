@@ -2926,7 +2926,7 @@ Requirements:
       characters_block: '出场角色的人设与当前状态',
       references_block: '知识库召回的参考设定',
       length_note: '本轮篇幅要求（未设置时为空）',
-      line_context: '同线上一场的前情摘要（未启用多线时为空）',
+      line_context: '场间前情与同线摘要（未启用时为空）',
       option_note: '控场选项要求（未开启时为空）',
     },
     content: `你在为一部小说写一场戏。只写可读的叙事和对话，不要解释、不要列大纲、不要道歉。
