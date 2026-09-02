@@ -18,6 +18,7 @@ export default defineConfig({
       'src/services/dialogue/__tests__/dialogue.test.ts',
       'src/services/__tests__/mods.test.ts',
       'src/services/__tests__/llm-request-inspect.test.ts',
+      'src/services/__tests__/character-io.test.ts',
     ],
     globals: false,
   },

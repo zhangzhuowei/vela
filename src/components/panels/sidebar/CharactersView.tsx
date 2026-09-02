@@ -2,11 +2,14 @@
  * CharactersView — 角色管理列表视图
  */
 
-import { Users, RefreshCw, Plus } from 'lucide-react'
+import { useRef } from 'react'
+import { Users, RefreshCw, Plus, Download, Upload } from 'lucide-react'
 import { useProjectStore } from '../../../stores/project-store'
 import { useCharacterStore, ROLE_LABELS } from '../../../stores/character-store'
+import { exportCharactersToJson, parseCharacterImport } from '../../../services/character-io'
 import { Button } from '../../ui/Button'
 import { EmptyState } from '../../ui/EmptyState'
+import { toast } from '../../ui/Toast'
 import { cn } from '../../../lib/utils'
 import { useTranslation } from 'react-i18next'
 
@@ -18,8 +21,39 @@ export default function CharactersView() {
   const load = useCharacterStore(s => s.load)
   const setSelectedName = useCharacterStore(s => s.setSelectedName)
   const addCharacter = useCharacterStore(s => s.addCharacter)
+  const importCharacters = useCharacterStore(s => s.importCharacters)
+  const importInputRef = useRef<HTMLInputElement>(null)
 
-  // 角色数据由 ProjectService 统一加载，组件只消费 store 数据
+  const handleExport = () => {
+    const cards = useCharacterStore.getState().characters
+    if (cards.length === 0) {
+      toast.warning(t('characters.exportEmpty'))
+      return
+    }
+    const project = (useProjectStore.getState().currentProject?.name?.trim() || 'characters').replace(
+      /[\\/:*?"<>|]/g,
+      '_'
+    )
+    const blob = new Blob([exportCharactersToJson(cards)], { type: 'application/json' })
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = url
+    a.download = `${project}.vela-characters.json`
+    a.click()
+    URL.revokeObjectURL(url)
+  }
+
+  const handleImportFile = (file: File) => {
+    void (async () => {
+      const parsed = parseCharacterImport(await file.text())
+      if (!parsed) {
+        toast.error(t('characters.importFailed'))
+        return
+      }
+      const count = await importCharacters(parsed)
+      toast.success(t('characters.importOk', { count }))
+    })()
+  }
 
   if (!currentProject) {
     return (
@@ -44,6 +78,29 @@ export default function CharactersView() {
           <Button variant="ghost" size="icon" className="h-6 w-6" onClick={() => load()} title={t('characters.refreshList')}>
             <RefreshCw size={14} strokeWidth={2} />
           </Button>
+          <Button variant="ghost" size="icon" className="h-6 w-6" onClick={handleExport} title={t('characters.exportJsonTooltip')}>
+            <Download size={14} strokeWidth={2} />
+          </Button>
+          <Button
+            variant="ghost"
+            size="icon"
+            className="h-6 w-6"
+            onClick={() => importInputRef.current?.click()}
+            title={t('characters.importJsonTooltip')}
+          >
+            <Upload size={14} strokeWidth={2} />
+          </Button>
+          <input
+            ref={importInputRef}
+            type="file"
+            accept=".json,application/json"
+            className="hidden"
+            onChange={(e) => {
+              const file = e.target.files?.[0]
+              e.target.value = ''
+              if (file) handleImportFile(file)
+            }}
+          />
           <Button variant="ghost" size="icon" className="h-6 w-6" onClick={addCharacter} title={t('characters.newCharacterBtn')}>
             <Plus size={14} strokeWidth={2} />
           </Button>

@@ -11,6 +11,7 @@ import { searchKnowledgeTool } from './search-knowledge.tool'
 import { readArchitectureTool } from './read-architecture.tool'
 import { readBlueprintTool } from './read-blueprint.tool'
 import { readCharactersTool } from './read-characters.tool'
+import { readEnabledModsTool } from './read-enabled-mods.tool'
 import { readProjectStateTool } from './read-project-state.tool'
 import { readDraftsTool } from './read-drafts.tool'
 import { listChaptersTool } from './list-chapters.tool'
@@ -27,6 +28,7 @@ export const builtinTools = [
   readArchitectureTool,
   readBlueprintTool,
   readCharactersTool,
+  readEnabledModsTool,
   readProjectStateTool,
   readDraftsTool,
   listChaptersTool,

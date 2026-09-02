@@ -401,6 +401,13 @@ export function getModTemplateOverride(key: string): string | undefined {
   return resolveModTemplate(key, resolvedEnabledIds(), effectivePool)
 }
 
+/** 当前书启用且生效的 Mod 快照（含钉住版本），供 Agent @ 引用。 */
+export function listEnabledModSnapshots(scope?: ModApplyScope): WritingMod[] {
+  return resolvedEnabledIds(scope)
+    .map((id) => effectivePool.get(id))
+    .filter((m): m is WritingMod => Boolean(m))
+}
+
 /** 当前生效的行文指导（按槽位拆分）；可传入章/场以套用排除 */
 export function getActiveModLayers(scope?: ModApplyScope): ReturnType<typeof splitModGuidance> {
   return splitModGuidance(resolvedEnabledIds(scope), effectivePool)

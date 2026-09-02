@@ -130,6 +130,7 @@
     "mentionTargets": {
       "architecture": "Story Architecture",
       "character": "Character Card",
+      "mod": "Enabled Mods",
       "blueprint": "Chapter Blueprint",
       "knowledge": "Knowledge Base",
       "chapter": "Current Chapter",
@@ -213,6 +214,19 @@
           "notes": "Notes",
           "guidance": "User Guidance"
         }
+      },
+      "readEnabledMods": {
+        "desc": "Read writing Mods enabled in this book's novel config (style guidance, inject slot, overridden prompt templates).",
+        "empty": "This book has no Mods enabled. Toggle them in novel config, then @mention again.",
+        "title": "🧩 Enabled Mods ({{count}})",
+        "description": "About: {{text}}",
+        "inject": "Inject: {{slot}}",
+        "slotSystem": "top system",
+        "slotPostHistory": "post-history",
+        "templates": "Template overrides: {{keys}}",
+        "noTemplates": "Template overrides: none",
+        "guidance": "Guidance:\n{{text}}",
+        "noGuidance": "Guidance: none"
       },
       "readCharacters": {
         "desc": "Read the novel's character card files. Can get all character list or detailed information for a specified character (background, personality, appearance, character arc, etc.).",
@@ -311,6 +325,13 @@
     "newCharacter": "New Character_",
     "title": "Characters ({{count}})",
     "refreshList": "Refresh list",
+    "exportJson": "Export JSON",
+    "exportJsonTooltip": "Export all character cards as JSON",
+    "exportEmpty": "No characters to export",
+    "importJson": "Import JSON",
+    "importJsonTooltip": "Import JSON (single card or pack; same name overwrites)",
+    "importFailed": "Could not parse character card JSON",
+    "importOk": "Imported {{count}} character card(s)",
     "newCharacterBtn": "New character",
     "unnamed": "Unnamed",
     "chapterUpdate": "Updated in chapter {{chapter}}",

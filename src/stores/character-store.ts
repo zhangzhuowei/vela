@@ -52,6 +52,7 @@ interface CharacterState {
   reset: () => void
   setSelectedName: (name: string | null) => void
   addCharacter: () => void
+  importCharacters: (incoming: CharacterData[]) => Promise<number>
   deleteCharacter: (name: string, projectPath?: string) => Promise<void>
   updateField: <K extends keyof CharacterCard>(name: string, key: K, value: CharacterCard[K]) => void
   saveAll: (projectPath?: string) => Promise<void>
@@ -107,6 +108,26 @@ export const useCharacterStore = create<CharacterState>()((set, get) => ({
       characters: [...s.characters, newCard],
       selectedName: newCard.name,
     }))
+  },
+
+  importCharacters: async (incoming) => {
+    if (incoming.length === 0) return 0
+    const { characters } = get()
+    const next = [...characters]
+    for (const card of incoming) {
+      const i = next.findIndex((c) => c.name === card.name || c._dbName === card.name)
+      if (i >= 0) {
+        next[i] = { ...next[i], ...card, _cid: next[i]._cid, _dbName: next[i]._dbName }
+      } else {
+        next.push({ ...card, _cid: newCid(), _dbName: undefined })
+      }
+    }
+    set({
+      characters: next,
+      selectedName: incoming[0]?.name ?? get().selectedName,
+    })
+    await get().saveAll()
+    return incoming.length
   },
 
   deleteCharacter: async (name) => {

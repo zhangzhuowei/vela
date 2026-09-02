@@ -31,7 +31,7 @@ export interface SlashCommand {
 /** @ 提及目标 */
 export interface MentionTarget {
   /** 提及类型 */
-  type: 'chapter' | 'character' | 'architecture' | 'blueprint' | 'knowledge' | 'file'
+  type: 'chapter' | 'character' | 'architecture' | 'blueprint' | 'knowledge' | 'file' | 'mod'
   /** 显示名称 */
   displayName: string
   /** 提及值（传递给 Tool） */
@@ -150,6 +150,7 @@ export function getAllMentionTargets(): MentionTarget[] {
   return [
     { type: 'architecture', displayName: t('agent.mentionTargets.architecture'), value: 'architecture', icon: '📐' },
     { type: 'character', displayName: t('agent.mentionTargets.character'), value: 'characters', icon: '👤' },
+    { type: 'mod', displayName: t('agent.mentionTargets.mod'), value: 'mods', icon: '🧩' },
     { type: 'blueprint', displayName: t('agent.mentionTargets.blueprint'), value: 'blueprints', icon: '📋' },
     { type: 'knowledge', displayName: t('agent.mentionTargets.knowledge'), value: 'knowledge', icon: '📚' },
     { type: 'chapter', displayName: t('agent.mentionTargets.chapter'), value: 'current_chapter', icon: '📝' },
@@ -207,6 +208,8 @@ export function mentionsToToolCalls(mentions: ParsedMention[]): Array<{
         return { toolName: 'read_architecture', args: {} }
       case 'character':
         return { toolName: 'read_characters', args: {} }
+      case 'mod':
+        return { toolName: 'read_enabled_mods', args: {} }
       case 'blueprint':
         return { toolName: 'read_blueprint', args: {} }
       case 'knowledge':

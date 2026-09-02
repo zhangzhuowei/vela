@@ -130,6 +130,7 @@
     "mentionTargets": {
       "architecture": "故事架构",
       "character": "角色卡",
+      "mod": "启用 Mod",
       "blueprint": "章节蓝图",
       "knowledge": "知识库",
       "chapter": "当前章节",
@@ -213,6 +214,19 @@
           "notes": "备注",
           "guidance": "用户指引"
         }
+      },
+      "readEnabledMods": {
+        "desc": "读取本书小说配置里已启用的写作 Mod（行文指导、投放槽位、覆盖的提示词模板）。",
+        "empty": "本书尚未启用任何 Mod。可在小说配置里勾选后再 @引用。",
+        "title": "🧩 本书启用 Mod（{{count}} 个）",
+        "description": "简介：{{text}}",
+        "inject": "投放：{{slot}}",
+        "slotSystem": "顶部 system",
+        "slotPostHistory": "贴底",
+        "templates": "覆盖模板：{{keys}}",
+        "noTemplates": "覆盖模板：无",
+        "guidance": "行文指导：\n{{text}}",
+        "noGuidance": "行文指导：无"
       },
       "readCharacters": {
         "desc": "读取小说的角色卡档案。可以获取所有角色列表或指定角色的详细信息（背景、性格、外貌、角色弧等）。",
@@ -311,6 +325,13 @@
     "newCharacter": "新角色_",
     "title": "角色列表 ({{count}})",
     "refreshList": "刷新列表",
+    "exportJson": "导出 JSON",
+    "exportJsonTooltip": "导出全部角色卡为 JSON",
+    "exportEmpty": "没有可导出的角色",
+    "importJson": "导入 JSON",
+    "importJsonTooltip": "导入 JSON（单张或整包，同名覆盖）",
+    "importFailed": "无法解析角色卡 JSON",
+    "importOk": "已导入 {{count}} 张角色卡",
     "newCharacterBtn": "新建角色",
     "unnamed": "未命名",
     "chapterUpdate": "第{{chapter}}章更新",
