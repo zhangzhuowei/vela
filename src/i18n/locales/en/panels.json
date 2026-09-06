@@ -433,6 +433,12 @@
     "indexedChapters": "Indexed Chapters",
     "noManuscript": "No data yet",
     "importDocumentAuto": "Chapter content will be automatically imported after finalization",
+    "kind": {
+      "setting": "setting",
+      "settingHint": "Synced from the setting bible; at most 2 retrieval slots",
+      "wordlist": "wordlist",
+      "wordlistHint": "Wordlist / writing samples; at most 1 retrieval slot, with a no-copying note attached"
+    },
     "previousPage": "Previous",
     "nextPage": "Next",
     "chunks": "{{count}} chunks",

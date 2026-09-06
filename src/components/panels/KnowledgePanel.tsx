@@ -9,7 +9,23 @@ import { EmptyState } from '../ui/EmptyState'
 import { useProjectStore } from '../../stores/project-store'
 import { globalEventBus } from '../../shared/event-bus'
 import { loadKBData, type KBDocument } from '../../services/knowledge-service'
+import { kbKindOf, type KbKind } from '../../services/kb-allocate'
 
+/** 来源角标：设定纲要同步的 / 词表示范类；正文与手导资料不标 */
+function KindBadge({ kind }: { kind: KbKind }) {
+  const { t } = useTranslation('panels')
+  if (kind === 'other') return null
+  const color = kind === 'setting' ? 'var(--color-success)' : 'var(--color-warning, #eab308)'
+  return (
+    <span
+      className="text-[0.6rem] px-1 py-px rounded flex-shrink-0"
+      style={{ color, border: `1px solid ${color}` }}
+      title={t(`knowledge.kind.${kind}Hint`)}
+    >
+      {t(`knowledge.kind.${kind}`)}
+    </span>
+  )
+}
 
 
 /** 知识库管理面板（侧栏）— 纯只读展示 + 搜索，数据由定稿自动驱动 */
@@ -137,8 +153,9 @@ export default function KnowledgePanel() {
                   className="flex items-center justify-between px-3 py-2 hover:bg-[var(--color-hover)] transition-colors group"
                 >
                   <div className="flex-1 min-w-0">
-                    <div className="text-xs text-[var(--color-text)] truncate" title={doc.fileName}>
-                      {titleMap[doc.id] || doc.fileName}
+                    <div className="text-xs text-[var(--color-text)] truncate flex items-center gap-1.5" title={doc.fileName}>
+                      <KindBadge kind={kbKindOf(doc.fileName)} />
+                      <span className="truncate">{titleMap[doc.id] || doc.fileName}</span>
                     </div>
                     <div className="flex items-center gap-2 text-[0.7rem] text-[var(--color-text-muted)] mt-0.5">
                       <span>{t('knowledge.chunks', { count: doc.chunkCount })}</span>

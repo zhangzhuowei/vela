@@ -22,6 +22,7 @@ export default defineConfig({
       'src/services/__tests__/project-seed.test.ts',
       'src/services/__tests__/chapter-ending.test.ts',
       'src/services/__tests__/setting-bible.test.ts',
+      'src/services/__tests__/kb-allocate.test.ts',
       'src/services/__tests__/prose-clean.test.ts',
     ],
     globals: false,

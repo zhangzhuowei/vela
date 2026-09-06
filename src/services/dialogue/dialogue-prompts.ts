@@ -8,6 +8,7 @@
 import { pinPostHistory } from '../llm-request-inspect'
 import { getPromptTemplate, renderPrompt } from '../prompt-templates'
 import { splitProseAndState } from './state-protocol'
+import { wordlistUsageNote } from '../kb-allocate'
 import type { WorkingState } from '../../shared/ipc-channels'
 
 export { pinPostHistory }
@@ -52,7 +53,10 @@ function characterBlock(c: DialogueCharacter, state?: Record<string, string>): s
 
 function referencesBlock(refs?: KnowledgeRef[]): string {
   if (!refs || refs.length === 0) return '（无）'
-  return refs.map((r, i) => `[${i + 1}]（${r.fileName}）${r.text}`).join('\n')
+  const lines = refs.map((r, i) => `[${i + 1}]（${r.fileName}）${r.text}`)
+  const note = wordlistUsageNote(refs)
+  if (note) lines.push(note)
+  return lines.join('\n')
 }
 
 function styleGuidance(config: DialogueConfig): string {

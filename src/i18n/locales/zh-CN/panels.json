@@ -433,6 +433,12 @@
     "indexedChapters": "已入库章节",
     "noManuscript": "暂无数据",
     "importDocumentAuto": "定稿后章节内容将自动入库",
+    "kind": {
+      "setting": "设定",
+      "settingHint": "由设定纲要同步，检索时最多占 2 个名额",
+      "wordlist": "词表",
+      "wordlistHint": "词表 / 写法示范类，检索时最多占 1 个名额，并附「不得照抄」提示"
+    },
     "previousPage": "上一页",
     "nextPage": "下一页",
     "chunks": "{{count}} 块",

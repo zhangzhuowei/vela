@@ -205,6 +205,29 @@ describe('dialogue-prompts', () => {
     expect(system).toContain('设定集.md')
   })
 
+  it('appends the wordlist usage note only when a wordlist reference is present', () => {
+    const base = {
+      config,
+      characters: [],
+      workingState: {},
+      chapterTitle: '第1章',
+      chapterGoal: '',
+      sceneTitle: '夜谈',
+      sceneGoal: '',
+      turns: [],
+    }
+    const withWordlist = buildSceneMessages({
+      ...base,
+      references: [{ fileName: '词表·情色描写用词.md', text: '【拟声词】啧啧 咕啾' }],
+    })[0].content
+    expect(withWordlist).toContain('不得照抄整行')
+    const withoutWordlist = buildSceneMessages({
+      ...base,
+      references: [{ fileName: '设定·婚姻制度.md', text: '一妻多夫。' }],
+    })[0].content
+    expect(withoutWordlist).not.toContain('不得照抄整行')
+  })
+
   it('renders empty reference marker when no references given', () => {
     const messages = buildSceneMessages({
       config,

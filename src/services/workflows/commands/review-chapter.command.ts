@@ -5,6 +5,7 @@ import { ReviewPromptBuilder } from '../../prompts/prompt-builder'
 import { ipc } from '../../ipc-client'
 import { buildCanonContext, renderCanonContext } from '../../narrative-consistency'
 import { loadSettingDigest } from '../../setting-bible-service'
+import { allocateKbHits, kbOverfetch } from '../../kb-allocate'
 import i18n from '../../../i18n'
 
 const t = (key: string, opts?: Record<string, unknown>) => i18n.t(key, { ns: 'commands', ...opts })
@@ -42,10 +43,11 @@ export class ReviewChapterCommand extends BaseWorkflowCommand<string> {
     try {
       // 从待审内容中提取前 200 字作为检索 query
       const queryText = draft.slice(0, 200)
-      const results = await ipc.invoke('kb:search', queryText, 5)
+      // 审稿要的是前文事实，词表段对核对没用，按名额压住
+      const results = allocateKbHits(await ipc.invoke('kb:search', queryText, kbOverfetch(5)), 5)
       if (results.length > 0) {
         contextSummary = results
-          .map((r: { fileName: string; score: number; text: string }, i: number) =>
+          .map((r, i) =>
             t('generateDraft.kbResultLine', { index: i + 1, file: r.fileName, score: (r.score * 100).toFixed(0), text: r.text }))
           .join('\n\n')
       }

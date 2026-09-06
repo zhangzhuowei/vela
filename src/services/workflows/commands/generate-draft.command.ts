@@ -22,6 +22,7 @@ import {
 } from '../../chapter-ending'
 import { stripEditorialMarkers } from '../../prose-clean'
 import { loadSettingDigest } from '../../setting-bible-service'
+import { allocateKbHits, kbOverfetch, wordlistUsageNote } from '../../kb-allocate'
 
 export class GenerateDraftCommand extends BaseWorkflowCommand {
   protected attachModGuidance = true
@@ -157,9 +158,13 @@ export class GenerateDraftCommand extends BaseWorkflowCommand {
           searchQuery += ` ${this.chapterInfo.knowledgeQueryHint.trim()}`
           callbacks.log(i18n.t('generateDraft.addedKeywords', { ns: 'commands', keywords: this.chapterInfo.knowledgeQueryHint.trim() }))
         }
-        const results = await ipc.invoke('kb:search', searchQuery, 5)
+        // 多取再按「设定 / 词表 / 其它」分名额，免得词表把设定和已写正文挤光
+        const results = allocateKbHits(await ipc.invoke('kb:search', searchQuery, kbOverfetch(5)), 5)
         filteredContext = results.length > 0
-          ? results.map((r: { fileName: string; score: number; text: string }, i: number) => i18n.t('generateDraft.kbResultLine', { ns: 'commands', index: i + 1, file: r.fileName, score: (r.score * 100).toFixed(0), text: r.text })).join('\n\n')
+          ? [
+              ...results.map((r, i) => i18n.t('generateDraft.kbResultLine', { ns: 'commands', index: i + 1, file: r.fileName, score: (r.score * 100).toFixed(0), text: r.text })),
+              wordlistUsageNote(results),
+            ].filter(Boolean).join('\n\n')
           : i18n.t('generateDraft.kbNoContent', { ns: 'commands' })
       } catch {
         filteredContext = i18n.t('generateDraft.kbUnavailable', { ns: 'commands' })

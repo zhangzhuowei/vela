@@ -29,6 +29,7 @@ import { logLLMCall } from '../stats-service'
 import { runWithModScopeAsync } from '../mods'
 import { buildScenePrelude, resolveScenePreludeMode } from './scene-prelude'
 import { loadSettingDigest } from '../setting-bible-service'
+import { allocateKbHits, kbOverfetch } from '../kb-allocate'
 
 type LLMUsage = { promptTokens: number; completionTokens: number; totalTokens: number }
 
@@ -130,14 +131,13 @@ async function sceneCharacters(
   }))
 }
 
-/** 知识库召回（无向量模型/空库时静默降级为空） */
+/** 知识库召回（无向量模型/空库时静默降级为空）；多取后按设定 / 词表 / 其它分名额 */
 async function retrieveReferences(query: string, topK = 4): Promise<KnowledgeRef[]> {
   const q = query.trim()
   if (!q) return []
   try {
-    const results = await ipc.invoke('kb:search', q, topK)
-    return (results || [])
-      .filter((r) => r.text && r.text.trim())
+    const results = await ipc.invoke('kb:search', q, kbOverfetch(topK))
+    return allocateKbHits((results || []).filter((r) => r.text && r.text.trim()), topK)
       .map((r) => ({ fileName: r.fileName, text: r.text.trim().slice(0, 600) }))
   } catch {
     return []
