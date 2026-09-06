@@ -11,11 +11,12 @@ import { readCoreContent, writeCoreContent } from '../../services/vela-protocol'
 import CodeMirrorEditor from './CodeMirrorEditor'
 import { useProjectStore } from '../../stores/project-store'
 import { useCharacterStore } from '../../stores/character-store'
-import { runArchCharacterExtract, createArchitectureWorkflow } from '../../services/workflows/architecture-workflow'
+import { runArchCharacterExtract, createArchitectureWorkflow, type ArchStepKey as WorkflowArchStepKey } from '../../services/workflows/architecture-workflow'
 import { useWorkflowStore } from '../../stores/workflow-store'
 import { globalEventBus } from '../../shared/event-bus'
 
-type ArchStepKey = 'premise' | 'characters' | 'worldbuilding' | 'synopsis'
+/** 单文件查看器只处理四个架构文件；第五步「设定纲要」有自己的页面 */
+type ArchStepKey = Exclude<WorkflowArchStepKey, 'setting_bible'>
 
 /** 从文件路径推断出 ArchStepKey */
 function detectStepKey(filePath: string): ArchStepKey | null {
@@ -164,7 +165,7 @@ export default function ArchFileViewer({ filePath, content: initialContent }: Pr
   }, [handleReload])
 
   /** 确认后启动架构生成工作流 */
-  const handleConfirm = async (selectedSteps: ArchStepKey[], stepGuidance: Record<string, string>) => {
+  const handleConfirm = async (selectedSteps: WorkflowArchStepKey[], stepGuidance: Record<string, string>) => {
     useWorkflowStore.getState().startWorkflow(createArchitectureWorkflow({ selectedSteps, stepGuidance }))
   }
 

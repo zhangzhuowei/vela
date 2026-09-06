@@ -328,6 +328,7 @@ export class GenerateDraftCommand extends BaseWorkflowCommand {
     const floor = Math.round(targetWords * 0.9)
     const MAX_ROUNDS = 2
     let result = draft
+    let settingBlock = ''
 
     for (let round = 1; round <= MAX_ROUNDS; round++) {
       const current = this.countWords(result)
@@ -339,11 +340,17 @@ export class GenerateDraftCommand extends BaseWorkflowCommand {
       const gap = targetWords - current
       callbacks.log(`  📏 篇幅不足：${current} 字 < 下限 ${floor} 字，自动续写补足约 ${gap} 字（第 ${round}/${MAX_ROUNDS} 轮）...`)
 
+      // 续写是独立一轮请求，主提示词里的设定纲要不会自动带过来
+      if (round === 1) {
+        const digest = await loadSettingDigest({ chapterNumber: this.chapterInfo.chapterNumber })
+        settingBlock = digest ? `\n${digest}\n` : ''
+      }
+
       const continuePrompt = `你正在完成一章尚未写完的小说正文。下面是本章已经写好的部分，它的篇幅不足，需要你直接续写下去。
 
 【本章写作方向】
 ${typeof this.chapterInfo === 'object' ? JSON.stringify(this.chapterInfo, null, 2) : String(this.chapterInfo)}
-
+${settingBlock}
 【本章已写好的部分（全文）】
 ${result}
 

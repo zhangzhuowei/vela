@@ -237,6 +237,8 @@
     "stepWorldbuildingDesc": "构建自带冲突引擎的世界观矩阵",
     "stepSynopsis": "情节大纲",
     "stepSynopsisDesc": "整合所有碎片，按选定结构模式生成情节大纲",
+    "stepSettingBible": "设定纲要",
+    "stepSettingBibleDesc": "按类型铺默认模块清单，逐个生成空模块的四格规则",
     "configGenTitle": "🧠 AI 生成小说配置",
     "configGenStepName": "智能分析并填充配置",
     "configGenStepDesc": "根据创作脑洞生成小说配置（全书规划约 {{chapters}} 章）",
@@ -379,7 +381,12 @@
     "splitParseFailed": "拆分结果不是有效 JSON，已放弃本次拆分",
     "splitDone": "✅ 拆分完成：填入 {{filled}} 个空模块，新建 {{created}} 个",
     "crossChecking": "  🔍 交叉检查 {{count}} 个设定模块...",
-    "crossCheckTooFew": "至少要有两个写了内容的模块才能交叉检查"
+    "crossCheckTooFew": "至少要有两个写了内容的模块才能交叉检查",
+    "batchSeeded": "  📜 已按类型铺好 {{count}} 个默认模块",
+    "batchNothing": "  📜 没有需要生成的空模块，跳过",
+    "batchProgress": "  📜 [{{index}}/{{total}}] 生成「{{title}}」...",
+    "batchItemFailed": "  ⚠️ 「{{title}}」生成失败：{{error}}",
+    "batchDone": "✅ 设定纲要批量生成完成：成功 {{done}} 个，失败 {{failed}} 个"
   },
   "chapterEnding": {
     "cliffhanger": "必须卡悬念",

@@ -4,6 +4,7 @@ import { getPromptTemplate } from '../../prompt-templates'
 import { ReviewPromptBuilder } from '../../prompts/prompt-builder'
 import { ipc } from '../../ipc-client'
 import { buildCanonContext, renderCanonContext } from '../../narrative-consistency'
+import { loadSettingDigest } from '../../setting-bible-service'
 import i18n from '../../../i18n'
 
 const t = (key: string, opts?: Record<string, unknown>) => i18n.t(key, { ns: 'commands', ...opts })
@@ -103,6 +104,7 @@ export class ReviewChapterCommand extends BaseWorkflowCommand<string> {
       .withCharacterStates(characterState)
       .withGlobalSummary(contextSummary)
       .withWorldBuilding(worldBuilding)
+      .withSettingDigest(await loadSettingDigest({ chapterNumber: this.params.chapterNumber }))
       .withReviewFocus(this.params.reviewFocus || '')
       .withForeshadowing(foreshadowText)
 

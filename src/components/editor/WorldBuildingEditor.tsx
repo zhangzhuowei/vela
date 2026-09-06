@@ -11,14 +11,15 @@ import { Button } from '../ui/Button'
 import { EmptyState } from '../ui/EmptyState'
 import { ipc } from '../../services/ipc-client'
 
-import { ARCH_CHARACTER_SCOPE, runArchCharacterExtract, createArchitectureWorkflow } from '../../services/workflows/architecture-workflow'
+import { ARCH_CHARACTER_SCOPE, runArchCharacterExtract, createArchitectureWorkflow, type ArchStepKey } from '../../services/workflows/architecture-workflow'
 import { readPostProcessStatus, type PostProcessStatus } from '../../services/workflows/workflow-utils'
 import { globalEventBus } from '../../shared/event-bus'
 
-type ArchStepKey = 'premise' | 'characters' | 'worldbuilding' | 'synopsis'
+/** 编辑页展示的四个架构文件；第五步「设定纲要」有自己的页面，不在这里列 */
+type ArchFileKey = Exclude<ArchStepKey, 'setting_bible'>
 
 const ARCH_FILES_CONFIG: Array<{
-  key: ArchStepKey
+  key: ArchFileKey
   fileName: string
   labelKey: string
   descKey: string

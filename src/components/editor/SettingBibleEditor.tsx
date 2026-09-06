@@ -17,6 +17,7 @@ import { NativeSelect } from '../ui/NativeSelect'
 import { EmptyState } from '../ui/EmptyState'
 import { confirm } from '../ui/Confirm'
 import { toast } from '../ui/Toast'
+import { globalEventBus } from '../../shared/event-bus'
 import {
   DIGEST_BUDGET,
   GRID_KEYS,
@@ -79,6 +80,9 @@ export default function SettingBibleEditor() {
   const [toolBusy, setToolBusy] = useState<'split' | 'check' | null>(null)
   const [checkReport, setCheckReport] = useState<string | null>(null)
   const importInputRef = useRef<HTMLInputElement>(null)
+  const [batchOpen, setBatchOpen] = useState(false)
+  const [batchPicked, setBatchPicked] = useState<Set<number>>(new Set())
+  const batchRunning = useWorkflowStore((s) => s.isTypeRunning('batch_generate'))
 
   const selected = useMemo(() => modules.find((m) => m.id === selectedId) ?? null, [modules, selectedId])
   const dirty = !!(selected && draft && !sameDraft(draft, draftOf(selected)))
@@ -96,11 +100,17 @@ export default function SettingBibleEditor() {
 
   useEffect(() => { load() }, [load, currentProject?.path])
 
-  // 切换模块时重置编辑副本；同一模块被后台刷新（AI 生成完）也同步
+  // 批量生成 / Agent / 导入等在别处改了模块，这里跟着刷新列表
+  useEffect(() => globalEventBus.on('SETTING_MODULES_CHANGED', () => { void load() }), [load])
+
+  // 切换模块或该模块被落库（updatedAt 变了）时重置编辑副本；没保存的手改不受列表刷新影响
+  const selectedId2 = selected?.id
+  const selectedStamp = selected?.updatedAt
   useEffect(() => {
     setDraft(selected ? draftOf(selected) : null)
     setInstruction('')
-  }, [selected])
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedId2, selectedStamp])
 
   const patchDraft = (patch: Partial<Draft>) => setDraft((d) => (d ? { ...d, ...patch } : d))
   const patchGrid = (k: GridKey, v: string) => setDraft((d) => (d ? { ...d, grid: { ...d.grid, [k]: v } } : d))
@@ -258,6 +268,36 @@ export default function SettingBibleEditor() {
     }
   }
 
+  const openBatch = () => {
+    // 默认勾空模块；已有内容的默认不勾，勾了就是重生成
+    setBatchPicked(new Set(modules.filter((m) => m.injectMode !== 'off' && !GRID_KEYS.some((k) => parseGrid(m.body)[k].trim())).map((m) => m.id)))
+    setBatchOpen(true)
+  }
+
+  /** 批量生成走工作流：任务面板里能看进度、能取消 */
+  const runBatch = async () => {
+    if (!defaultModelId) { toast.error(t('settingBible.noModel')); return }
+    const ids = [...batchPicked]
+    if (ids.length === 0) return
+    setBatchOpen(false)
+    await useWorkflowStore.getState().startWorkflow({
+      type: 'batch_generate',
+      title: t('settingBible.batchTitle'),
+      steps: [
+        {
+          name: t('settingBible.batchStep', { count: ids.length }),
+          description: t('settingBible.batchStepDesc'),
+          executor: async (step, context, callbacks) => {
+            const { BatchGenerateSettingModulesCommand } = await import('../../services/workflows/commands/setting-bible-tools.command')
+            const r = await new BatchGenerateSettingModulesCommand(ids).execute({ step, context, callbacks })
+            return t('settingBible.messages.batchDone', { done: r.done, failed: r.failed.length })
+          },
+        },
+      ],
+      onComplete: { mode: 'silent', message: t('settingBible.batchTitle') },
+    })
+  }
+
   const runCheck = async () => {
     if (toolBusy) return
     if (!defaultModelId) { toast.error(t('settingBible.noModel')); return }
@@ -334,12 +374,57 @@ export default function SettingBibleEditor() {
             {toolBusy === 'check' ? <Loader2 size={12} className="animate-spin" /> : <SearchCheck size={12} />}
             {t('settingBible.check')}
           </Button>
+          <Button variant="ai" size="sm" disabled={batchRunning || modules.length === 0} onClick={openBatch} title={t('settingBible.batchHint')}>
+            {batchRunning ? <Loader2 size={12} className="animate-spin" /> : <Sparkles size={12} />}
+            {batchRunning ? t('settingBible.generating') : t('settingBible.batch')}
+          </Button>
           <Button variant="outline" size="sm" onClick={handleAdd}>
             <Plus size={12} />
             {t('settingBible.addModule')}
           </Button>
         </div>
       </div>
+
+      <Dialog open={batchOpen} onOpenChange={setBatchOpen}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>{t('settingBible.batchTitle')}</DialogTitle>
+            <DialogDescription>{t('settingBible.batchDesc')}</DialogDescription>
+          </DialogHeader>
+          <div className="px-1 space-y-1.5 max-h-[50vh] overflow-y-auto">
+            {modules.filter((m) => m.injectMode !== 'off').map((m) => {
+              const filled = GRID_KEYS.some((k) => parseGrid(m.body)[k].trim())
+              const on = batchPicked.has(m.id)
+              return (
+                <label key={m.id} className="flex items-center gap-2 text-xs cursor-pointer select-none py-0.5">
+                  <input
+                    type="checkbox"
+                    checked={on}
+                    onChange={() => setBatchPicked((prev) => { const n = new Set(prev); if (n.has(m.id)) n.delete(m.id); else n.add(m.id); return n })}
+                  />
+                  <span className="flex-1" style={{ color: 'var(--color-text)' }}>{m.title}</span>
+                  <span
+                    className="text-[0.65rem] px-1.5 py-px rounded"
+                    style={{
+                      color: filled ? (on ? 'var(--color-warning, #eab308)' : 'var(--color-success)') : 'var(--color-accent)',
+                      border: '1px solid currentColor',
+                    }}
+                  >
+                    {filled ? (on ? t('settingBible.batchWillOverride') : t('settingBible.batchKeep')) : t('settingBible.batchEmpty')}
+                  </span>
+                </label>
+              )
+            })}
+          </div>
+          <DialogFooter>
+            <Button variant="outline" size="sm" onClick={() => setBatchOpen(false)}>{t('cancel', { ns: 'common' })}</Button>
+            <Button variant="ai" size="sm" disabled={batchPicked.size === 0} onClick={runBatch}>
+              <Sparkles size={12} />
+              {t('settingBible.batchConfirm', { count: batchPicked.size })}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       <Dialog open={checkReport !== null} onOpenChange={(open) => { if (!open) setCheckReport(null) }}>
         <DialogContent className="max-w-2xl">

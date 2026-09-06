@@ -17,9 +17,64 @@ import {
   type SettingGrid,
   type SettingModuleData,
 } from '../../setting-bible'
-import { listSettingModules, saveSettingModule } from '../../setting-bible-service'
+import { listSettingModules, saveSettingModule, seedDefaultModules } from '../../setting-bible-service'
+import { GenerateSettingModuleCommand } from './setting-module.command'
 
 const t = (key: string, opts?: Record<string, unknown>) => i18n.t(key, { ns: 'commands', ...opts })
+
+export interface BatchResult {
+  done: number
+  failed: string[]
+}
+
+/**
+ * 批量生成：按顺序逐个模块跑 GenerateSettingModuleCommand，
+ * 后面的模块能看到前面刚生成的摘要，所以是顺序而不是并发。
+ * moduleIds 不传 = 先按类型铺默认清单（如为空），再生成所有空模块。
+ */
+export class BatchGenerateSettingModulesCommand extends BaseWorkflowCommand<BatchResult> {
+  constructor(private moduleIds?: number[]) {
+    super()
+  }
+
+  async execute({ step, context, callbacks }: CommandExecuteParams): Promise<BatchResult> {
+    const project = useProjectStore.getState().currentProject
+    if (!project) throw new Error(t('common.noProject'))
+
+    let modules = await listSettingModules()
+    if (!this.moduleIds && modules.length === 0) {
+      modules = await seedDefaultModules(project.novelConfig.genre)
+      callbacks.log(t('settingModule.batchSeeded', { count: modules.length }))
+    }
+    const targets = this.moduleIds
+      ? modules.filter((m) => this.moduleIds!.includes(m.id))
+      : modules.filter((m) => m.injectMode !== 'off' && isGridEmpty(m.body))
+
+    if (targets.length === 0) {
+      callbacks.log(t('settingModule.batchNothing'))
+      return { done: 0, failed: [] }
+    }
+
+    const failed: string[] = []
+    let done = 0
+    for (let i = 0; i < targets.length; i++) {
+      if (context.cancelled) throw new Error(t('base.workflowCancelled'))
+      const m = targets[i]
+      callbacks.log(t('settingModule.batchProgress', { index: i + 1, total: targets.length, title: m.title }))
+      callbacks.setProgress(Math.round((i / targets.length) * 100))
+      try {
+        await new GenerateSettingModuleCommand(m.id, { mode: 'generate' }).execute({ step, context, callbacks })
+        done++
+      } catch (e) {
+        failed.push(m.title)
+        callbacks.log(t('settingModule.batchItemFailed', { title: m.title, error: e instanceof Error ? e.message : String(e) }))
+      }
+    }
+    callbacks.setProgress(100)
+    callbacks.log(t('settingModule.batchDone', { done, failed: failed.length }))
+    return { done, failed }
+  }
+}
 
 export interface SplitResult {
   filled: number

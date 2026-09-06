@@ -141,8 +141,11 @@ export interface PartialArchData {
   synopsis_result?: string
 }
 
+/** 架构生成的步骤键；setting_bible 是第五步：铺默认清单并批量生成空模块 */
+export type ArchStepKey = 'premise' | 'characters' | 'worldbuilding' | 'synopsis' | 'setting_bible'
+
 export interface ArchitectureWorkflowParams {
-  selectedSteps?: Array<'premise' | 'characters' | 'worldbuilding' | 'synopsis'>
+  selectedSteps?: ArchStepKey[]
   /** 每步的补充指导（如 { premise: "多强调金手指的限制" }） */
   stepGuidance?: Record<string, string>
 }
@@ -203,6 +206,16 @@ export function createArchitectureWorkflow(params: ArchitectureWorkflowParams = 
         context.data.stepGuidance = guidance
         const { GeneratePlotArchitectureCommand } = await import('./commands/architecture.command')
         return new GeneratePlotArchitectureCommand(sel).execute({ step, context, callbacks })
+      },
+    },
+    {
+      name: t('workflowDefs.stepSettingBible'),
+      key: 'setting_bible',
+      description: stepDesc('setting_bible', 'workflowDefs.stepSettingBibleDesc'),
+      executor: async (step: unknown, context: WorkflowContext, callbacks: StepCallbacks) => {
+        const { BatchGenerateSettingModulesCommand } = await import('./commands/setting-bible-tools.command')
+        const result = await new BatchGenerateSettingModulesCommand().execute({ step, context, callbacks })
+        return t('settingModule.batchDone', { done: result.done, failed: result.failed.length })
       },
     },
   ]

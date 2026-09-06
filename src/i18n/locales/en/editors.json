@@ -367,6 +367,16 @@
     "checkReportTitle": "Setting bible cross-check",
     "checkReportDesc": "Sorted by severity; each line ends with the cheapest fix. Nothing is changed automatically.",
     "close": "Close",
+    "batch": "Batch generate",
+    "batchHint": "Generate several modules in sequence; later ones see the digests just produced",
+    "batchTitle": "Batch-generate setting modules",
+    "batchDesc": "Empty modules are checked by default; checking a filled one regenerates it. Progress and cancel live in the task panel.",
+    "batchStep": "Generate {{count}} modules in sequence",
+    "batchStepDesc": "One call per module; always-on modules also refresh their digest",
+    "batchEmpty": "empty",
+    "batchKeep": "keep",
+    "batchWillOverride": "regenerate",
+    "batchConfirm": "Generate {{count}}",
     "exportJson": "Export all modules as JSON",
     "importJson": "Import modules from JSON (same key overwrites, new keys append)",
     "grid": {
@@ -388,7 +398,8 @@
       "deleted": "Module deleted",
       "splitDone": "Split done: filled {{filled}} empty modules, created {{created}}",
       "importFailed": "Not a valid setting-bible JSON",
-      "importOk": "Imported {{count}} modules"
+      "importOk": "Imported {{count}} modules",
+      "batchDone": "Batch done: {{done}} succeeded, {{failed}} failed"
     }
   },
   "worldBuilding": {

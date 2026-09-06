@@ -1,9 +1,12 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Wand2, AlertCircle, ChevronDown, ChevronRight } from 'lucide-react'
 import { useProjectStore } from '../../stores/project-store'
 import { useWorkflowStore } from '../../stores/workflow-store'
 import { guardArchitectureGeneration, guardCharacterRegeneration } from '../../services/workflow-guards'
+import { listSettingModules } from '../../services/setting-bible-service'
+import { isGridEmpty } from '../../services/setting-bible'
+import type { ArchStepKey } from '../../services/workflows/architecture-workflow'
 import { toast } from '../ui/Toast'
 import {
   Dialog, DialogContent, DialogHeader, DialogFooter, DialogTitle, DialogDescription,
@@ -11,7 +14,7 @@ import {
 import { Button } from '../ui/Button'
 import { Textarea } from '../ui/Textarea'
 
-type ArchStepKey = 'premise' | 'characters' | 'worldbuilding' | 'synopsis'
+export type { ArchStepKey }
 
 const ARCH_FILES: Array<{
   key: ArchStepKey
@@ -24,7 +27,13 @@ const ARCH_FILES: Array<{
   { key: 'characters',    fileName: 'characters.md',    label: '角色图谱', iconName: 'users',  desc: '角色弧光、关系网、矛盾交织' },
   { key: 'worldbuilding', fileName: 'worldbuilding.md', label: '世界观',   iconName: 'globe',  desc: '核心规则、阶层断层、深层危机' },
   { key: 'synopsis',      fileName: 'synopsis.md',      label: '情节大纲', iconName: 'map',    desc: '三幕式情节骨架' },
+  { key: 'setting_bible', fileName: '',                 label: '设定纲要', iconName: 'scroll-text', desc: '铺默认清单并批量生成空模块' },
 ]
+
+const ALL_KEYS: ArchStepKey[] = ARCH_FILES.map((f) => f.key)
+
+/** 第五步没有「逐步指导」文本框：它的模板把指令当改写命令，对空模块没意义 */
+const GUIDANCE_KEYS: ArchStepKey[] = ['premise', 'characters', 'worldbuilding', 'synopsis']
 
 interface Props {
   isOpen: boolean
@@ -49,6 +58,7 @@ export default function ArchitectureConfirmDialog({
     characters: t('architectureConfirm.characterMap'),
     worldbuilding: t('architectureConfirm.worldbuilding'),
     synopsis: t('architectureConfirm.synopsis'),
+    setting_bible: t('architectureConfirm.settingBible'),
   }
 
   const archDescs: Record<ArchStepKey, string> = {
@@ -56,25 +66,37 @@ export default function ArchitectureConfirmDialog({
     characters: t('architectureConfirm.characterMapDesc'),
     worldbuilding: t('architectureConfirm.worldbuildingDesc'),
     synopsis: t('architectureConfirm.synopsisDesc'),
+    setting_bible: t('architectureConfirm.settingBibleDesc'),
+  }
+
+  // 设定纲要的「已生成」= 至少一个模块写了内容；它不在 archStatus 里，弹窗打开时自己查
+  const [bibleFilled, setBibleFilled] = useState(false)
+  useEffect(() => {
+    if (!isOpen) return
+    let alive = true
+    listSettingModules().then((list) => {
+      if (!alive) return
+      const filled = list.some((m) => !isGridEmpty(m.body))
+      setBibleFilled(filled)
+      // 状态是异步查到的，默认勾选要在这里补一次；已经有内容就默认不勾，免得覆盖
+      if (!initialSelectedSteps) setChecked((prev) => ({ ...prev, setting_bible: !filled }))
+    })
+    return () => { alive = false }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isOpen])
+
+  const status: Record<ArchStepKey, boolean> = { ...(archStatus as Record<ArchStepKey, boolean>), setting_bible: bibleFilled }
+
+  const defaultChecked = (): Record<ArchStepKey, boolean> => {
+    const out = {} as Record<ArchStepKey, boolean>
+    for (const k of ALL_KEYS) {
+      out[k] = initialSelectedSteps ? initialSelectedSteps.includes(k) : !status[k]
+    }
+    return out
   }
 
   // 默认：未生成的全部勾选；或使用 initialSelectedSteps 覆盖
-  const [checked, setChecked] = useState<Record<ArchStepKey, boolean>>(() => {
-    if (initialSelectedSteps) {
-      return {
-        premise:      initialSelectedSteps.includes('premise'),
-        characters:   initialSelectedSteps.includes('characters'),
-        worldbuilding: initialSelectedSteps.includes('worldbuilding'),
-        synopsis:     initialSelectedSteps.includes('synopsis'),
-      }
-    }
-    return {
-      premise:      !archStatus.premise,
-      characters:   !archStatus.characters,
-      worldbuilding: !archStatus.worldbuilding,
-      synopsis:     !archStatus.synopsis,
-    }
-  })
+  const [checked, setChecked] = useState<Record<ArchStepKey, boolean>>(defaultChecked)
 
   // 每步的补充指导
   const [stepGuidance, setStepGuidance] = useState<Record<string, string>>({})
@@ -82,23 +104,7 @@ export default function ArchitectureConfirmDialog({
   const [showGuidance, setShowGuidance] = useState(false)
 
   // 每次弹窗打开时重置选中状态
-  const resetChecked = () => {
-    if (initialSelectedSteps) {
-      setChecked({
-        premise:      initialSelectedSteps.includes('premise'),
-        characters:   initialSelectedSteps.includes('characters'),
-        worldbuilding: initialSelectedSteps.includes('worldbuilding'),
-        synopsis:     initialSelectedSteps.includes('synopsis'),
-      })
-    } else {
-      setChecked({
-        premise:      !archStatus.premise,
-        characters:   !archStatus.characters,
-        worldbuilding: !archStatus.worldbuilding,
-        synopsis:     !archStatus.synopsis,
-      })
-    }
-  }
+  const resetChecked = () => setChecked(defaultChecked())
 
   const isArchRunning = useWorkflowStore(s => s.isTypeRunning('architecture_generation'))
   const [isConfirming, setIsConfirming] = useState(false)
@@ -205,7 +211,7 @@ export default function ArchitectureConfirmDialog({
                 {t('architectureConfirm.selectSteps')}
               </p>
               <button
-                onClick={() => setChecked({ premise: true, characters: true, worldbuilding: true, synopsis: true })}
+                onClick={() => setChecked(Object.fromEntries(ALL_KEYS.map((k) => [k, true])) as Record<ArchStepKey, boolean>)}
                 className="text-xs underline"
                 style={{ color: 'var(--color-text-muted)' }}
               >
@@ -214,7 +220,7 @@ export default function ArchitectureConfirmDialog({
             </div>
 
             {ARCH_FILES.map(f => {
-              const exists = archStatus[f.key]
+              const exists = status[f.key]
               const isChecked = checked[f.key]
               return (
                 <label
@@ -262,8 +268,8 @@ export default function ArchitectureConfirmDialog({
             })}
           </div>
 
-          {/* 逐步指导区域（可折叠） */}
-          {selectedSteps.length > 0 && (
+          {/* 逐步指导区域（可折叠；设定纲要那步不收指导） */}
+          {selectedSteps.some((k) => GUIDANCE_KEYS.includes(k)) && (
             <div
               className="rounded-lg overflow-hidden"
               style={{ border: '1px solid var(--color-border)' }}
@@ -278,7 +284,7 @@ export default function ArchitectureConfirmDialog({
               </button>
               {showGuidance && (
                 <div className="px-3 pb-3 space-y-3" style={{ backgroundColor: 'var(--color-panel)' }}>
-                  {ARCH_FILES.filter(f => checked[f.key]).map(f => (
+                  {ARCH_FILES.filter(f => checked[f.key] && GUIDANCE_KEYS.includes(f.key)).map(f => (
                     <div key={f.key}>
                       <label className="text-[0.7rem] font-medium mb-1 block" style={{ color: 'var(--color-text-muted)' }}>
                         {archLabels[f.key]}

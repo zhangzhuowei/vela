@@ -1676,6 +1676,7 @@ Requirements:
       canon_context: '已确立事实（时间线+角色状态+剧情线+硬性约束），用于交叉验证',
       review_focus: '审稿维度侧重点（可选）',
       foreshadowing: '已知未回收伏笔清单（可选）',
+      setting_digest: '设定纲要常驻摘要与本章点名设定（可选）',
     },
     content: `请对以下章节进行审查。
 
@@ -1694,6 +1695,9 @@ Requirements:
 
 【世界观设定】
 {{world_building}}
+
+【设定纲要（如有）】（核对"设定合规"：人物行为是否违反这些规则却没有付出规则规定的代价；是否把规则写成了旁白科普）
+{{setting_digest}}
 
 【已知未回收伏笔清单】（用于核对"伏笔完整性"维度：本章是否漏收了到期伏笔、是否与已有伏笔体系冲突）
 {{foreshadowing}}
@@ -1744,6 +1748,9 @@ severity 取值：error=严重矛盾强烈建议修复, warning=轻微不一致�
 【Worldbuilding】
 {{world_building}}
 
+【Setting Bible（如有）】(check "setting compliance": do characters break these rules without paying the stated price; are rules narrated as exposition)
+{{setting_digest}}
+
 【Review Principles】
 
 1. Evidence-based review: Only report problems with clear textual evidence. Each problem must cite a specific sentence from the original text.
@@ -1775,6 +1782,9 @@ severity 取值：error=严重矛盾强烈建议修复, warning=轻微不一致�
 
 【Мироздание】
 {{world_building}}
+
+【Библия сеттинга（如有）】(проверка «соответствия сеттингу»: нарушают ли персонажи правила без указанной цены; не изложены ли правила как экспозиция)
+{{setting_digest}}
 
 【Принципы проверки】
 

@@ -237,6 +237,8 @@
     "stepWorldbuildingDesc": "Build a world matrix with built-in conflict engine",
     "stepSynopsis": "Synopsis",
     "stepSynopsisDesc": "Integrate all fragments into a synopsis following the selected structure",
+    "stepSettingBible": "Setting bible",
+    "stepSettingBibleDesc": "Seed the genre's default module list and generate each empty module's four-section rules",
     "configGenTitle": "🧠 AI Generate Novel Configuration",
     "configGenStepName": "Intelligent analysis and configuration fill",
     "configGenStepDesc": "Generate novel configuration from creative idea (approx. {{chapters}} chapters total)",
@@ -379,7 +381,12 @@
     "splitParseFailed": "Split result was not valid JSON; nothing was changed",
     "splitDone": "✅ Split done: filled {{filled}} empty modules, created {{created}}",
     "crossChecking": "  🔍 Cross-checking {{count}} setting modules...",
-    "crossCheckTooFew": "Cross-check needs at least two modules with content"
+    "crossCheckTooFew": "Cross-check needs at least two modules with content",
+    "batchSeeded": "  📜 Seeded {{count}} default modules for this genre",
+    "batchNothing": "  📜 No empty modules to generate; skipping",
+    "batchProgress": "  📜 [{{index}}/{{total}}] Generating \"{{title}}\"...",
+    "batchItemFailed": "  ⚠️ \"{{title}}\" failed: {{error}}",
+    "batchDone": "✅ Setting bible batch done: {{done}} succeeded, {{failed}} failed"
   },
   "chapterEnding": {
     "cliffhanger": "Cliffhanger required",

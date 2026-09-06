@@ -98,6 +98,8 @@
     "worldbuildingDesc": "Core rules, class fractures, deep threats",
     "synopsis": "Synopsis",
     "synopsisDesc": "Three-act plot skeleton",
+    "settingBible": "Setting bible",
+    "settingBibleDesc": "Seed default modules and generate the empty ones",
     "currentConfig": "Current Configuration",
     "genre": "Genre",
     "audience": "Audience",
