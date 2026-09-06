@@ -12,6 +12,7 @@ import { readArchitectureTool } from './read-architecture.tool'
 import { readBlueprintTool } from './read-blueprint.tool'
 import { readCharactersTool } from './read-characters.tool'
 import { readEnabledModsTool } from './read-enabled-mods.tool'
+import { readSettingBibleTool } from './read-setting-bible.tool'
 import { readProjectStateTool } from './read-project-state.tool'
 import { readDraftsTool } from './read-drafts.tool'
 import { listChaptersTool } from './list-chapters.tool'
@@ -29,6 +30,7 @@ export const builtinTools = [
   readBlueprintTool,
   readCharactersTool,
   readEnabledModsTool,
+  readSettingBibleTool,
   readProjectStateTool,
   readDraftsTool,
   listChaptersTool,

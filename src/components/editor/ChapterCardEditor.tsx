@@ -23,6 +23,7 @@ import {
 import { guardDirectoryGeneration } from '../../services/workflow-guards'
 import DirectoryConfigDialog from '../dialogs/DirectoryConfigDialog'
 import ModScopeBar from './ModScopeBar'
+import SettingKeysPicker from './SettingKeysPicker'
 import { Button } from '../ui/Button'
 import { Input } from '../ui/Input'
 import { Textarea } from '../ui/Textarea'
@@ -206,6 +207,7 @@ export default function ChapterCardEditor() {
       notes: '',
       notesUpdatedAt: '',
       chapterEnding: '',
+      settingKeys: [],
     }
     setBlueprints(prev => [...prev, newBlueprint])
     setSelectedIdx(blueprints.length)
@@ -602,6 +604,12 @@ export default function ChapterCardEditor() {
                     </NativeSelect>
                   </div>
                 </div>
+
+                {/* 本章点名的设定模块：写稿 / 刷新蓝图时全文注入 */}
+                <SettingKeysPicker
+                  value={selected.settingKeys ?? []}
+                  onChange={keys => updateField('settingKeys', keys)}
+                />
 
                 <div>
                   <Label>{t('chapterCard.suspenseHook')}</Label>

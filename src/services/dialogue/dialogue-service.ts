@@ -280,7 +280,7 @@ export async function assembleTurnMessages(params: AssembleTurnParams): Promise<
   )
   const lineContext = await getLineContext(scene)
   const scenePrelude = await getScenePrelude(scene)
-  const settingDigest = await loadSettingDigest()
+  const settingDigest = await loadSettingDigest({ chapterNumber: scene.chapterNumber, sceneId: scene.id })
   const target = params.targetLength
   const promptInput =
     !params.retry && target
@@ -468,7 +468,7 @@ export async function distillScene(params: {
   )
   const workingState = await ipc.invoke('db:chapter-working-state-get', params.scene.chapterNumber)
   const cast = await sceneCharacters(params.scene.chapterNumber, workingState)
-  const settingDigest = await loadSettingDigest()
+  const settingDigest = await loadSettingDigest({ chapterNumber: params.scene.chapterNumber, sceneId: params.scene.id })
   const messages = await runWithModScopeAsync(
     { chapterNumber: params.scene.chapterNumber, sceneId: params.scene.id },
     async () =>

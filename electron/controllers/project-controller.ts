@@ -7,6 +7,7 @@ import { ProjectData } from '../../src/shared/ipc-channels'
 import { DIR_VELA_INTERNAL, DIR_PROMPTS } from '../../src/shared/project-paths'
 import { initProjectDatabase } from '../database'
 import { ProjectCoreRepository } from '../repositories/project-core-repository'
+import { SettingModuleRepository } from '../repositories/setting-module-repository'
 import { pickProjectSeed } from '../../src/services/project-seed'
 
 interface RecentProject {
@@ -104,6 +105,8 @@ export function registerProjectController() {
         return { success: false, error: '源项目没有小说配置' }
       }
       const seed = pickProjectSeed(source)
+      // 设定纲要属于设定，跟配置和架构一起带走；知识库不复制，新项目保存模块时会重新同步
+      const settingModules = SettingModuleRepository.list()
 
       fs.mkdirSync(path.join(destDir, DIR_VELA_INTERNAL), { recursive: true })
       fs.mkdirSync(path.join(destDir, DIR_PROMPTS), { recursive: true })
@@ -113,6 +116,9 @@ export function registerProjectController() {
         ...seed,
         projectName: name,
       })
+      for (const m of settingModules) {
+        SettingModuleRepository.upsert({ ...m, id: undefined, kbDocId: '' })
+      }
 
       const updatedAt = new Date().toISOString()
       addRecentProject({ name, path: destDir, updatedAt })

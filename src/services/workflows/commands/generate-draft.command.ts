@@ -107,7 +107,7 @@ export class GenerateDraftCommand extends BaseWorkflowCommand {
     const promptBuilder = new ChapterPromptBuilder(template)
       // ---- 缓存命中区（跨章稳定，前缀对齐）----
       .withArchitecture(architecture)
-      .withSettingDigest(await loadSettingDigest())
+      .withSettingDigest(await loadSettingDigest({ chapterNumber: this.chapterInfo.chapterNumber }))
       .withGlobalGuidance(mergedGuidance)
       .withWritingStyle(project.novelConfig.writingStyle || '')
       .withStyleReference(project.novelConfig.styleReference || '')

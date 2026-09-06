@@ -1,8 +1,12 @@
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import {
   ScrollText, Sparkles, RefreshCw, Plus, Trash2, Save, ChevronUp, ChevronDown, Loader2, Wand2, AlertTriangle,
+  SplitSquareVertical, SearchCheck, Download, Upload,
 } from 'lucide-react'
+import {
+  Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter,
+} from '../ui/Dialog'
 import { useProjectStore } from '../../stores/project-store'
 import { useLLMStore } from '../../stores/llm-store'
 import { useWorkflowStore } from '../../stores/workflow-store'
@@ -20,8 +24,10 @@ import {
   defaultModulesForGenre,
   digestChars,
   emptyGrid,
+  exportSettingModulesToJson,
   newCustomKey,
   parseGrid,
+  parseSettingModulesImport,
   serializeGrid,
   type GridKey,
   type SettingGrid,
@@ -30,6 +36,7 @@ import {
 } from '../../services/setting-bible'
 import {
   deleteSettingModule,
+  importSettingModules,
   listSettingModules,
   reorderSettingModules,
   saveSettingModule,
@@ -69,6 +76,9 @@ export default function SettingBibleEditor() {
   const [saving, setSaving] = useState(false)
   const [busy, setBusy] = useState<'generate' | 'rewrite' | 'summary' | null>(null)
   const [instruction, setInstruction] = useState('')
+  const [toolBusy, setToolBusy] = useState<'split' | 'check' | null>(null)
+  const [checkReport, setCheckReport] = useState<string | null>(null)
+  const importInputRef = useRef<HTMLInputElement>(null)
 
   const selected = useMemo(() => modules.find((m) => m.id === selectedId) ?? null, [modules, selectedId])
   const dirty = !!(selected && draft && !sameDraft(draft, draftOf(selected)))
@@ -188,21 +198,77 @@ export default function SettingBibleEditor() {
         mode: mode === 'summary' ? 'summary' : 'generate',
         instruction: mode === 'rewrite' ? instruction : '',
       })
-      const result = await cmd.execute({
-        step: { id: '', commandId: '', name: '', params: {} },
-        context: { data: {}, cancelled: false },
-        callbacks: {
-          log: (msg: string) => useWorkflowStore.getState().addLog('info', msg),
-          setProgress: () => {},
-          appendText: () => {},
-        },
-      })
+      const result = await cmd.execute(dummyExec())
       applySaved(result)
       if (mode === 'rewrite') setInstruction('')
     } catch (e) {
       toast.error(`${t('settingBible.messages.generateFailed')}: ${e}`)
     } finally {
       setBusy(null)
+    }
+  }
+
+  const dummyExec = () => ({
+    step: { id: '', commandId: '', name: '', params: {} },
+    context: { data: {}, cancelled: false },
+    callbacks: {
+      log: (msg: string) => useWorkflowStore.getState().addLog('info', msg),
+      setProgress: () => {},
+      appendText: () => {},
+    },
+  })
+
+  /** 把故事架构的世界观拆进空模块；已有内容的模块不动 */
+  const runSplit = async () => {
+    if (toolBusy) return
+    if (!defaultModelId) { toast.error(t('settingBible.noModel')); return }
+    setToolBusy('split')
+    try {
+      const { SplitWorldbuildingCommand } = await import('../../services/workflows/commands/setting-bible-tools.command')
+      const result = await new SplitWorldbuildingCommand().execute(dummyExec())
+      await load()
+      toast.success(t('settingBible.messages.splitDone', { filled: result.filled, created: result.created }))
+    } catch (e) {
+      toast.error(`${t('settingBible.messages.generateFailed')}: ${e instanceof Error ? e.message : e}`)
+    } finally {
+      setToolBusy(null)
+    }
+  }
+
+  const handleExport = () => {
+    if (!currentProject || modules.length === 0) return
+    const blob = new Blob([exportSettingModulesToJson(modules)], { type: 'application/json' })
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = url
+    a.download = `${currentProject.name.replace(/[\\/:*?"<>|]/g, '_')}.vela-setting-bible.json`
+    a.click()
+    URL.revokeObjectURL(url)
+  }
+
+  const handleImportFile = async (file: File) => {
+    const parsed = parseSettingModulesImport(await file.text())
+    if (!parsed) { toast.error(t('settingBible.messages.importFailed')); return }
+    try {
+      const count = await importSettingModules(parsed)
+      await load()
+      toast.success(t('settingBible.messages.importOk', { count }))
+    } catch (e) {
+      toast.error(`${t('settingBible.messages.saveFailed')}: ${e}`)
+    }
+  }
+
+  const runCheck = async () => {
+    if (toolBusy) return
+    if (!defaultModelId) { toast.error(t('settingBible.noModel')); return }
+    setToolBusy('check')
+    try {
+      const { CrossCheckSettingsCommand } = await import('../../services/workflows/commands/setting-bible-tools.command')
+      setCheckReport(await new CrossCheckSettingsCommand().execute(dummyExec()))
+    } catch (e) {
+      toast.error(`${t('settingBible.messages.generateFailed')}: ${e instanceof Error ? e.message : e}`)
+    } finally {
+      setToolBusy(null)
     }
   }
 
@@ -243,12 +309,52 @@ export default function SettingBibleEditor() {
           <Button variant="ghost" size="icon" onClick={load} title={t('settingBible.refresh')}>
             <RefreshCw size={13} className={loading ? 'animate-spin' : ''} />
           </Button>
+          <Button variant="ghost" size="icon" disabled={modules.length === 0} onClick={handleExport} title={t('settingBible.exportJson')}>
+            <Download size={13} />
+          </Button>
+          <Button variant="ghost" size="icon" onClick={() => importInputRef.current?.click()} title={t('settingBible.importJson')}>
+            <Upload size={13} />
+          </Button>
+          <input
+            ref={importInputRef}
+            type="file"
+            accept=".json,application/json"
+            className="hidden"
+            onChange={(e) => {
+              const file = e.target.files?.[0]
+              e.target.value = ''
+              if (file) void handleImportFile(file)
+            }}
+          />
+          <Button variant="ghost" size="sm" disabled={!!toolBusy} onClick={runSplit} title={t('settingBible.splitHint')}>
+            {toolBusy === 'split' ? <Loader2 size={12} className="animate-spin" /> : <SplitSquareVertical size={12} />}
+            {t('settingBible.split')}
+          </Button>
+          <Button variant="ghost" size="sm" disabled={!!toolBusy || modules.length < 2} onClick={runCheck} title={t('settingBible.checkHint')}>
+            {toolBusy === 'check' ? <Loader2 size={12} className="animate-spin" /> : <SearchCheck size={12} />}
+            {t('settingBible.check')}
+          </Button>
           <Button variant="outline" size="sm" onClick={handleAdd}>
             <Plus size={12} />
             {t('settingBible.addModule')}
           </Button>
         </div>
       </div>
+
+      <Dialog open={checkReport !== null} onOpenChange={(open) => { if (!open) setCheckReport(null) }}>
+        <DialogContent className="max-w-2xl">
+          <DialogHeader>
+            <DialogTitle>{t('settingBible.checkReportTitle')}</DialogTitle>
+            <DialogDescription>{t('settingBible.checkReportDesc')}</DialogDescription>
+          </DialogHeader>
+          <pre className="text-xs whitespace-pre-wrap leading-relaxed max-h-[60vh] overflow-y-auto" style={{ color: 'var(--color-text)' }}>
+            {checkReport}
+          </pre>
+          <DialogFooter>
+            <Button size="sm" onClick={() => setCheckReport(null)}>{t('settingBible.close')}</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       <div className="px-3 py-1.5 text-[0.7rem] leading-relaxed flex-shrink-0" style={{ color: 'var(--color-text-muted)', borderBottom: '1px solid var(--color-border)' }}>
         {t('settingBible.priorityNote')}
@@ -258,10 +364,16 @@ export default function SettingBibleEditor() {
         <div className="flex-1 flex flex-col items-center justify-center gap-3 p-6">
           <EmptyState icon={<ScrollText size={36} />} message={t('settingBible.emptyTitle')} opacity={0.5} />
           <div className="text-xs text-center max-w-md" style={{ color: 'var(--color-text-muted)' }}>{t('settingBible.emptyDesc')}</div>
-          <Button variant="ai" size="default" onClick={handleSeed} title={t('settingBible.seedDefaultsHint', { titles: defaultTitles })}>
-            <Sparkles size={12} />
-            {t('settingBible.seedDefaults', { genre })}
-          </Button>
+          <div className="flex items-center gap-2">
+            <Button variant="ai" size="default" onClick={handleSeed} title={t('settingBible.seedDefaultsHint', { titles: defaultTitles })}>
+              <Sparkles size={12} />
+              {t('settingBible.seedDefaults', { genre })}
+            </Button>
+            <Button variant="outline" size="default" disabled={!!toolBusy} onClick={async () => { await handleSeed(); await runSplit() }} title={t('settingBible.splitHint')}>
+              {toolBusy === 'split' ? <Loader2 size={12} className="animate-spin" /> : <SplitSquareVertical size={12} />}
+              {t('settingBible.seedAndSplit')}
+            </Button>
+          </div>
         </div>
       ) : (
         <div className="flex-1 flex min-h-0">

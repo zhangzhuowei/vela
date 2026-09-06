@@ -354,6 +354,21 @@
     "moveUp": "Move up",
     "moveDown": "Move down",
     "noModel": "Configure an AI model first",
+    "pickerLabel": "Settings involved",
+    "pickerHint": "Named modules are injected in full when writing, no reliance on retrieval",
+    "pickerAlwaysHint": "Always-on module: naming it injects the full text for this chapter / scene",
+    "pickerRetrievalHint": "On-demand module: naming it injects the full text for this chapter / scene",
+    "pickerEmpty": "This module has no content yet",
+    "split": "Split from worldbuilding",
+    "splitHint": "Split the architecture's worldbuilding into modules that are still empty; filled modules are left alone, leftover rules become new modules (max 3)",
+    "seedAndSplit": "Seed list and split worldbuilding",
+    "check": "Cross-check",
+    "checkHint": "Find contradictions, duplicates and gaps between modules; report only, no edits",
+    "checkReportTitle": "Setting bible cross-check",
+    "checkReportDesc": "Sorted by severity; each line ends with the cheapest fix. Nothing is changed automatically.",
+    "close": "Close",
+    "exportJson": "Export all modules as JSON",
+    "importJson": "Import modules from JSON (same key overwrites, new keys append)",
     "grid": {
       "规则": "Rules",
       "例外": "Exceptions",
@@ -370,7 +385,10 @@
       "saveFailed": "Save failed",
       "generateFailed": "Generation failed",
       "seeded": "Default modules created for this genre",
-      "deleted": "Module deleted"
+      "deleted": "Module deleted",
+      "splitDone": "Split done: filled {{filled}} empty modules, created {{created}}",
+      "importFailed": "Not a valid setting-bible JSON",
+      "importOk": "Imported {{count}} modules"
     }
   },
   "worldBuilding": {

@@ -168,17 +168,35 @@ export function digestChars(modules: SettingModuleData[]): number {
 const DIGEST_HEADER =
   '【设定纲要 · 本世界运转规则】（优先级：低于人物当前状态与已发生事实，高于故事架构与知识库资料；只按规则写人怎么做，禁止旁白式科普这些规则）'
 
+const FOCUS_HEADER =
+  '【本章点名设定 · 全文】（本章 / 本场剧情须直接体现这些规则，不得与之相悖；仍不得写成说明书）'
+
+/** 一个模块的四格全文，点名注入用 */
+export function renderModuleFull(m: Pick<SettingModuleData, 'title' | 'body'>): string {
+  const grid = parseGrid(m.body)
+  const parts = GRID_KEYS.filter((k) => grid[k].trim()).map((k) => `${k}：${grid[k].trim()}`)
+  return parts.length ? `### ${m.title.trim()}\n${parts.join('\n')}` : ''
+}
+
 /**
- * 拼常驻摘要。没有可用模块时返回空串，模板里的「（如有）」标签会被自动裁掉。
+ * 拼注入用的设定文本：常驻模块出摘要；被点名的模块（本章 / 本场）出全文，
+ * 且不再重复出现在摘要列表里。没有可用内容时返回空串，模板里的「（如有）」标签会被自动裁掉。
  */
-export function buildSettingDigest(modules: SettingModuleData[]): string {
+export function buildSettingDigest(modules: SettingModuleData[], focusKeys: string[] = []): string {
+  const focus = new Set(focusKeys)
+  const focused = modules
+    .filter((m) => focus.has(m.key) && m.injectMode !== 'off')
+    .map(renderModuleFull)
+    .filter(Boolean)
   const lines = modules
-    .filter((m) => m.injectMode === 'always')
+    .filter((m) => m.injectMode === 'always' && !(focus.has(m.key) && !isGridEmpty(m.body)))
     .map((m) => ({ title: m.title.trim(), text: effectiveSummary(m) }))
     .filter((x) => x.title && x.text)
     .map((x) => `- ${x.title}：${x.text}`)
-  if (lines.length === 0) return ''
-  return `${DIGEST_HEADER}\n${lines.join('\n')}`
+  const blocks: string[] = []
+  if (lines.length) blocks.push(`${DIGEST_HEADER}\n${lines.join('\n')}`)
+  if (focused.length) blocks.push(`${FOCUS_HEADER}\n${focused.join('\n\n')}`)
+  return blocks.join('\n\n')
 }
 
 // ---------------------------------------------------------------------------
@@ -201,4 +219,63 @@ export function kbDocumentText(m: Pick<SettingModuleData, 'title' | 'body'>): st
 
 export function newCustomKey(): string {
   return `custom_${Date.now().toString(36)}`
+}
+
+// ---------------------------------------------------------------------------
+// JSON 进出（kind=vela-setting-bible；不带 id / kbDocId / 时间戳）
+// ---------------------------------------------------------------------------
+
+export const SETTING_BIBLE_JSON_KIND = 'vela-setting-bible'
+
+export type SettingModulePortable = Pick<SettingModuleData, 'key' | 'title' | 'injectMode' | 'body' | 'summary'>
+
+const MODES = new Set<SettingInjectMode>(['always', 'retrieval', 'off'])
+
+export function exportSettingModulesToJson(modules: SettingModuleData[]): string {
+  const out: SettingModulePortable[] = [...modules]
+    .sort((a, b) => a.sortOrder - b.sortOrder)
+    .map((m) => ({ key: m.key, title: m.title, injectMode: m.injectMode, body: m.body, summary: m.summary }))
+  return JSON.stringify({ kind: SETTING_BIBLE_JSON_KIND, modules: out }, null, 2)
+}
+
+function parseOne(raw: unknown): SettingModulePortable | null {
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return null
+  const o = raw as Record<string, unknown>
+  const title = String(o.title ?? '').trim()
+  if (!title) return null
+  const mode = String(o.injectMode ?? 'retrieval') as SettingInjectMode
+  let body = String(o.body ?? '')
+  // 也接受四格散着放的写法 { 规则, 例外, 进戏, 禁止 }
+  if (!body.trim() && GRID_KEYS.some((k) => typeof o[k] === 'string')) {
+    body = serializeGrid({
+      规则: String(o.规则 ?? ''),
+      例外: String(o.例外 ?? ''),
+      进戏: String(o.进戏 ?? ''),
+      禁止: String(o.禁止 ?? ''),
+    })
+  }
+  const key = String(o.key ?? '').trim().replace(/[^\w\u4e00-\u9fa5-]/g, '_').slice(0, 100)
+  return {
+    key: key || `custom_${title.replace(/\s+/g, '_').slice(0, 40)}`,
+    title,
+    injectMode: MODES.has(mode) ? mode : 'retrieval',
+    body,
+    summary: String(o.summary ?? '').slice(0, SUMMARY_MAX),
+  }
+}
+
+/** 解析导入 JSON：整包 / 数组 / 单个。无效则 null。 */
+export function parseSettingModulesImport(json: string): SettingModulePortable[] | null {
+  try {
+    const raw = JSON.parse(json)
+    const list = Array.isArray(raw)
+      ? raw
+      : raw && typeof raw === 'object' && Array.isArray((raw as { modules?: unknown }).modules)
+        ? (raw as { modules: unknown[] }).modules
+        : [raw]
+    const parsed = list.map(parseOne).filter((m): m is SettingModulePortable => Boolean(m))
+    return parsed.length ? parsed : null
+  } catch {
+    return null
+  }
 }

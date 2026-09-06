@@ -18,8 +18,18 @@ export interface BlueprintRow {
     notes: string
     notes_updated_at: string
     chapter_ending: string
+    setting_keys: string
     created_at: string
     updated_at: string
+}
+
+function parseKeys(raw: unknown): string[] {
+    try {
+        const arr = JSON.parse(String(raw ?? '[]'))
+        return Array.isArray(arr) ? arr.filter((k): k is string => typeof k === 'string' && k.length > 0) : []
+    } catch {
+        return []
+    }
 }
 
 /** 前端使用的驼峰接口 */
@@ -36,6 +46,8 @@ export interface BlueprintData {
     notesUpdatedAt: string
     /** 空 = 跟随小说配置；cliffhanger / smooth = 本章覆盖 */
     chapterEnding?: string
+    /** 本章点名全文注入的设定纲要模块 key */
+    settingKeys?: string[]
 }
 
 function rowToData(row: BlueprintRow): BlueprintData {
@@ -55,6 +67,7 @@ function rowToData(row: BlueprintRow): BlueprintData {
         chapterEnding: row.chapter_ending === 'smooth' || row.chapter_ending === 'cliffhanger'
           ? row.chapter_ending
           : '',
+        settingKeys: parseKeys(row.setting_keys),
     }
 }
 
@@ -103,8 +116,8 @@ export class BlueprintRepository {
         db.prepare(`
       INSERT INTO blueprints (
         chapter_number, title, role, purpose, key_events, characters,
-        suspense_hook, user_guidance, notes, notes_updated_at, chapter_ending
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        suspense_hook, user_guidance, notes, notes_updated_at, chapter_ending, setting_keys
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       ON CONFLICT(chapter_number) DO UPDATE SET
         title = excluded.title,
         role = excluded.role,
@@ -116,6 +129,7 @@ export class BlueprintRepository {
         notes = excluded.notes,
         notes_updated_at = excluded.notes_updated_at,
         chapter_ending = excluded.chapter_ending,
+        setting_keys = excluded.setting_keys,
         updated_at = datetime('now')
     `).run(
             data.chapterNumber,
@@ -131,6 +145,7 @@ export class BlueprintRepository {
             data.chapterEnding === 'smooth' || data.chapterEnding === 'cliffhanger'
               ? data.chapterEnding
               : '',
+            JSON.stringify(Array.isArray(data.settingKeys) ? data.settingKeys.filter((k) => typeof k === 'string' && k) : []),
         )
     }
 

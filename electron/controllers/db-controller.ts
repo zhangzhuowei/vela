@@ -123,7 +123,7 @@ export function registerDatabaseController() {
     }
   })
 
-  ipcMain.handle('db:scene-update', async (_event, id: number, patch: { title?: string; goal?: string; line?: string }) => {
+  ipcMain.handle('db:scene-update', async (_event, id: number, patch: { title?: string; goal?: string; line?: string; settingKeys?: string[] }) => {
     try {
       SceneRepository.update(id, patch)
       return { success: true }

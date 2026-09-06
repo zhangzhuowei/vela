@@ -4,10 +4,12 @@ import {
   defaultModulesForGenre,
   digestChars,
   effectiveSummary,
+  exportSettingModulesToJson,
   isGridEmpty,
   kbDocumentText,
   kbFileName,
   parseGrid,
+  parseSettingModulesImport,
   serializeGrid,
   SUMMARY_MAX,
   type SettingModuleData,
@@ -67,6 +69,23 @@ describe('digest', () => {
     expect(digest).not.toContain('不该出现')
   })
 
+  it('renders named modules in full and drops them from the summary list', () => {
+    const marriage = mod({
+      title: '婚姻制度',
+      summary: '摘要不该出现',
+      body: serializeGrid({ 规则: '一妻多夫。', 例外: '皇族可破。', 进戏: '退婚即羞辱。', 禁止: '' }),
+    })
+    const beauty = mod({ id: 2, key: 'beauty', title: '美貌等级', injectMode: 'retrieval', body: '## 规则\n三级制。' })
+    const off = mod({ id: 3, key: 'off', title: '关闭的', injectMode: 'off', body: '## 规则\n不该出现' })
+    const digest = buildSettingDigest([marriage, beauty, off], ['marriage', 'beauty', 'off'])
+    expect(digest).toContain('【本章点名设定')
+    expect(digest).toContain('### 婚姻制度\n规则：一妻多夫。\n例外：皇族可破。\n进戏：退婚即羞辱。')
+    expect(digest).toContain('### 美貌等级\n规则：三级制。')
+    expect(digest).not.toContain('摘要不该出现')
+    expect(digest).not.toContain('关闭的')
+    expect(digest).not.toContain('【设定纲要 ·')
+  })
+
   it('caps a summary at SUMMARY_MAX', () => {
     const long = '规'.repeat(SUMMARY_MAX + 50)
     expect(effectiveSummary({ summary: long, body: '' }).length).toBe(SUMMARY_MAX)
@@ -90,6 +109,29 @@ describe('knowledge base export', () => {
 
   it('sanitises file names', () => {
     expect(kbFileName('婚姻/继承')).toBe('设定·婚姻·继承.md')
+  })
+})
+
+describe('json import/export', () => {
+  it('round-trips the portable fields and drops ids', () => {
+    const json = exportSettingModulesToJson([
+      mod({ id: 9, key: 'b', title: 'B', sortOrder: 1, kbDocId: 'doc' }),
+      mod({ id: 8, key: 'a', title: 'A', sortOrder: 0, body: '## 规则\nx' }),
+    ])
+    expect(json).not.toContain('"id"')
+    expect(json).not.toContain('kbDocId')
+    const parsed = parseSettingModulesImport(json)!
+    expect(parsed.map((m) => m.key)).toEqual(['a', 'b'])
+    expect(parsed[0].body).toBe('## 规则\nx')
+  })
+
+  it('accepts loose grids and rejects garbage', () => {
+    const parsed = parseSettingModulesImport(JSON.stringify([{ title: '婚姻制度', 规则: '一妻多夫。', injectMode: 'weird' }]))!
+    expect(parsed[0].injectMode).toBe('retrieval')
+    expect(parseGrid(parsed[0].body).规则).toBe('一妻多夫。')
+    expect(parsed[0].key.startsWith('custom_')).toBe(true)
+    expect(parseSettingModulesImport('not json')).toBeNull()
+    expect(parseSettingModulesImport('[{"body":"no title"}]')).toBeNull()
   })
 })
 

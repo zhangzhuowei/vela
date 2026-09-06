@@ -373,7 +373,13 @@
     "summarySaved": "✅ Digest for \"{{title}}\" updated",
     "emptyResult": "⚠️ Empty result for \"{{title}}\"; keeping existing content",
     "genericHint": "How \"{{title}}\" works in this world: who is bound, thresholds and consequences, who may break it, how it becomes drama",
-    "noOtherModules": "(no other modules yet)"
+    "noOtherModules": "(no other modules yet)",
+    "splitting": "  📜 Splitting worldbuilding into setting modules...",
+    "splitNoWorldbuilding": "No worldbuilding in the story architecture yet; generate it before splitting",
+    "splitParseFailed": "Split result was not valid JSON; nothing was changed",
+    "splitDone": "✅ Split done: filled {{filled}} empty modules, created {{created}}",
+    "crossChecking": "  🔍 Cross-checking {{count}} setting modules...",
+    "crossCheckTooFew": "Cross-check needs at least two modules with content"
   },
   "chapterEnding": {
     "cliffhanger": "Cliffhanger required",

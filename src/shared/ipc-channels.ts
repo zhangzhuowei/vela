@@ -321,7 +321,7 @@ export interface DatabaseChannels {
   // 2b. 对话创作模式：场 / 回合 / 章级进行中状态
   'db:scene-list': { args: [chapterNumber: number]; return: SceneData[] }
   'db:scene-create': { args: [chapterNumber: number, title: string, goal: string]; return: { success: boolean; id?: number; error?: string } }
-  'db:scene-update': { args: [id: number, patch: { title?: string; goal?: string; line?: string }]; return: { success: boolean; error?: string } }
+  'db:scene-update': { args: [id: number, patch: { title?: string; goal?: string; line?: string; settingKeys?: string[] }]; return: { success: boolean; error?: string } }
   'db:scene-prev-in-line': { args: [chapterNumber: number, line: string, beforeSeq: number]; return: SceneData | null }
   'db:scene-set-summary': { args: [id: number, summary: string]; return: { success: boolean; error?: string } }
   'db:scene-delete': { args: [id: number]; return: { success: boolean; error?: string } }

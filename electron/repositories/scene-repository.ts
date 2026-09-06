@@ -17,6 +17,8 @@ export interface SceneData {
     body: string
     line: string
     summary: string
+    /** 本场点名全文注入的设定纲要模块 key */
+    settingKeys: string[]
     createdAt: string
     updatedAt: string
 }
@@ -30,6 +32,15 @@ export interface SceneTurnData {
     createdAt: string
 }
 
+function parseKeys(raw: unknown): string[] {
+    try {
+        const arr = JSON.parse(String(raw ?? '[]'))
+        return Array.isArray(arr) ? arr.filter((k): k is string => typeof k === 'string' && k.length > 0) : []
+    } catch {
+        return []
+    }
+}
+
 function rowToScene(row: Record<string, unknown>): SceneData {
     return {
         id: row.id as number,
@@ -41,6 +52,7 @@ function rowToScene(row: Record<string, unknown>): SceneData {
         body: row.body as string,
         line: (row.line as string) ?? '',
         summary: (row.summary as string) ?? '',
+        settingKeys: parseKeys(row.setting_keys),
         createdAt: row.created_at as string,
         updatedAt: row.updated_at as string,
     }
@@ -96,7 +108,7 @@ export class SceneRepository {
         return Number(result.lastInsertRowid)
     }
 
-    static update(id: number, patch: { title?: string; goal?: string; line?: string }): void {
+    static update(id: number, patch: { title?: string; goal?: string; line?: string; settingKeys?: string[] }): void {
         const db = getProjectDb()
         if (!db) return
         const sets: string[] = []
@@ -104,6 +116,10 @@ export class SceneRepository {
         if (patch.title !== undefined) { sets.push('title = ?'); values.push(patch.title) }
         if (patch.goal !== undefined) { sets.push('goal = ?'); values.push(patch.goal) }
         if (patch.line !== undefined) { sets.push('line = ?'); values.push(patch.line) }
+        if (patch.settingKeys !== undefined) {
+            sets.push('setting_keys = ?')
+            values.push(JSON.stringify(Array.isArray(patch.settingKeys) ? patch.settingKeys.filter((k) => typeof k === 'string' && k) : []))
+        }
         if (sets.length === 0) return
         sets.push("updated_at = datetime('now')")
         values.push(id)

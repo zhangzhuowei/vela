@@ -373,7 +373,13 @@
     "summarySaved": "✅ 「{{title}}」常驻摘要已更新",
     "emptyResult": "⚠️ 「{{title}}」生成结果为空，保留原内容",
     "genericHint": "「{{title}}」在这个世界里怎样运转：谁受约束、门槛与后果、谁能破例、怎样进戏",
-    "noOtherModules": "（暂无其它模块）"
+    "noOtherModules": "（暂无其它模块）",
+    "splitting": "  📜 从世界观拆分设定模块...",
+    "splitNoWorldbuilding": "故事架构里还没有世界观，先生成世界观再拆分",
+    "splitParseFailed": "拆分结果不是有效 JSON，已放弃本次拆分",
+    "splitDone": "✅ 拆分完成：填入 {{filled}} 个空模块，新建 {{created}} 个",
+    "crossChecking": "  🔍 交叉检查 {{count}} 个设定模块...",
+    "crossCheckTooFew": "至少要有两个写了内容的模块才能交叉检查"
   },
   "chapterEnding": {
     "cliffhanger": "必须卡悬念",

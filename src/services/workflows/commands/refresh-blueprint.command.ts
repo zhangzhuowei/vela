@@ -132,7 +132,7 @@ export class RefreshBlueprintCommand extends BaseWorkflowCommand<RefreshBlueprin
         suspenseHook: fallback.suspenseHook || '',
       })
       .withNovelArchitecture(architecture)
-      .withSettingDigest(await loadSettingDigest())
+      .withSettingDigest(await loadSettingDigest({ chapterNumber: n }))
       .withGlobalSummary(timeline)
       .withPreviousEnding(previousEnding)
       .withCharacterStates(characterStates)

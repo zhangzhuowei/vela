@@ -354,6 +354,21 @@
     "moveUp": "上移",
     "moveDown": "下移",
     "noModel": "请先配置 AI 模型",
+    "pickerLabel": "涉及设定",
+    "pickerHint": "点名的模块写稿时全文注入，不靠检索碰运气",
+    "pickerAlwaysHint": "常驻模块：点名后本章 / 本场改为全文注入",
+    "pickerRetrievalHint": "按需模块：点名后本章 / 本场全文注入",
+    "pickerEmpty": "这个模块还没写内容",
+    "split": "从世界观拆分",
+    "splitHint": "把故事架构里的世界观拆进还是空的模块；已有内容的模块不动，多出的规则另立新模块（最多 3 个）",
+    "seedAndSplit": "铺清单并从世界观拆分",
+    "check": "交叉检查",
+    "checkHint": "找模块之间的矛盾、重复、留白，只报告不改内容",
+    "checkReportTitle": "设定纲要交叉检查",
+    "checkReportDesc": "按严重程度排序；每条附一句最省事的修法。改哪条你自己定，这里不会自动改。",
+    "close": "关闭",
+    "exportJson": "导出全部模块为 JSON",
+    "importJson": "从 JSON 导入模块（同 key 覆盖，新 key 追加）",
     "grid": {
       "规则": "规则",
       "例外": "例外",
@@ -370,7 +385,10 @@
       "saveFailed": "保存失败",
       "generateFailed": "生成失败",
       "seeded": "已按类型铺好默认模块",
-      "deleted": "模块已删除"
+      "deleted": "模块已删除",
+      "splitDone": "拆分完成：填入 {{filled}} 个空模块，新建 {{created}} 个",
+      "importFailed": "不是有效的设定纲要 JSON",
+      "importOk": "已导入 {{count}} 个模块"
     }
   },
   "worldBuilding": {

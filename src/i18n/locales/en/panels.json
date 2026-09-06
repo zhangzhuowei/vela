@@ -217,6 +217,21 @@
           "guidance": "User Guidance"
         }
       },
+      "readSettingBible": {
+        "desc": "Read this book's setting bible (the rules the world runs on: institutions, marriage, ranks, taboos, protagonist config). Without a module name returns an overview; with one returns that module's Rules / Exceptions / Drama / Forbidden in full.",
+        "moduleDesc": "Module title or key (optional). Leave empty to list all modules with summaries.",
+        "empty": "This book has no setting-bible modules yet.",
+        "notFound": "No setting module named \"{{name}}\".",
+        "moduleEmpty": "\"{{name}}\" has no content yet.",
+        "noContent": "(not filled)",
+        "title": "📜 Setting bible ({{count}} modules)",
+        "hint": "Call again with a module name to read its full text.",
+        "mode": {
+          "always": "always",
+          "retrieval": "on demand",
+          "off": "off"
+        }
+      },
       "readEnabledMods": {
         "desc": "Read writing Mods enabled in this book's novel config (style guidance, inject slot, overridden prompt templates).",
         "empty": "This book has no Mods enabled. Toggle them in novel config, then @mention again.",

@@ -167,6 +167,9 @@ function migrateSchema(db: BetterSqlite3.Database) {
   addColumnIfMissing('project_core', 'option_hints_max_chars', `option_hints_max_chars INTEGER DEFAULT 24`)
   addColumnIfMissing('project_core', 'chapter_ending', `chapter_ending TEXT DEFAULT 'cliffhanger'`)
   addColumnIfMissing('blueprints', 'chapter_ending', `chapter_ending TEXT DEFAULT ''`)
+  // 设定纲要点名：本章 / 本场要全文注入的模块 key（JSON 数组）
+  addColumnIfMissing('blueprints', 'setting_keys', `setting_keys TEXT DEFAULT '[]'`)
+  addColumnIfMissing('scenes', 'setting_keys', `setting_keys TEXT DEFAULT '[]'`)
 }
 
 /** 创建完整表结构（9 张核心表 + 2 张沿用表） */

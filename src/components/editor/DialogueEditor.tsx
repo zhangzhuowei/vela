@@ -23,6 +23,7 @@ import {
 } from '../../services/dialogue/dialogue-service'
 import { shouldResetChapterWorkingState } from '../../services/dialogue/working-state-policy'
 import ModScopeBar from './ModScopeBar'
+import SettingKeysPicker from './SettingKeysPicker'
 import { resolveOptionCount, resolveOptionMaxChars } from '../../services/dialogue/option-hints'
 import { parseOptionHints, splitProseAndState, stripProtocolLeak } from '../../services/dialogue/state-protocol'
 import RequestMonitor from './RequestMonitor'
@@ -535,6 +536,17 @@ export default function DialogueEditor({ chapterNumber }: { chapterNumber: numbe
                   />
                 </>
               )}
+            </div>
+            {/* 本场点名的设定模块：场内生成与蒸馏时全文注入 */}
+            <div className="px-4 py-1" style={{ borderBottom: '1px solid var(--color-border)' }}>
+              <SettingKeysPicker
+                compact
+                value={scene.settingKeys ?? []}
+                disabled={scene.status !== 'open'}
+                onChange={(keys) => {
+                  void ipc.invoke('db:scene-update', scene.id, { settingKeys: keys }).then(() => loadScenes())
+                }}
+              />
             </div>
             <div ref={scrollRef} onScroll={onScroll} className="min-h-0 flex-1 space-y-3 overflow-y-auto px-4 py-4 pb-10">
               {turns.map((turn) => (

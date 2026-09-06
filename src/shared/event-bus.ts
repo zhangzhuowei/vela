@@ -20,6 +20,8 @@ export type GlobalEventType =
   | 'ARCH_FILE_UPDATED'
   // --- 定稿完成（替代原 vela:finalize-complete） ---
   | 'FINALIZE_COMPLETE'
+  // --- 设定纲要模块增删改（章节卡 / 对话场的点名选择器据此刷新） ---
+  | 'SETTING_MODULES_CHANGED'
   // --- 项目级事件 ---
   | 'PROJECT_CHANGED'
   // --- 系统通知 ---
@@ -47,6 +49,7 @@ export interface EventPayloadMap {
   'FINALIZE_COMPLETE': {
     chapterNumber: number
   }
+  'SETTING_MODULES_CHANGED': Record<string, never>
   'PROJECT_CHANGED': {
     projectPath: string
   }
