@@ -34,7 +34,7 @@ describe('character json export', () => {
         portraitPath: 'C:\\local\\portrait.png',
         _cid: 'x',
         _dbName: '小铃铛',
-      } as CharacterData)
+      } as unknown as CharacterData)
     )
     const raw = JSON.parse(json)
     expect(raw.kind).toBe('vela-character')

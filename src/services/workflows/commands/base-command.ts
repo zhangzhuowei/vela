@@ -5,6 +5,7 @@ import type { BasePromptBuilder } from '../../prompts/prompt-builder'
 import { pinWorkflowMessages } from '../../llm-request-inspect'
 import { getActiveModLayers, type ModApplyScope } from '../../mods'
 import { parseJSONWithRepair } from '../json-repair'
+import { stripThinkingTags as stripModelArtifacts } from '../../prose-clean'
 import i18n from '../../../i18n'
 
 export interface CommandExecuteParams {
@@ -267,7 +268,7 @@ export abstract class BaseWorkflowCommand<TResult = string> {
    * 去除 DeepSeek 等模型的 <think> 标签，保证落盘纯净
    */
   protected stripThinkingTags(text: string): string {
-    return text.replace(/<think>[\s\S]*?(?:<\/think>|$)/gi, '').trim()
+    return stripModelArtifacts(text)
   }
 
   /**

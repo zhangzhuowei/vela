@@ -2,7 +2,7 @@
  * HomeSidebarPanel — 主页侧边栏：项目管理入口 + 最近项目列表
  */
 
-import { FolderOpen, Download } from 'lucide-react'
+import { FolderOpen, Download, Copy } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { useProjectStore } from '../../../stores/project-store'
 import { useLayoutStore } from '../../../stores/layout-store'
@@ -62,13 +62,22 @@ export default function HomeSidebarPanel() {
           {t('welcome.openProject')}
         </Button>
         {currentProject && (
-          <Button
-            variant="outline"
-            className="w-full"
-            onClick={() => useLayoutStore.getState().openExport()}
-          >
-            <Download size={13} /> 导出项目（MD / TXT / EPUB）
-          </Button>
+          <>
+            <Button
+              variant="outline"
+              className="w-full"
+              onClick={() => useLayoutStore.getState().openCopyProject()}
+            >
+              <Copy size={13} /> {t('welcome.copyProject')}
+            </Button>
+            <Button
+              variant="outline"
+              className="w-full"
+              onClick={() => useLayoutStore.getState().openExport()}
+            >
+              <Download size={13} /> 导出项目（MD / TXT / EPUB）
+            </Button>
+          </>
         )}
       </div>
 

@@ -47,6 +47,7 @@
     "assembleTooltip": "把本章所有已收场正文按场序拼接，写入草稿箱新版本",
     "assembleDone": "已写入草稿箱，可到草稿箱继续修订与定稿",
     "workingState": "进行中角色状态",
+    "resetWorkingState": "清空本章进行中状态",
     "generating": "生成中…",
     "sceneGoal": "场目标",
     "sceneGoalPlaceholder": "本场要达成什么（写进提示词，可空）",
@@ -157,6 +158,14 @@
     "keyEventsPlaceholder": "主角做了什么，遭遇了什么反转，金手指怎么用的...",
     "suspenseHook": "末尾悬念钩子",
     "suspenseHookPlaceholder": "一句话说明结尾留了什么悬念...",
+    "suspenseHookDisabled": "本章为平稳过渡，不需要悬念钩子",
+    "chapterEnding": "章末收束",
+    "chapterEndingTooltip": "空则跟随小说配置；覆盖只影响本章写稿",
+    "chapterEndingInherit": "跟随小说配置（{{mode}}）",
+    "chapterEndingOptions": {
+      "cliffhanger": "必须卡悬念",
+      "smooth": "平稳过渡"
+    },
     "authorGuidance": "作者微操指导",
     "authorGuidanceHint": "（写稿时会作为最高优先级注入 AI — 可覆盖蓝图）",
     "authorGuidancePlaceholder": "我想在这章加入一个意外的背叛...",
@@ -397,6 +406,15 @@
     },
     "totalChapters": "总章节数",
     "wordsPerChapter": "每章字数",
+    "chapterEnding": "章末收束",
+    "chapterEndingOptions": {
+      "cliffhanger": "必须卡悬念",
+      "smooth": "平稳过渡"
+    },
+    "chapterEndingTips": {
+      "cliffhanger": "必须卡悬念：写稿最后一段卡小高潮或变故，留下追读钩子（默认，旧项目行为）",
+      "smooth": "平稳过渡：按蓝图收在当前节拍，禁止为断章硬造突发，语气能接下章"
+    },
     "creationMode": "创作模式",
     "creationModeOptions": {
       "pipeline": "大纲管线",

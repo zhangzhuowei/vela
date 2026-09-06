@@ -18,6 +18,7 @@ import AIPanel from './components/panels/AIPanel'
 import AIOutputPanel from './components/panels/AIOutputPanel'
 import BottomPanel from './components/panels/BottomPanel'
 import NewProjectDialog from './components/dialogs/NewProjectDialog'
+import CopyProjectDialog from './components/dialogs/CopyProjectDialog'
 import ImportNovelDialog from './components/dialogs/ImportNovelDialog'
 import ChapterCreationDialog from './components/dialogs/ChapterCreationDialog'
 import BatchGenerateDialog from './components/dialogs/BatchGenerateDialog'
@@ -41,6 +42,8 @@ export default function App() {
   const closeSettings = useLayoutStore(s => s.closeSettings)
   const newProjectOpen = useLayoutStore(s => s.newProjectOpen)
   const closeNewProject = useLayoutStore(s => s.closeNewProject)
+  const copyProjectOpen = useLayoutStore(s => s.copyProjectOpen)
+  const closeCopyProject = useLayoutStore(s => s.closeCopyProject)
   const exportOpen = useLayoutStore(s => s.exportOpen)
   const closeExport = useLayoutStore(s => s.closeExport)
   const importNovelOpen = useLayoutStore(s => s.importNovelOpen)
@@ -191,6 +194,10 @@ export default function App() {
       <NewProjectDialog
         open={newProjectOpen}
         onClose={closeNewProject}
+      />
+      <CopyProjectDialog
+        open={copyProjectOpen}
+        onClose={closeCopyProject}
       />
       <ImportNovelDialog
         open={importNovelOpen}

@@ -1,4 +1,5 @@
-import { Sparkles, FolderOpen, Clock, BookOpen, FileUp } from 'lucide-react'
+import { Sparkles, FolderOpen, Clock, BookOpen, FileUp, Copy } from 'lucide-react'
+import { useLayoutStore } from '../../stores/layout-store'
 import { useTranslation } from 'react-i18next'
 import { useProjectStore } from '../../stores/project-store'
 
@@ -130,6 +131,33 @@ export default function WelcomePage({ onNewProject, onOpenProject, onImportNovel
             </span>
           </button>
         </div>
+
+        {currentProject && (
+          <button
+            type="button"
+            onClick={() => useLayoutStore.getState().openCopyProject()}
+            className="mb-10 flex w-full items-center gap-3 rounded-xl px-4 py-3 text-left transition-all hover:scale-[1.01]"
+            style={{
+              backgroundColor: 'var(--color-sidebar)',
+              border: '1px solid var(--color-border)',
+            }}
+          >
+            <div
+              className="flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-xl"
+              style={{ backgroundColor: 'var(--color-hover)', color: 'var(--color-accent)' }}
+            >
+              <Copy size={18} />
+            </div>
+            <div className="min-w-0">
+              <div className="text-sm font-medium" style={{ color: 'var(--color-text)' }}>
+                {t('welcome.copyProject')}
+              </div>
+              <div className="text-xs" style={{ color: 'var(--color-text-muted)' }}>
+                {t('welcome.copyProjectDesc')}
+              </div>
+            </div>
+          </button>
+        )}
 
         {/* 最近项目 */}
         {recentProjects.length > 0 && (

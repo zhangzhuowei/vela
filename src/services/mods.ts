@@ -220,7 +220,8 @@ export function splitModGuidance(
   const parts: ModGuidancePart[] = []
   for (const id of enabled) {
     const m = pool.get(id)
-    const text = m?.guidanceAppend?.trim()
+    if (!m) continue
+    const text = m.guidanceAppend?.trim()
     if (!text) continue
     parts.push({
       id,

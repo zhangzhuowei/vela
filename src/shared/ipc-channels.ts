@@ -41,6 +41,10 @@ export interface ProjectChannels {
     args: [config: { name: string; path: string; genre: string; targetAudience: string }]
     return: { success: boolean; projectId: string; projectPath?: string; error?: string }
   }
+  'project:clone-seed': {
+    args: [config: { sourcePath: string; destParent: string; name: string }]
+    return: { success: boolean; projectPath?: string; error?: string }
+  }
   'project:open': {
     args: [projectPath: string]
     return: { success: boolean; project: ProjectData | null; error?: string }
@@ -229,6 +233,8 @@ export interface NovelConfig {
   multilineMode?: 'off' | 'summary'
   /** 场间前情：off = 关；prev_ending = 上一场结尾；chapter_summaries = 本章已收场摘要（缺省） */
   scenePreludeMode?: 'off' | 'prev_ending' | 'chapter_summaries'
+  /** 章末收束默认：cliffhanger = 必须卡悬念（缺省）；smooth = 平稳过渡 */
+  chapterEnding?: 'cliffhanger' | 'smooth'
   /** 对话结束后是否给出下一轮控场选项（默认关） */
   optionHintsEnabled?: boolean
   /** 书级默认选项条数（3–5，默认 3） */

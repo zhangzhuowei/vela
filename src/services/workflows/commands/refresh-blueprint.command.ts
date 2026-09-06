@@ -13,6 +13,8 @@ import {
   buildFutureBlueprintsText,
 } from '../workflow-utils'
 import type { ChapterInfo } from '../chapter-workflow'
+import { resolveChapterEnding } from '../../chapter-ending'
+import i18n from '../../../i18n'
 
 /** 蓝图刷新结果 */
 export interface RefreshBlueprintResult {
@@ -80,6 +82,7 @@ export class RefreshBlueprintCommand extends BaseWorkflowCommand<RefreshBlueprin
       keyEvents: bp.keyEvents || '',
       suspenseHook: bp.suspenseHook || undefined,
       userGuidance: bp.userGuidance || undefined,
+      chapterEnding: bp.chapterEnding || undefined,
     }
 
     const template = getPromptTemplate('refresh_chapter_blueprint')
@@ -137,6 +140,14 @@ export class RefreshBlueprintCommand extends BaseWorkflowCommand<RefreshBlueprin
       .withGlobalGuidance(project.novelConfig.globalGuidance || '（无特殊要求）')
       // 节奏指导来自工作流参数（与目录生成一致），非 novelConfig 字段
       .withPacingGuidance((context.data.pacingGuidance as string) || '')
+      .withEndingGuidance(
+        i18n.t(
+          resolveChapterEnding(project.novelConfig.chapterEnding, bp.chapterEnding) === 'smooth'
+            ? 'chapterEnding.refreshSmooth'
+            : 'chapterEnding.refreshCliffhanger',
+          { ns: 'commands' },
+        ),
+      )
 
     let payload: RefreshPayload
     try {
@@ -169,6 +180,7 @@ export class RefreshBlueprintCommand extends BaseWorkflowCommand<RefreshBlueprin
       ? (payload.characters as unknown[]).map((c) => String(c).trim()).filter(Boolean)
       : fallback.characters
 
+    const endingMode = resolveChapterEnding(project.novelConfig.chapterEnding, bp.chapterEnding)
     const refreshed: ChapterInfo = {
       chapterNumber: n,
       // role 强制锚定为原值：主线功能定位不允许被改写
@@ -176,10 +188,13 @@ export class RefreshBlueprintCommand extends BaseWorkflowCommand<RefreshBlueprin
       title: (payload.title || '').trim() || fallback.title,
       purpose: (payload.purpose || '').trim() || fallback.purpose,
       keyEvents: (payload.keyEvents || '').trim() || fallback.keyEvents,
-      suspenseHook: (payload.suspenseHook || '').trim() || fallback.suspenseHook,
+      suspenseHook: endingMode === 'smooth'
+        ? ''
+        : ((payload.suspenseHook || '').trim() || fallback.suspenseHook),
       characters: characters.length > 0 ? characters : fallback.characters,
-      // 用户微操指导原样保留
+      // 用户微操指导与章末收束覆盖原样保留
       userGuidance: fallback.userGuidance,
+      chapterEnding: fallback.chapterEnding,
     }
 
     if (payload.role && payload.role.trim() && payload.role.trim() !== fallback.role) {
@@ -201,6 +216,7 @@ export class RefreshBlueprintCommand extends BaseWorkflowCommand<RefreshBlueprin
         userGuidance: bp.userGuidance || '',
         notes: bp.notes || '',
         notesUpdatedAt: bp.notesUpdatedAt || '',
+        chapterEnding: bp.chapterEnding || '',
       })
       this.notifyRefresh(['blueprints'])
       callbacks.log(`  💾 已更新第${n}章蓝图`)

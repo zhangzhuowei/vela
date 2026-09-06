@@ -36,7 +36,7 @@ export const readBlueprintTool = buildAgentTool({
       if (!bp) {
         return { success: false, content: '', error: t('agent.tools.readBlueprint.notFound', { chapter: chapterNum }) }
       }
-      return { success: true, content: `${t('agent.tools.readBlueprint.title', { chapter: chapterNum })}\n\n${t('agent.tools.readBlueprint.labels.title')}: ${bp.title}\n${t('agent.tools.readBlueprint.labels.role')}: ${bp.role}\n${t('agent.tools.readBlueprint.labels.purpose')}: ${bp.purpose}\n${t('agent.tools.readBlueprint.labels.keyEvents')}: ${bp.keyEvents}\n${t('agent.tools.readBlueprint.labels.characters')}: ${bp.characters.join(', ')}\n${t('agent.tools.readBlueprint.labels.suspense')}: ${bp.suspenseHook}\n${t('agent.tools.readBlueprint.labels.notes')}: ${bp.notes}\n${t('agent.tools.readBlueprint.labels.guidance')}: ${bp.userGuidance}` }
+      return { success: true, content: `${t('agent.tools.readBlueprint.title', { chapter: chapterNum })}\n\n${t('agent.tools.readBlueprint.labels.title')}: ${bp.title}\n${t('agent.tools.readBlueprint.labels.role')}: ${bp.role}\n${t('agent.tools.readBlueprint.labels.purpose')}: ${bp.purpose}\n${t('agent.tools.readBlueprint.labels.keyEvents')}: ${bp.keyEvents}\n${t('agent.tools.readBlueprint.labels.characters')}: ${bp.characters.join(', ')}\n${t('agent.tools.readBlueprint.labels.suspense')}: ${bp.suspenseHook}\n${t('agent.tools.readBlueprint.labels.chapterEnding')}: ${bp.chapterEnding || t('agent.tools.readBlueprint.labels.chapterEndingInherit')}\n${t('agent.tools.readBlueprint.labels.notes')}: ${bp.notes}\n${t('agent.tools.readBlueprint.labels.guidance')}: ${bp.userGuidance}` }
     }
 
     // 列出所有蓝图文件

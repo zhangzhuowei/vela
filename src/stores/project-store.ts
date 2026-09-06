@@ -70,6 +70,8 @@ interface ProjectState {
   }) => Promise<boolean>
   /** 打开项目 */
   openProject: (projectPath: string) => Promise<boolean>
+  /** 复制当前工程的小说配置 + 故事架构为新项目 */
+  cloneProjectSeed: (config: { sourcePath: string; destParent: string; name: string }) => Promise<boolean>
   /** 保存项目 */
   saveProject: () => Promise<boolean>
   /** 更新小说配置 */
@@ -111,6 +113,24 @@ export const useProjectStore = create<ProjectState>()((set, get) => ({
     }
   },
 
+
+  cloneProjectSeed: async (config) => {
+    set({ loading: true })
+    try {
+      const result = await ipc.invoke('project:clone-seed', config)
+      if (!result.success || !result.projectPath) {
+        alertError(result.error ?? i18n.t('project.unknownError', { ns: 'stores' }), { title: i18n.t('project.cloneFailed', { ns: 'stores' }) })
+        return false
+      }
+      return get().openProject(result.projectPath)
+    } catch (e) {
+      console.error('[Project] cloneProjectSeed 异常:', e)
+      alertError(String(e), { title: i18n.t('project.cloneError', { ns: 'stores' }) })
+      return false
+    } finally {
+      set({ loading: false })
+    }
+  },
 
   openProject: async (projectPath) => {
     set({ loading: true })

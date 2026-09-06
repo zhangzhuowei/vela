@@ -205,6 +205,12 @@ export class ChapterPromptBuilder extends BasePromptBuilder {
     this.variables.style_reference = text;
     return this;
   }
+
+  /** 章末收束：悬念断章或平稳过渡 */
+  withEndingGuidance(text: string) {
+    this.variables.ending_guidance = text;
+    return this;
+  }
 }
 
 /**
@@ -491,6 +497,11 @@ export class RefreshBlueprintPromptBuilder extends BasePromptBuilder {
 
   withPacingGuidance(guidance: string) {
     this.variables.pacing_guidance = guidance;
+    return this;
+  }
+
+  withEndingGuidance(text: string) {
+    this.variables.ending_guidance = text;
     return this;
   }
 }

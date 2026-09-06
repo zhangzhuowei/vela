@@ -47,6 +47,7 @@
     "assembleTooltip": "Join all committed scenes in order and create a new draft version",
     "assembleDone": "Draft created — continue revising and finalize in the draft box",
     "workingState": "Working character states",
+    "resetWorkingState": "Clear this chapter's working states",
     "generating": "Generating…",
     "sceneGoal": "Scene goal",
     "sceneGoalPlaceholder": "What this scene should achieve (injected into the prompt, optional)",
@@ -157,6 +158,14 @@
     "keyEventsPlaceholder": "What the protagonist does, what twists they encounter, how the golden finger is used...",
     "suspenseHook": "End-of-Chapter Suspense Hook",
     "suspenseHookPlaceholder": "One sentence describing the cliffhanger at the end...",
+    "suspenseHookDisabled": "This chapter lands smoothly — no suspense hook needed",
+    "chapterEnding": "Chapter ending",
+    "chapterEndingTooltip": "Empty follows the novel config; override applies to this chapter only",
+    "chapterEndingInherit": "Follow novel config ({{mode}})",
+    "chapterEndingOptions": {
+      "cliffhanger": "Cliffhanger required",
+      "smooth": "Smooth landing"
+    },
     "authorGuidance": "Author Fine-tuning Guidance",
     "authorGuidanceHint": "(Injected as highest priority to AI during writing — can override blueprint)",
     "authorGuidancePlaceholder": "I want to add an unexpected betrayal in this chapter...",
@@ -397,6 +406,15 @@
     },
     "totalChapters": "Total Chapters",
     "wordsPerChapter": "Words per Chapter",
+    "chapterEnding": "Chapter ending",
+    "chapterEndingOptions": {
+      "cliffhanger": "Cliffhanger required",
+      "smooth": "Smooth landing"
+    },
+    "chapterEndingTips": {
+      "cliffhanger": "Cliffhanger: end on a minor climax or sudden turn and leave a hook (default, previous behavior)",
+      "smooth": "Smooth landing: close the current beat; do not invent a twist just to break the chapter"
+    },
     "creationMode": "Creation Mode",
     "creationModeOptions": {
       "pipeline": "Outline pipeline",

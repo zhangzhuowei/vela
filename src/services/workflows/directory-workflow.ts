@@ -64,6 +64,7 @@ const EMPTY_BLUEPRINT: ChapterBlueprint = {
   userGuidance: '',
   notes: '',
   notesUpdatedAt: '',
+  chapterEnding: '',
 }
 
 export interface DirectoryWorkflowParams {
@@ -170,6 +171,9 @@ export function parseTextBlueprints(content: string, startNum: number, endNum: n
         characters: Array.isArray(p.characters) ? p.characters : [],
         suspenseHook: String(p.suspenseHook || p.suspense_hook || ''),
         userGuidance: '',
+        chapterEnding: p.chapterEnding === 'smooth' || p.chapterEnding === 'cliffhanger'
+          ? String(p.chapterEnding)
+          : '',
       }))
   } catch {
     console.error('Failed to parse blueprint JSON', content)

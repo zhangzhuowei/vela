@@ -241,6 +241,7 @@
     "future_blueprints": "Future chapter blueprints",
     "writing_style": "Writing style description (optional)",
     "user_guidance": "Author's chapter guidance (optional)",
+    "ending_guidance": "Chapter-ending rule (cliffhanger or smooth landing)",
     "canon_context": "Narrative consistency Canon Context",
     "global_summary": "Context search results",
     "character_states": "Character states",

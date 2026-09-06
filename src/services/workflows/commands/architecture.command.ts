@@ -3,6 +3,7 @@ import { useProjectStore } from '../../../stores/project-store'
 import { getPromptTemplate } from '../../prompt-templates'
 import { ArchitecturePromptBuilder } from '../../prompts/prompt-builder'
 import { ipc } from '../../ipc-client'
+import { stripThinkingTags } from '../../prose-clean'
 import i18n from '../../../i18n'
 
 import type { NovelConfig } from '../../../shared/ipc-channels'
@@ -31,10 +32,6 @@ function getNovelConfig(): { project: NonNullable<ReturnType<typeof useProjectSt
   const project = useProjectStore.getState().currentProject
   if (!project) throw new Error(i18n.t('common.noProject', { ns: 'commands' }))
   return { project, config: project.novelConfig }
-}
-
-function stripThinkingTags(text: string): string {
-  return text.replace(/<think>[\s\S]*?(?:<\/think>|$)/gi, '').trim()
 }
 
 async function writeArchToDb(key: 'premise' | 'charactersArch' | 'worldbuilding' | 'synopsis', content: string): Promise<void> {

@@ -211,6 +211,8 @@
           "keyEvents": "Key Events",
           "characters": "Characters",
           "suspense": "Suspense",
+          "chapterEnding": "Chapter ending",
+          "chapterEndingInherit": "Follow novel config",
           "notes": "Notes",
           "guidance": "User Guidance"
         }

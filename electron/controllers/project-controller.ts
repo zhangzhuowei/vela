@@ -7,6 +7,7 @@ import { ProjectData } from '../../src/shared/ipc-channels'
 import { DIR_VELA_INTERNAL, DIR_PROMPTS } from '../../src/shared/project-paths'
 import { initProjectDatabase } from '../database'
 import { ProjectCoreRepository } from '../repositories/project-core-repository'
+import { pickProjectSeed } from '../../src/services/project-seed'
 
 interface RecentProject {
   name: string
@@ -82,6 +83,46 @@ export function registerProjectController() {
     }
   })
 
+  // 复制设定种子：只带小说配置 + 故事架构，不含章节/草稿/角色卡
+  ipcMain.handle('project:clone-seed', async (_event, config: {
+    sourcePath: string; destParent: string; name: string
+  }) => {
+    const name = config.name.trim()
+    const destParent = config.destParent.trim()
+    const sourcePath = config.sourcePath.trim()
+    if (!name || !destParent || !sourcePath) {
+      return { success: false, error: '缺少项目名称或路径' }
+    }
+    const destDir = path.join(destParent, name)
+    if (fs.existsSync(destDir)) {
+      return { success: false, error: '目标文件夹已存在' }
+    }
+    try {
+      initProjectDatabase(sourcePath)
+      const source = ProjectCoreRepository.get()
+      if (!source) {
+        return { success: false, error: '源项目没有小说配置' }
+      }
+      const seed = pickProjectSeed(source)
+
+      fs.mkdirSync(path.join(destDir, DIR_VELA_INTERNAL), { recursive: true })
+      fs.mkdirSync(path.join(destDir, DIR_PROMPTS), { recursive: true })
+      initProjectDatabase(destDir)
+      ProjectCoreRepository.init(name)
+      ProjectCoreRepository.update({
+        ...seed,
+        projectName: name,
+      })
+
+      const updatedAt = new Date().toISOString()
+      addRecentProject({ name, path: destDir, updatedAt })
+      return { success: true, projectPath: destDir }
+    } catch (error) {
+      try { initProjectDatabase(sourcePath) } catch { /* 恢复源库失败不覆盖原错误 */ }
+      return { success: false, error: String(error) }
+    }
+  })
+
   // 打开现有项目
   ipcMain.handle('project:open', async (_event, projectPath: string) => {
     try {
@@ -131,6 +172,7 @@ export function registerProjectController() {
           optionHintsEnabled: updatedCoreData.optionHintsEnabled ?? false,
           optionHintsCount: updatedCoreData.optionHintsCount ?? 3,
           optionHintsMaxChars: updatedCoreData.optionHintsMaxChars ?? 24,
+          chapterEnding: updatedCoreData.chapterEnding === 'smooth' ? 'smooth' : 'cliffhanger',
         },
         characterStates: updatedCoreData.characterStates,
         createdAt: new Date().toISOString(), // db 中实际上有，但这里先 mock 一下时间避免前端报错
@@ -176,6 +218,7 @@ export function registerProjectController() {
           optionHintsEnabled: data.novelConfig.optionHintsEnabled ?? false,
           optionHintsCount: data.novelConfig.optionHintsCount ?? 3,
           optionHintsMaxChars: data.novelConfig.optionHintsMaxChars ?? 24,
+          chapterEnding: data.novelConfig.chapterEnding === 'smooth' ? 'smooth' : 'cliffhanger',
         })
       }
 
@@ -227,6 +270,7 @@ export function registerProjectController() {
           optionHintsEnabled: data.novelConfig.optionHintsEnabled ?? false,
           optionHintsCount: data.novelConfig.optionHintsCount ?? 3,
           optionHintsMaxChars: data.novelConfig.optionHintsMaxChars ?? 24,
+          chapterEnding: data.novelConfig.chapterEnding === 'smooth' ? 'smooth' : 'cliffhanger',
         })
       }
       return { success: true }

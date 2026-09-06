@@ -8,6 +8,8 @@
     "openProjectDesc": "打开已有 Vela 项目",
     "importNovel": "导入小说",
     "importNovelDesc": "导入已有作品续写",
+    "copyProject": "复制为新项目",
+    "copyProjectDesc": "只带小说配置和故事架构，章节重写",
     "recentProjects": "最近项目",
     "footer": "Vela v0.1.0 · 七阶段 AI 驱动创作流水线 · 本地化数据安全"
   },

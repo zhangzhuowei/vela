@@ -15,9 +15,16 @@ import {
   runConsistencyGate,
 } from '../../narrative-consistency'
 import i18n from '../../../i18n'
+import {
+  type ChapterEnding,
+  isChapterEnding,
+  resolveChapterEnding,
+} from '../../chapter-ending'
+import { stripEditorialMarkers } from '../../prose-clean'
 
 export class GenerateDraftCommand extends BaseWorkflowCommand {
   protected attachModGuidance = true
+  private endingMode: ChapterEnding = 'cliffhanger'
   protected modScope() {
     return { chapterNumber: this.chapterInfo.chapterNumber }
   }
@@ -112,6 +119,23 @@ export class GenerateDraftCommand extends BaseWorkflowCommand {
       .withFutureBlueprints(futureBlueprintsStr)
       .withUserGuidance(this.chapterInfo.userGuidance?.trim() || '（无微操指导）')
 
+    this.endingMode = await this.resolveEndingMode(project.novelConfig.chapterEnding)
+    promptBuilder.withEndingGuidance(
+      i18n.t(
+        this.endingMode === 'smooth' ? 'chapterEnding.guidanceSmooth' : 'chapterEnding.guidanceCliffhanger',
+        { ns: 'commands' },
+      ),
+    )
+    callbacks.log(
+      i18n.t('chapterEnding.resolved', {
+        ns: 'commands',
+        mode: i18n.t(
+          this.endingMode === 'smooth' ? 'chapterEnding.smooth' : 'chapterEnding.cliffhanger',
+          { ns: 'commands' },
+        ),
+      }),
+    )
+
     if (!isFirstChapter) {
       // 从蓝图 JSON 的 notes 字段读取章节要点时间线（一次取回全部蓝图，避免逐章 IPC）
       const { readChapterNotesTimeline } = await import('../workflow-utils')
@@ -121,7 +145,7 @@ export class GenerateDraftCommand extends BaseWorkflowCommand {
       // 近 3 章定稿正文一次并行读回：上一章结尾与反雷同速览共用同一份数据
       //（原实现串行逐章读，且上一章全文要读两遍）
       const recentContents = await this.readRecentFinalizedContents(this.chapterInfo.chapterNumber, 3)
-      const previousEnding = (recentContents.get(this.chapterInfo.chapterNumber - 1) || '').slice(-1000)
+      const previousEnding = stripEditorialMarkers(recentContents.get(this.chapterInfo.chapterNumber - 1) || '').slice(-1000)
 
       let filteredContext = ''
       try {
@@ -325,8 +349,11 @@ ${result}
 1. 直接从上文的最后一句往下接着写，不要重写开头，不要复述或改写上文已有的任何段落，不要写"（续）"之类的标记。
 2. 需要补足约 ${gap} 字，使本章总字数达到 ${targetWords} 字左右。
 3. 补足篇幅的方式是把本章既定情节的每个节拍写足：补足场景的五感细节、角色的动作与微表情、对白的来回交锋与言外之意、主角的即时心理判断。严禁靠设定科普、无关寒暄、重复同一信息点来凑字数，更不许把后续章节的情节提前写进来。
-4. 如果上文末尾已经像是一个收尾，请把它当作本章中途的一个小高潮，继续往下推进剧情。
-5. 在你续写内容的最后一段留下一个强力的悬念钩子，作为整章的断章点。
+4. 如果上文末尾已经像是一个收尾，请把它当作本章中途的一个停顿，继续往下推进剧情。
+5. ${i18n.t(
+        this.endingMode === 'smooth' ? 'chapterEnding.continueSmooth' : 'chapterEnding.continueCliffhanger',
+        { ns: 'commands' },
+      )}
 6. 只输出续写的正文纯文本，不要 Markdown 符号，对话用中文双引号，段落之间保留一个空行。`
 
       let added = ''
@@ -411,6 +438,18 @@ ${result}
     return lines.length > 0
       ? lines.join('\n')
       : '（出场角色暂无说话风格档案，请自行赋予各角色有辨识度、彼此区分的对白）'
+  }
+
+  private async resolveEndingMode(book: unknown): Promise<ChapterEnding> {
+    if (isChapterEnding(this.chapterInfo.chapterEnding)) {
+      return resolveChapterEnding(book, this.chapterInfo.chapterEnding)
+    }
+    try {
+      const bp = await ipc.invoke('db:blueprint-get', this.chapterInfo.chapterNumber)
+      return resolveChapterEnding(book, bp?.chapterEnding)
+    } catch {
+      return resolveChapterEnding(book, undefined)
+    }
   }
 
   /** 把项目核心设定四段拼装为全书架构文本（premise/charactersArch/worldbuilding/synopsis 顺序） */

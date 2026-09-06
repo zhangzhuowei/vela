@@ -11,6 +11,18 @@
     "createProject": "Create Project",
     "creating": "Creating..."
   },
+  "copyProject": {
+    "title": "Copy as New Project",
+    "description": "Copies novel settings and story architecture only (premise / character map / world / synopsis). Does not copy chapter blueprints, drafts, dialogue scenes, or character cards.",
+    "nameLabel": "New title",
+    "namePlaceholder": "e.g. Azur Lane Test Copy",
+    "pathLabel": "Save location",
+    "pathPlaceholder": "Choose a directory",
+    "selectFolder": "Browse",
+    "cancel": "Cancel",
+    "confirm": "Copy and open",
+    "creating": "Copying..."
+  },
   "importNovel": {
     "title": "Import Existing Novel",
     "description": "Select novel files and Vela will automatically split chapters and reverse-engineer all structured data via AI.",

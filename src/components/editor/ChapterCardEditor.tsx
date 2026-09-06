@@ -32,6 +32,7 @@ import { cn } from '../../lib/utils'
 import { toast } from '../ui/Toast'
 import { confirm } from '../ui/Confirm'
 import { globalEventBus } from '../../shared/event-bus'
+import { resolveChapterEnding } from '../../services/chapter-ending'
 
 const ROLES = ['建置', '铺垫', '发展', '冲突', '高潮', '转折', '收尾']
 
@@ -117,6 +118,9 @@ export default function ChapterCardEditor() {
   }, [loadBlueprints])
 
   const selected = blueprints[selectedIdx] ?? null
+  const endingSmooth = selected
+    ? resolveChapterEnding(currentProject?.novelConfig?.chapterEnding, selected.chapterEnding) === 'smooth'
+    : false
 
   // 选中章变化时加载章级模式覆盖
   useEffect(() => {
@@ -201,6 +205,7 @@ export default function ChapterCardEditor() {
       userGuidance: '',
       notes: '',
       notesUpdatedAt: '',
+      chapterEnding: '',
     }
     setBlueprints(prev => [...prev, newBlueprint])
     setSelectedIdx(blueprints.length)
@@ -285,6 +290,7 @@ export default function ChapterCardEditor() {
       keyEvents: bp.keyEvents,
       characters: bp.characters.join('、'),
       userGuidance: bp.userGuidance || '',
+      chapterEnding: bp.chapterEnding || '',
     })
   }
 
@@ -580,13 +586,35 @@ export default function ChapterCardEditor() {
                   />
                 </div>
 
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <Label>{t('chapterCard.chapterEnding')}</Label>
+                    <NativeSelect
+                      value={selected.chapterEnding || ''}
+                      onChange={e => updateField('chapterEnding', e.target.value)}
+                      title={t('chapterCard.chapterEndingTooltip')}
+                    >
+                      <option value="">{t('chapterCard.chapterEndingInherit', {
+                        mode: t(`chapterCard.chapterEndingOptions.${(currentProject?.novelConfig?.chapterEnding === 'smooth' ? 'smooth' : 'cliffhanger')}`),
+                      })}</option>
+                      <option value="cliffhanger">{t('chapterCard.chapterEndingOptions.cliffhanger')}</option>
+                      <option value="smooth">{t('chapterCard.chapterEndingOptions.smooth')}</option>
+                    </NativeSelect>
+                  </div>
+                </div>
+
                 <div>
                   <Label>{t('chapterCard.suspenseHook')}</Label>
                   <Textarea
                     value={selected.suspenseHook}
                     onChange={e => updateField('suspenseHook', e.target.value)}
-                    placeholder={t('chapterCard.suspenseHookPlaceholder')}
+                    placeholder={
+                      endingSmooth
+                        ? t('chapterCard.suspenseHookDisabled')
+                        : t('chapterCard.suspenseHookPlaceholder')
+                    }
                     rows={2}
+                    disabled={endingSmooth}
                   />
                 </div>
 

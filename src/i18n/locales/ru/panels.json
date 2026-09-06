@@ -211,6 +211,8 @@
           "keyEvents": "Ключевые события",
           "characters": "Персонажи",
           "suspense": "Завязка",
+          "chapterEnding": "Концовка главы",
+          "chapterEndingInherit": "Как в настройке книги",
           "notes": "Заметки",
           "guidance": "Руководство"
         }

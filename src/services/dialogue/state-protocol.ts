@@ -6,6 +6,7 @@
  * 只包含发生变化的字段。本模块负责剥离与合并。
  */
 import type { WorkingState } from '../../shared/ipc-channels'
+import { stripEditorialMarkers } from '../prose-clean'
 
 const STATE_RE = /<state>\s*([\s\S]*?)\s*<\/state>/i
 // 闭合标签可选：部分模型只写 <options> 不写 </options>，未闭合时吃到文本末尾
@@ -17,7 +18,7 @@ const PLACEHOLDER_REFUSAL_RE = /(?:^|\n)\s*占位不写[。.]?\s*/g
 
 /** 去掉模型照抄的格式说明残片，避免写进正文气泡。 */
 export function stripProtocolLeak(text: string): string {
-  return text
+  return stripEditorialMarkers(text)
     .replace(STATE_LEAK_RE, '')
     .replace(PLACEHOLDER_REFUSAL_RE, '')
     .replace(/\n{3,}/g, '\n\n')

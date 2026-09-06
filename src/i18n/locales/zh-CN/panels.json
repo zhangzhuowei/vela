@@ -211,6 +211,8 @@
           "keyEvents": "关键事件",
           "characters": "角色",
           "suspense": "悬念",
+          "chapterEnding": "章末收束",
+          "chapterEndingInherit": "跟随小说配置",
           "notes": "备注",
           "guidance": "用户指引"
         }

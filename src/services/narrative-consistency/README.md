@@ -134,7 +134,7 @@ db:canon-summary-get / list-recent / upsert
 
 | 问题类别 | severity | 自动修复？ | 修复方式 |
 |---|---|---|---|
-| knowledge 越权 | warning | ✅ | 在 evidence 前插入「（据前文线索）」 |
+| knowledge 越权 | warning | ❌ | 不改正文（旧版插入「（据前文线索）」会进读者稿，已停用；落盘时剥掉残留） |
 | location 瞬移 | warning | ❌ | 降级为 warning（避免破坏原文节奏） |
 | relationship 矛盾 | warning | ❌ | 降级为 warning |
 | timeline 倒退 | error | ❌ | 强制留为 warning（提示人工） |

@@ -260,6 +260,18 @@ export default function NovelConfigEditor() {
                   min={100}
                 />
               </Field>
+              <Field label={t('novelConfig.chapterEnding')} tipItems={[
+                t('novelConfig.chapterEndingTips.cliffhanger'),
+                t('novelConfig.chapterEndingTips.smooth'),
+              ]}>
+                <NativeSelect
+                  value={config.chapterEnding || 'cliffhanger'}
+                  onChange={(e) => update('chapterEnding', e.target.value as NovelConfig['chapterEnding'])}
+                >
+                  <option value="cliffhanger">{t('novelConfig.chapterEndingOptions.cliffhanger')}</option>
+                  <option value="smooth">{t('novelConfig.chapterEndingOptions.smooth')}</option>
+                </NativeSelect>
+              </Field>
               <Field label={t('novelConfig.creationMode')} tipItems={[
                 t('novelConfig.creationModeTips.pipeline'),
                 t('novelConfig.creationModeTips.dialogue'),

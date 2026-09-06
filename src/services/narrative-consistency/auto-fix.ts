@@ -2,7 +2,7 @@
  * AutoFix —— 自动修复生成章节中的简单一致性问题
  *
  * 策略（保守）：仅尝试"高置信度、可逆"修复，不做语义重写：
- *   - knowledge 越权：在"X 知道 Y"中插入显式来源（"据 Z 透露"）
+ *   - knowledge 越权：不再往正文插「（据前文线索）」——那是编辑标注，会进读者稿
  *   - location 瞬移：在两个地点之间插入过渡动词（"赶往"）
  *
  * 修复失败时直接返回原内容 + warning，调用方自行决定是否仍允许保存。
@@ -40,15 +40,6 @@ export function tryAutoFix(
       continue
     }
 
-    if (issue.category === 'knowledge' && issue.evidence) {
-      const result = fixKnowledgeLeak(working, issue.evidence)
-      if (result.modified) {
-        working = result.content
-        fixed.push(issue)
-        continue
-      }
-    }
-
     if (issue.category === 'location' && issue.characters?.[0]) {
       const result = fixLocationJump(working, issue)
       if (result.modified) {
@@ -67,57 +58,6 @@ export function tryAutoFix(
     remainingIssues: remaining,
     modified: fixed.length > 0,
   }
-}
-
-/**
- * 修复知识越权：在"<角色> 知道了 <信息>"之前插入显式信息源
- * 输入格式："张三知道了某件秘密"
- * 输出格式："张三（据前文线索）知道了某件秘密"
- *
- * 保守策略：只补充来源标注，不删减原文。
- *
- * 修复：替换为 fixAllKnowledgeLeaks，循环处理所有 occurrence 而非仅第一处。
- */
-function fixKnowledgeLeak(
-  content: string,
-  evidence: string,
-): { content: string; modified: boolean } {
-  return fixAllKnowledgeLeaks(content, evidence)
-}
-
-/**
- * 修复 evidence 的所有出现（不仅第一次）。
- * 原 fixKnowledgeLeak 一次只修一个位置 — 多段都有"林轩知道了 X"时只有第一段被加注。
- */
-function fixAllKnowledgeLeaks(
-  content: string,
-  evidence: string,
-): { content: string; modified: boolean } {
-  if (!evidence) return { content, modified: false }
-  const insertion = '（据前文线索）'
-  const insertionLen = insertion.length
-  const parts: string[] = []
-  let cursor = 0
-  let idx = content.indexOf(evidence, cursor)
-  let modified = false
-  while (idx >= 0) {
-    const beforeSlice = content.slice(Math.max(0, idx - insertionLen), idx)
-    if (beforeSlice === insertion) {
-      // 已标注
-      parts.push(content.slice(cursor, idx + evidence.length))
-      cursor = idx + evidence.length
-    } else {
-      parts.push(content.slice(cursor, idx))
-      parts.push(insertion)
-      parts.push(evidence)
-      cursor = idx + evidence.length
-      modified = true
-    }
-    idx = content.indexOf(evidence, cursor)
-  }
-  if (!modified) return { content, modified: false }
-  parts.push(content.slice(cursor))
-  return { content: parts.join(''), modified: true }
 }
 
 /**

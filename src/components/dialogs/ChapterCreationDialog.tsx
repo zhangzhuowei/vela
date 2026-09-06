@@ -186,6 +186,7 @@ export default function ChapterCreationDialog({ isOpen, onClose, prefill }: Prop
       userGuidance,
       knowledgeQueryHint: knowledgeHint.trim() || undefined,
       wordsTarget: Number(wordsTarget) || undefined,
+      chapterEnding: typeof prefill?.chapterEnding === 'string' ? prefill.chapterEnding : undefined,
     })
 
     // 启动任务后关闭设定弹窗，由全局 Overlay 接管展示

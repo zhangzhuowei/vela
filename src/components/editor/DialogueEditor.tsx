@@ -17,7 +17,6 @@ import {
   assembleToDraft,
   commitScene,
   distillScene,
-  ensureWorkingState,
   generateTurn,
   previewChapterBody,
   previewTurn,
@@ -47,6 +46,7 @@ export default function DialogueEditor({ chapterNumber }: { chapterNumber: numbe
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
   const [notice, setNotice] = useState('')
+  const [scenesReady, setScenesReady] = useState(false)
   const [goalDraft, setGoalDraft] = useState('')
   const [lineDraft, setLineDraft] = useState('')
   const multilineOn = useProjectStore((s) => s.currentProject?.novelConfig?.multilineMode) === 'summary'
@@ -152,10 +152,19 @@ export default function DialogueEditor({ chapterNumber }: { chapterNumber: numbe
   const refreshWorkingState = useCallback(async (sceneCount: number) => {
     if (shouldResetChapterWorkingState(sceneCount)) {
       await ipc.invoke('db:chapter-working-state-set', chapterNumber, {})
-      setWorkingState(await ensureWorkingState(chapterNumber))
+      setWorkingState({})
       return
     }
     setWorkingState(await ipc.invoke('db:chapter-working-state-get', chapterNumber))
+  }, [chapterNumber])
+
+  const clearWorkingState = useCallback(async () => {
+    await ipc.invoke('db:chapter-working-state-set', chapterNumber, {})
+    setWorkingState({})
+  }, [chapterNumber])
+
+  useEffect(() => {
+    setScenesReady(false)
   }, [chapterNumber])
 
   useEffect(() => {
@@ -166,10 +175,16 @@ export default function DialogueEditor({ chapterNumber }: { chapterNumber: numbe
         setChapterGoal(bp.purpose || bp.keyEvents || '')
       }
       const items = await loadScenes()
+      setScenesReady(true)
       setSceneId((prev) => prev ?? items.find((s) => s.status === 'open')?.id ?? items[0]?.id ?? null)
       await refreshWorkingState(items.length)
     })()
   }, [chapterNumber, loadScenes, refreshWorkingState])
+
+  useEffect(() => {
+    if (!scenesReady || scenes.length > 0) return
+    void refreshWorkingState(0)
+  }, [scenesReady, scenes.length, refreshWorkingState])
 
   useEffect(() => {
     setError('')
@@ -893,7 +908,19 @@ export default function DialogueEditor({ chapterNumber }: { chapterNumber: numbe
         className="hidden w-60 flex-shrink-0 flex-col overflow-y-auto xl:flex"
         style={{ borderLeft: '1px solid var(--color-border)', backgroundColor: 'var(--color-sidebar)' }}
       >
-        <div className="panel-header">{t('dialogue.workingState')}</div>
+        <div className="panel-header justify-between gap-1">
+          <span className="truncate">{t('dialogue.workingState')}</span>
+          {Object.keys(workingState).length > 0 && (
+            <button
+              type="button"
+              className="icon-btn"
+              title={t('dialogue.resetWorkingState')}
+              onClick={() => void clearWorkingState()}
+            >
+              <RefreshCw size={12} />
+            </button>
+          )}
+        </div>
         <div className="space-y-2 p-2">
           <p className="px-1 text-[0.68rem]" style={{ color: 'var(--color-text-muted)' }}>
             {t('dialogue.stateEditHint')}

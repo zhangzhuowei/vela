@@ -34,6 +34,8 @@ interface LayoutState {
   settingsOpen: boolean
   /** 新建项目对话框是否打开 */
   newProjectOpen: boolean
+  /** 复制设定为新项目对话框是否打开 */
+  copyProjectOpen: boolean
   /** 导出对话框是否打开 */
   exportOpen: boolean
   /** 导入小说对话框是否打开 */
@@ -65,6 +67,8 @@ interface LayoutState {
   closeSettings: () => void
   openNewProject: () => void
   closeNewProject: () => void
+  openCopyProject: () => void
+  closeCopyProject: () => void
   openExport: () => void
   closeExport: () => void
   openImportNovel: () => void
@@ -92,6 +96,7 @@ export const useLayoutStore = create<LayoutState>()((set) => ({
   // 全局弹窗默认关闭
   settingsOpen: false,
   newProjectOpen: false,
+  copyProjectOpen: false,
   exportOpen: false,
   importNovelOpen: false,
   chapterCreationOpen: false,
@@ -127,6 +132,8 @@ export const useLayoutStore = create<LayoutState>()((set) => ({
   closeSettings: () => set({ settingsOpen: false }),
   openNewProject: () => set({ newProjectOpen: true }),
   closeNewProject: () => set({ newProjectOpen: false }),
+  openCopyProject: () => set({ copyProjectOpen: true }),
+  closeCopyProject: () => set({ copyProjectOpen: false }),
   openExport: () => set({ exportOpen: true }),
   closeExport: () => set({ exportOpen: false }),
   openImportNovel: () => set({ importNovelOpen: true }),

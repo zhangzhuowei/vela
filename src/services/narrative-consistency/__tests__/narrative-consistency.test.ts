@@ -284,7 +284,7 @@ describe('集成：validateChapter 与 tryAutoFix', () => {
     expect(categories.has('knowledge')).toBe(true)
   })
 
-  it('tryAutoFix 应对 knowledge leak 进行高置信度修复', () => {
+  it('tryAutoFix 不再把「据前文线索」写进正文', () => {
     const text = `林轩知道了九转还魂丹的位置，立刻动身。`
     const issues = [
       {
@@ -296,9 +296,10 @@ describe('集成：validateChapter 与 tryAutoFix', () => {
       },
     ]
     const result = tryAutoFix(text, issues)
-    expect(result.modified).toBe(true)
-    expect(result.content).toContain('（据前文线索）')
-    expect(result.fixedIssues.length).toBe(1)
+    expect(result.modified).toBe(false)
+    expect(result.content).toBe(text)
+    expect(result.content).not.toContain('据前文线索')
+    expect(result.remainingIssues.length).toBe(1)
   })
 
   it('error 级别 issue 不应被自动修复（保守策略）', () => {
@@ -487,7 +488,7 @@ describe('Soft gate：PASS / REPAIR / BLOCK', () => {
     expect(result.repairedContent).toBeUndefined()
   })
 
-  it('可自动补充信息来源的问题返回 REPAIR 并提供修复正文', async () => {
+  it('知识越权不再改写正文，降级为提示后通过', async () => {
     const canon = makeCanon({
       characterStates: [makeState({ character: '林轩', knowledge: [] })],
       previousEnding: '',
@@ -498,8 +499,9 @@ describe('Soft gate：PASS / REPAIR / BLOCK', () => {
       chapterContent: '林轩知道了九转还魂丹的位置，立刻动身。',
       canon,
     })
-    expect(result.verdict).toBe('REPAIR')
-    expect(result.repairedContent).toContain('（据前文线索）林轩知道了九转还魂丹的位置')
+    expect(result.verdict).toBe('PASS')
+    expect(result.repairedContent).toBeUndefined()
+    expect(result.report).not.toContain('据前文线索')
     expect(result.blockingReasons).toHaveLength(0)
   })
 
@@ -831,28 +833,26 @@ describe('回归测试：审计发现的 bug 修复验证', () => {
     expect(built).toMatch(/⦃⦃chapter_title⦄⦄/)
   })
 
-  // F15/F28: auto-fix 必须处理 evidence 的所有出现
-  it('F15/F28: tryAutoFix 应标记 evidence 的所有出现（不仅第一处）', () => {
+  it('F15/F28: knowledge 越权不再往正文插标注', () => {
     const issues = [{
       severity: 'warning' as const, category: 'knowledge' as const,
       characters: ['林轩'], message: 'k1', evidence: '林轩知道了秘密',
     }]
     const text = '第一段：林轩知道了秘密。\n\n第二段：林轩知道了秘密，立刻出发。'
     const result = tryAutoFix(text, issues)
-    const insertCount = (result.content.match(/（据前文线索）/g) || []).length
-    expect(insertCount).toBe(2)  // 两处都应该被标注
+    expect(result.content).toBe(text)
+    expect(result.modified).toBe(false)
   })
 
-  // F18: 多个 issues 同样 evidence 都应处理
-  it('F18: 多个 issues 同样 evidence 都应触发插入', () => {
+  it('F18: 多条 knowledge issue 也不改写正文', () => {
     const issues = [
       { severity: 'warning' as const, category: 'knowledge' as const, characters: ['林轩'], message: 'k1', evidence: '林轩知道了秘密' },
       { severity: 'warning' as const, category: 'knowledge' as const, characters: ['林轩'], message: 'k2', evidence: '林轩知道了秘密' },
     ]
     const text = 'A段：林轩知道了秘密。\n\nB段：林轩知道了秘密，立刻出发。'
     const result = tryAutoFix(text, issues)
-    const insertCount = (result.content.match(/（据前文线索）/g) || []).length
-    expect(insertCount).toBeGreaterThanOrEqual(2)
+    expect(result.content).toBe(text)
+    expect((result.content.match(/（据前文线索）/g) || []).length).toBe(0)
   })
 
   // F31: stateSignals 必须含常见动词

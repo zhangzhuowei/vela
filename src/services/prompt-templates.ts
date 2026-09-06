@@ -1009,6 +1009,7 @@ Requirements:
       character_states: '角色当前状态档案',
       foreshadowing: '未回收伏笔清单（含到期提醒）',
       anti_repetition: '最近数章开场与断章速览',
+      ending_guidance: '章末收束要求（悬念断章或平稳过渡）',
       future_blueprints: '后续章节蓝图（不可抢戏、不可提前消耗）',
       global_guidance: '全局写作要求与禁忌',
       pacing_guidance: '节奏/风格指导（可选）',
@@ -1050,6 +1051,7 @@ Requirements:
 2. **不得越界**：不得把后续章节蓝图里的关键情节提前搬到本章；不得跳过原本该在本章发生的关键节点。
 3. **以事实为准**：如果原蓝图与已写正文存在冲突（人物已死/已离场、地点已变、境界已突破、信息已被揭穿、道具已失去），必须以已写正文和角色当前状态为准来改写本章执行方案。
 4. **承接与去雷同**：keyEvents 必须能从"上一章结尾"自然接续；开场与断章方式须避开最近数章的套路。
+{{ending_guidance}}
 5. **伏笔纪律**：若清单中有伏笔已到期或本章正是引爆的最佳时机，应在 keyEvents 中安排回收；同时不要一次性倾泻过多伏笔。
 6. **节奏感**：结合当前所处的章节位置（{{chapter_number}}/{{number_of_chapters}}）安排强度，保持小高潮节奏，拒绝水章。
 7. **保守优先**：若对照事实后发现原蓝图依然完全可用，请原样返回并把 changed 设为 false。**不要为了改而改。**
@@ -1092,6 +1094,7 @@ Requirements:
       writing_style: '文风描述（可选）',
       style_reference: '作者文风指纹（可选，从样章提炼）',
       user_guidance: '作者本章微操指导（可选）',
+      ending_guidance: '章末收束要求（悬念断章或平稳过渡）',
     },
     content: `请开始创作这本小说的第一章（破冰章）。
 
@@ -1125,10 +1128,10 @@ Requirements:
 - ★体量硬指标（必须满足，不是参考值）★：本章正文不得少于 {{word_number_min}} 字，目标区间 {{word_number}}~{{word_number_max}} 字。输出前请自行估算全文字数；若不足下限，必须回到场景中继续把内容写足，达标后再输出，绝不允许提前收尾交差。
 - 达标的正确做法是把已有场景「写厚」，而不是把情节「拉长」：补足五感细节、角色的动作与微表情、对白的来回交锋与言外之意、主角的即时心理判断、环境对情绪的映衬。
 - 严禁用于凑字数的手段：旁白式设定科普、与本章目标无关的日常寒暄、把同一个信息点反复换句表达、提前挪用后续章节的情节。
-- 内容边界（与篇幅要求不冲突）：本章只推演【本章信息】规定的核心剧情，达成首章目标后即留悬念断章，绝不可提前泄露后续情节。
+- 内容边界（与篇幅要求不冲突）：本章只推演【本章信息】规定的核心剧情，达成首章目标后即收束，绝不可提前泄露后续情节。
 - 格式要求：直接输出纯文本正文。禁止使用任何 Markdown 语法符号（如不要用 * 或 ** 或 # 等）。所有对话必须使用标准中文双引号，严禁使用剧本式的对话格式。
 - **强制排版要求：【段落与段落之间必须保留一个空行作为分隔】。绝对不允许连续多行不留空行！**
-- 结尾法则：在章节的最后一行留置一个强力钩子。
+- {{ending_guidance}}
 
 【AI 味反制——以下模式严禁出现】
 - 禁止段尾总结句（如“他知道，这一切才刚刚开始”、“命运的齿轮开始转动”）
@@ -1211,6 +1214,7 @@ Requirements:
       foreshadowing: '未回收伏笔清单（可选）',
       anti_repetition: '近期章节开场/断章速览（可选，用于反雷同）',
       character_voices: '出场角色说话风格（可选）',
+      ending_guidance: '章末收束要求（悬念断章或平稳过渡）',
     },
     content: `你正在连载写作最新章节。
 
@@ -1244,7 +1248,7 @@ Requirements:
 1. 无缝衔接断句：你的第一段必须自然、丝滑地接续上一章结尾，绝不允许出现场景瞬移或突兀的视角跳跃。
 2. 动作与神态驱动：用动态的描写推动剧情，不要写"他们聊了很久"，用拔剑声、茶水滴落声、瞳孔的骤缩来代替。
 3. 落实本章核心冲突：用 {{word_number}}~{{word_number_max}} 字的篇幅，踏踏实实地推演完本章目标，每个情节节拍都要落到具体的动作与对白上写足，拒绝平淡流水账，更不许写成提纲式的跳跃概述。
-4. 悬念断章大法：全章的最后一段，必须卡在一个剧情的小高潮点或突发变故上。
+4. {{ending_guidance}}
 5. 底线铁律：严禁碰触【全局写作要求与禁忌】：{{global_guidance}}。
 
 【文风要求（如有，请严格遵循）】
@@ -1295,7 +1299,7 @@ Requirements:
 1. Seamless sentence bridging: Your first paragraph must naturally and smoothly continue from the previous chapter's ending — absolutely no scene jumps or abrupt POV shifts.
 2. Action and body language driven: Use dynamic descriptions to push the plot. Don't write "they talked for a long time" — use the sound of a sword drawn, tea dripping, pupils contracting.
 3. Execute this chapter's core conflict: In approximately {{word_number}} words, thoroughly play out this chapter's objective — no bland diary entries.
-4. Suspense cliffhanger technique: The final paragraph must land on a minor climax or sudden twist.
+4. {{ending_guidance}}
 5. Iron-bottom rule: Never violate [Global Writing Requirements]: {{global_guidance}}.
 
 【Writing Style Requirements (if any, follow strictly)】
@@ -1325,7 +1329,7 @@ Requirements:
 1. Бесшовное соединение предложений: ваш первый абзац должен естественно и плавно продолжать концовку предыдущей главы — абсолютно никаких скачков сцены или резких переключений точки зрения.
 2. Через действия и язык тела: используйте динамичные описания для продвижения сюжета. Не пишите «они долго разговаривали» — используйте звук вынутого меча, капающий чай, резкое сужение зрачков.
 3. Выполните основной конфликт этой главы: в объёме примерно {{word_number}} слов тщательно разыграйте цель этой главы — никаких скучных дневниковых записей.
-4. Техника интриги: последний абзац должен завершиться малой кульминацией или внезапным поворотом.
+4. {{ending_guidance}}
 5. Железное правило: никогда не нарушайте [Глобальные требования к написанию]: {{global_guidance}}.
 
 【Требования к стилю (если есть, строго соблюдайте)】

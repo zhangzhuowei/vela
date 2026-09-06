@@ -11,6 +11,18 @@
     "createProject": "创建项目",
     "creating": "创建中..."
   },
+  "copyProject": {
+    "title": "复制为新项目",
+    "description": "只复制小说配置和故事架构（前提 / 角色图谱 / 世界观 / 大纲）。不复制章节蓝图、草稿、对话场和角色卡。",
+    "nameLabel": "新作品名称",
+    "namePlaceholder": "如：碧蓝航线测试 副本",
+    "pathLabel": "保存位置",
+    "pathPlaceholder": "选择项目保存目录",
+    "selectFolder": "选择",
+    "cancel": "取消",
+    "confirm": "复制并打开",
+    "creating": "复制中..."
+  },
   "importNovel": {
     "title": "导入已有小说",
     "description": "选择小说文件，Vela 将自动拆章并通过 AI 逆向推演全部结构化数据",

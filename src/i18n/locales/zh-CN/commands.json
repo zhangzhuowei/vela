@@ -363,5 +363,16 @@
     "finalizeGateError": "  [Gate] error: {{error}}",
     "reviewResultFormat": "审稿报告：第{{chapter}}章",
     "refineUserPrompt": "★【用户额外修稿指导（绝对优先级）】★：\n{{prompt}}"
+  },
+  "chapterEnding": {
+    "cliffhanger": "必须卡悬念",
+    "smooth": "平稳过渡",
+    "resolved": "  📎 章末收束：{{mode}}",
+    "guidanceCliffhanger": "章末收束：最后一段必须卡在一个小高潮或突发变故上，留下追读钩子。",
+    "guidanceSmooth": "章末收束：剧情连续，不要悬念断章，不要为断章硬造突发变故。最后一段平稳结束当前节拍，语气和场景能直接接下章。",
+    "continueCliffhanger": "在你续写内容的最后一段留下一个强力的悬念钩子，作为整章的断章点。",
+    "continueSmooth": "续写收在当前节拍上，平稳结束，不要另造悬念钩子或突发变故。",
+    "refreshCliffhanger": "8. **章末悬念**：suspenseHook 写一句话断章钩子，避开最近数章套路。",
+    "refreshSmooth": "8. **章末平稳**：本章不要悬念断章，suspenseHook 必须输出空字符串，不要编造钩子。"
   }
 }

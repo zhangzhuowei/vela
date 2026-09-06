@@ -54,6 +54,7 @@ describe('state-protocol', () => {
     expect(prose).toBe('林徽把腰侧贴上凉石头。')
     expect(patch).toEqual({})
     expect(stripProtocolLeak('正文。\n《state》占位不写。')).toBe('正文。')
+    expect(stripProtocolLeak('如果（据前文线索）他知道。')).toBe('如果他知道。')
   })
 
   it('strips option blocks from prose and leaves state intact', () => {

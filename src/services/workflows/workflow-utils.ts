@@ -11,7 +11,10 @@
 import type { StepCallbacks } from '../../stores/workflow-store'
 import type { CharacterData } from '../../../electron/repositories/character-repository'
 import { ipc } from '../ipc-client'
+import { stripEditorialMarkers, stripThinkingTags } from '../prose-clean'
 import i18n from '../../i18n'
+
+export { stripEditorialMarkers, stripThinkingTags }
 
 const t = (key: string, opts?: Record<string, unknown>) => i18n.t(key, { ns: 'commands', ...opts })
 
@@ -53,15 +56,6 @@ export async function mergePreservedCharacterAssets(extracted: CharacterData[]):
 
 // ===== 文本处理通用工具 =====
 
-/**
- * 剥除文本中可能包含的 <think>...</think> 思维链标签
- * 用于清洗大模型在生成正文时输出的思维链，避免其被持久化写入磁盘文件
- */
-export function stripThinkingTags(text: string): string {
-  if (!text) return text
-  // 支持只有 <think> 没有闭合标签的情况
-  return text.replace(/<think>[\s\S]*?(?:<\/think>|$)/gi, '').trim()
-}
 
 // ===== 未回收伏笔注入格式化（带上限） =====
 
@@ -454,7 +448,7 @@ export async function readPreviousEnding(currentChapter: number, maxChars = 1000
     if (!meta) return '（上一章尚未定稿）'
     const full = await ipc.invoke('db:draft-get-full', meta.id)
     const content = full?.content?.trim()
-    return content ? content.slice(-maxChars) : '（上一章正文为空）'
+    return content ? stripEditorialMarkers(content).slice(-maxChars) : '（上一章正文为空）'
   } catch {
     return '（上一章正文读取失败）'
   }

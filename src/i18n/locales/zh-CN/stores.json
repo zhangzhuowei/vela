@@ -15,6 +15,8 @@
     "unknownError": "未知错误",
     "createFailed": "创建项目失败",
     "createError": "创建项目异常",
+    "cloneFailed": "复制项目失败",
+    "cloneError": "复制项目异常",
     "openFailed": "打开项目失败",
     "openError": "打开项目异常"
   },

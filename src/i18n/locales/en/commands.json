@@ -363,5 +363,16 @@
     "finalizeGateError": "  [Gate] error: {{error}}",
     "reviewResultFormat": "Review report: Ch.{{chapter}}",
     "refineUserPrompt": "★【User extra refinement guidance (absolute priority)】★:\n{{prompt}}"
+  },
+  "chapterEnding": {
+    "cliffhanger": "Cliffhanger required",
+    "smooth": "Smooth landing",
+    "resolved": "  📎 Chapter ending: {{mode}}",
+    "guidanceCliffhanger": "Chapter ending: the last paragraph must land on a minor climax or sudden turn and leave a hook.",
+    "guidanceSmooth": "Chapter ending: this chapter continues into the next. Do not invent a cliffhanger or sudden twist. Close the current beat so the next chapter can open from here.",
+    "continueCliffhanger": "End your continuation on a strong suspense hook as the chapter break.",
+    "continueSmooth": "Close the continuation on the current beat. Do not invent a new hook or sudden twist.",
+    "refreshCliffhanger": "8. **Cliffhanger**: write a one-sentence suspenseHook, avoiding recent chapter-break patterns.",
+    "refreshSmooth": "8. **Smooth landing**: do not add a cliffhanger; suspenseHook must be an empty string."
   }
 }

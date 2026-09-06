@@ -79,6 +79,7 @@ export class BatchChapterCommand extends BaseWorkflowCommand<string> {
       keyEvents: bp.keyEvents || '',
       suspenseHook: bp.suspenseHook || undefined,
       userGuidance: bp.userGuidance || undefined,
+      chapterEnding: bp.chapterEnding || undefined,
     }
 
     // 2.5 滚动蓝图：按已写出来的实际剧情修正本章蓝图（主线定位锚定不变）

@@ -241,6 +241,7 @@
     "future_blueprints": "后续章节蓝图",
     "writing_style": "文风描述（可选）",
     "user_guidance": "作者本章微操指导（可选）",
+    "ending_guidance": "章末收束要求（悬念断章或平稳过渡）",
     "canon_context": "叙事一致性 Canon Context",
     "global_summary": "上下文检索结果",
     "character_states": "角色状态",

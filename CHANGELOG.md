@@ -4,6 +4,16 @@
 
 工坊版：在原「大纲→写稿→草稿箱」管线之外，新增一条「对话创作」流程与配套的写作 Mod 体系，两套管线按书/按章并存。
 
+### 修复（正文）
+
+- **「（据前文线索）」不再进正文**：这是一致性闸门给知识越权打的编辑标注，不是小说句子。已停止插入；写稿/续写/修稿/对话落盘以及注入上一章结尾时一律剥掉全角/半角两种写法。已写进稿里的，再生成或修一稿会清掉；当前稿可先手动删。
+
+### 新增（章末收束）
+
+- **小说配置「章末收束」** + **章节蓝图覆盖**：`cliffhanger`（必须卡悬念，缺省，旧书行为不变）或 `smooth`（平稳过渡）。章级空值跟随书级。
+- 写稿模板（第一章 / 后续章）与字数不足续写、滚动蓝图刷新都按解析后的本章模式注入，平稳章不再强制卡悬念，刷新也不会再编 `suspenseHook`。
+- 复制为新项目会带上书级这项。已自定义过写稿模板的，需自己删掉模板里的「悬念断章大法」或恢复内置，配置才能生效。
+
 ### 新增（对话创作模式）
 
 - **对话创作模式**：以「场」为单位逐场对话控场，模型写场景正文并回传 `<state>` 角色状态补丁；收场蒸馏成小说正文对照手改，汇稿按场序拼接后写入原生草稿箱，之后照常走修稿/定稿/canon 结算。开关为工程级默认（`project_core.creation_mode`）+ 章级覆盖（`blueprints.creation_mode`）。
@@ -22,7 +32,8 @@
 
 - 场可标线名；开「同线摘要」时生成本场前注入同一条线上一场的 LLM 前情摘要（懒生成缓存到 `scenes.summary`，复用不重复调用）。每书开关（`project_core.multiline_mode`），关则零成本。
 - **场间前情**（与多线独立）：小说配置可关 / 上一场结尾 / 本章已收场摘要。缺省为本章已收场摘要；按场序注入，不依赖线名。收场时预生成摘要缓存。
-- 本章场全部删光后，章级进行中角色状态自动清空并按角色卡重新开章，避免旧进度留在右侧面板。
+- 本章场全部删光后，章级进行中角色状态清空（不再从角色卡把旧进度填回）；侧栏可手动清空。
+- **复制为新项目**：主页可把当前书的小说配置 + 故事架构四大件拷到新文件夹，不带章节/草稿/角色卡。
 
 ### 修复
 
@@ -33,7 +44,7 @@
 
 ### 数据 / 构建
 
-- `scenes` / `scene_turns` 表；`project_core` 加 `creation_mode` / `multiline_mode`；`blueprints` 加 `creation_mode` / `working_state`；`scenes` 加 `line` / `summary`。均走 `addColumnIfMissing`，老库自动迁移。
+- `scenes` / `scene_turns` 表；`project_core` 加 `creation_mode` / `multiline_mode` / `chapter_ending`；`blueprints` 加 `creation_mode` / `working_state` / `chapter_ending`；`scenes` 加 `line` / `summary`。均走 `addColumnIfMissing`，老库自动迁移。
 - vitest 改由 Electron 内置 Node 运行以对齐 better-sqlite3 ABI；本地应急打包脚本 `scripts/build-win-local.mjs`（`pnpm build:win:local`）绕过 rcedit 竞态。
 
 ## 0.2.3

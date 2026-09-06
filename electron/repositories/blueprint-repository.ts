@@ -17,6 +17,7 @@ export interface BlueprintRow {
     user_guidance: string
     notes: string
     notes_updated_at: string
+    chapter_ending: string
     created_at: string
     updated_at: string
 }
@@ -33,6 +34,8 @@ export interface BlueprintData {
     userGuidance: string
     notes: string
     notesUpdatedAt: string
+    /** 空 = 跟随小说配置；cliffhanger / smooth = 本章覆盖 */
+    chapterEnding?: string
 }
 
 function rowToData(row: BlueprintRow): BlueprintData {
@@ -49,6 +52,9 @@ function rowToData(row: BlueprintRow): BlueprintData {
         userGuidance: row.user_guidance,
         notes: row.notes,
         notesUpdatedAt: row.notes_updated_at,
+        chapterEnding: row.chapter_ending === 'smooth' || row.chapter_ending === 'cliffhanger'
+          ? row.chapter_ending
+          : '',
     }
 }
 
@@ -97,8 +103,8 @@ export class BlueprintRepository {
         db.prepare(`
       INSERT INTO blueprints (
         chapter_number, title, role, purpose, key_events, characters,
-        suspense_hook, user_guidance, notes, notes_updated_at
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        suspense_hook, user_guidance, notes, notes_updated_at, chapter_ending
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       ON CONFLICT(chapter_number) DO UPDATE SET
         title = excluded.title,
         role = excluded.role,
@@ -109,6 +115,7 @@ export class BlueprintRepository {
         user_guidance = excluded.user_guidance,
         notes = excluded.notes,
         notes_updated_at = excluded.notes_updated_at,
+        chapter_ending = excluded.chapter_ending,
         updated_at = datetime('now')
     `).run(
             data.chapterNumber,
@@ -121,6 +128,9 @@ export class BlueprintRepository {
             data.userGuidance,
             data.notes,
             data.notesUpdatedAt,
+            data.chapterEnding === 'smooth' || data.chapterEnding === 'cliffhanger'
+              ? data.chapterEnding
+              : '',
         )
     }
 

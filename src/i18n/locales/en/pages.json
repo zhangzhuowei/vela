@@ -8,6 +8,8 @@
     "openProjectDesc": "Open an existing Vela project",
     "importNovel": "Import Novel",
     "importNovelDesc": "Import an existing work to continue",
+    "copyProject": "Copy as new project",
+    "copyProjectDesc": "Keep settings and architecture, rewrite chapters",
     "recentProjects": "Recent Projects",
     "footer": "Vela v0.1.0 · 7-stage AI-driven writing pipeline · Local-first data security"
   },

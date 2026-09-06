@@ -27,6 +27,8 @@ export interface ChapterInfo {
    * 缺省时回退到小说配置的「每章字数」。
    */
   wordsTarget?: number
+  /** 章级章末收束覆盖；空或未传则跟随小说配置 */
+  chapterEnding?: string
 }
 
 export interface RefineOnlyParams {
