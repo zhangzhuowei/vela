@@ -505,6 +505,25 @@ function createTables(db: BetterSqlite3.Database) {
     );
     CREATE INDEX IF NOT EXISTS idx_scene_turns_scene ON scene_turns(scene_id);
 
+    -- ============================================================
+    -- 设定纲要：世界怎么运转的规则条目（按模块，四格 Markdown）
+    -- 常驻模块以摘要进每章提示词；按需模块只同步进知识库靶检索取用
+    -- ============================================================
+    CREATE TABLE IF NOT EXISTS setting_modules (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      key TEXT NOT NULL UNIQUE,                   -- 稳定键（默认清单的 key 或 custom_*）
+      title TEXT NOT NULL DEFAULT '',
+      sort_order INTEGER DEFAULT 0,
+      inject_mode TEXT DEFAULT 'retrieval',       -- always（常驻摘要） / retrieval（仅知识库） / off
+      body TEXT DEFAULT '',                       -- 四格正文：## 规则 / ## 例外 / ## 进戏 / ## 禁止
+      summary TEXT DEFAULT '',                    -- 常驻用浓缩摘要（≤200 字）
+      source TEXT DEFAULT 'user',                 -- ai / user（手改过）
+      kb_doc_id TEXT DEFAULT '',                  -- 同步到知识库的文档 id
+      created_at TEXT DEFAULT (datetime('now')),
+      updated_at TEXT DEFAULT (datetime('now'))
+    );
+    CREATE INDEX IF NOT EXISTS idx_setting_modules_order ON setting_modules(sort_order);
+
     -- 索引
     CREATE INDEX IF NOT EXISTS idx_llm_calls_time ON llm_calls(created_at);
   `)

@@ -220,6 +220,39 @@ describe('dialogue-prompts', () => {
     expect(messages[0].content).toContain('（无）')
   })
 
+  it('injects the setting digest between world setting and protagonist, and leaves no placeholder when absent', () => {
+    const base = {
+      config,
+      characters: [],
+      workingState: {},
+      chapterTitle: '第1章',
+      chapterGoal: '',
+      sceneTitle: '夜谈',
+      sceneGoal: '',
+      turns: [],
+    }
+    const withDigest = buildSceneMessages({ ...base, settingDigest: '【设定纲要】\n- 婚姻制度：一妻多夫。' })[0].content
+    expect(withDigest).toContain('- 婚姻制度：一妻多夫。')
+    expect(withDigest.indexOf('世界观：')).toBeLessThan(withDigest.indexOf('婚姻制度'))
+    expect(withDigest.indexOf('婚姻制度')).toBeLessThan(withDigest.indexOf('主角人设：'))
+
+    const without = buildSceneMessages(base)[0].content
+    expect(without).not.toContain('{{setting_digest}}')
+    expect(without).not.toContain('设定纲要')
+
+    const distill = buildDistillMessages({
+      config,
+      characterNames: [],
+      chapterTitle: '第1章',
+      chapterGoal: '',
+      sceneTitle: '夜谈',
+      sceneGoal: '',
+      turns: [{ role: 'user', content: '靠近' }],
+      settingDigest: '【设定纲要】\n- 美貌等级：三级制。',
+    })[0].content
+    expect(distill).toContain('美貌等级：三级制')
+  })
+
   it('injects a target length note when given', () => {
     const messages = buildSceneMessages({
       config,

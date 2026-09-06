@@ -115,6 +115,8 @@ export function buildSceneMessages(params: {
   postHistory?: string
   /** 场内生成默认钉格式合同；续写/服务层自己拼贴底时关掉，避免夹进 core */
   skipFormat?: boolean
+  /** 设定纲要常驻摘要（未配置时不传） */
+  settingDigest?: string
 }): ChatMessage[] {
   const { config, characters, workingState } = params
   const template = getPromptTemplate('dialogue_scene')
@@ -122,6 +124,7 @@ export function buildSceneMessages(params: {
 
   const system = renderPrompt(template, {
     world_setting: config.worldSetting?.trim() || '（未设定）',
+    setting_digest: params.settingDigest?.trim() || '',
     protagonist_profile: config.protagonistProfile?.trim() || '（未设定）',
     style_guidance: styleGuidance(config),
     chapter_title: params.chapterTitle,
@@ -168,6 +171,8 @@ export function buildDistillMessages(params: {
   targetLength?: number
   /** 启用 Mod 的行文指导，贴在逐字稿之后 */
   postHistory?: string
+  /** 设定纲要常驻摘要（未配置时不传） */
+  settingDigest?: string
 }): ChatMessage[] {
   const { config } = params
   const template = getPromptTemplate('dialogue_distill')
@@ -175,6 +180,7 @@ export function buildDistillMessages(params: {
 
   const system = renderPrompt(template, {
     world_setting: config.worldSetting?.trim() || '（未设定）',
+    setting_digest: params.settingDigest?.trim() || '',
     protagonist_profile: config.protagonistProfile?.trim() || '（未设定）',
     style_guidance: styleGuidance(config),
     chapter_title: params.chapterTitle,

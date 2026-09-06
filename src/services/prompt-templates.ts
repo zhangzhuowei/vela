@@ -74,6 +74,7 @@ export const EDITABLE_PROMPT_KEYS: string[] = [
   'character_dynamics',
   'world_building',
   'synopsis',
+  'setting_module',
   'first_chapter_draft',
   'next_chapter_draft',
   'refine_chapter',
@@ -686,7 +687,116 @@ Rigorously derive a plot synopsis covering the entire novel. Write "structural t
     },
   },
 
+  // ================================================================
+  // 设定纲要：单模块生成 / 按指令改写 / 常驻摘要
+  // ================================================================
+  {
+    key: 'setting_module',
+    name: '设定纲要·模块生成',
+    description: '设定纲要：为一个模块（婚姻制度、美貌等级、主角配置……）写出「规则 / 例外 / 进戏 / 禁止」四格陈述句；有作者指令时只按指令改写',
+    systemRole: '你是一位世界观设定编辑，擅长把模糊的背景写成能直接约束人物行为、能直接制造冲突的规则条目。',
+    variables: {
+      genre: '小说类型',
+      sub_genre: '细分类型',
+      target_audience: '目标受众',
+      premise: '故事前提',
+      core_setting: '世界基盘（小说配置）',
+      worldbuilding: '世界观（故事架构，节选）',
+      module_title: '模块名',
+      module_hint: '这个模块要回答什么',
+      other_modules: '其它已定模块的摘要',
+      existing_body: '现有四格内容（可为空）',
+      user_instruction: '作者改写指令（可选）',
+    },
+    content: `请为这本【{{genre}}】（细分：{{sub_genre}}，受众：{{target_audience}}）小说写「{{module_title}}」这一条设定纲要。
 
+【这个模块要回答什么】
+{{module_hint}}
+
+【本书前提与世界基盘】
+- 故事前提：{{premise}}
+- 世界基盘：{{core_setting}}
+- 世界观（冲突引擎，节选）：{{worldbuilding}}
+
+【其它已定模块摘要（不要与之矛盾，也不要重复它们的内容）】
+{{other_modules}}
+
+【现有内容（如有）】
+{{existing_body}}
+
+【写法要求】
+1. 只写「本书如何」的陈述句，不写候选项，不写"可以是……也可以是……"。
+2. 规则要能直接约束人物：谁能做什么、不能做什么、门槛是什么、后果是什么，具体到能在正文里被违反。
+3. 例外必须有代价：谁能破、怎么破、破了要付什么。
+4. 进戏一格写这条设定怎样变成羞辱、翻盘、误会、交易、要挟——至少三种能直接用的戏剧用法。
+5. 禁止一格写不许出现的写法：旁白科普、名词解释、与本书类型不符的观念等。
+6. 全文 300～600 字；除四个二级标题外不要任何 Markdown 符号。`,
+    systemSuffix: `★【作者改写指令（如有，最高优先级；有指令时只按指令改，未提及的部分照抄现有内容）】★：
+{{user_instruction}}
+
+【输出格式（严格）】
+只输出以下四段，每段以独立一行的二级标题开头，标题之外不要任何符号、编号或解释：
+## 规则
+（正文）
+## 例外
+（正文）
+## 进戏
+（正文）
+## 禁止
+（正文）`,
+    contentLocalized: {
+      en: `Write the setting-bible module "{{module_title}}" for this [{{genre}}] novel (sub-genre: {{sub_genre}}, audience: {{target_audience}}).
+
+【What this module must answer】
+{{module_hint}}
+
+【Premise and world foundation】
+- Premise: {{premise}}
+- World foundation: {{core_setting}}
+- Worldbuilding (conflict engine, excerpt): {{worldbuilding}}
+
+【Other settled modules (do not contradict or repeat them)】
+{{other_modules}}
+
+【Existing content (if any)】
+{{existing_body}}
+
+【Requirements】
+1. Declarative statements about how THIS world works — no options, no "could be either…".
+2. Rules must bind characters: who may do what, thresholds, consequences — concrete enough to be broken on the page.
+3. Exceptions must carry a price: who can break the rule, how, at what cost.
+4. "Drama" lists at least three ready-to-use dramatic uses: humiliation, reversal, misunderstanding, bargaining, blackmail.
+5. "Forbidden" lists writing patterns to avoid: narrated exposition, glossary-style explanation, anachronistic attitudes.
+6. 300–600 words; no Markdown besides the four level-2 headings.`,
+    },
+    systemRoleLocalized: {
+      en: 'You are a worldbuilding editor who turns vague background into rule entries that bind character behaviour and generate conflict.',
+    },
+  },
+
+  {
+    key: 'setting_module_summary',
+    name: '设定纲要·常驻摘要',
+    description: '设定纲要：把一个模块浓缩成不超过 150 字的陈述句，供每章、每场写稿时常驻提示',
+    systemRole: '你是一位世界观设定编辑，擅长把长设定压成写手一眼能记住的硬规则。',
+    variables: {
+      module_title: '模块名',
+      body: '模块四格正文',
+    },
+    content: `把下面这条设定纲要浓缩成不超过 150 字的陈述句摘要，供每章写稿时常驻提示。
+只保留能约束人物行为的规则和最重要的一条例外；不要进戏、不要禁止、不要标题、不要列表符号、不要解释。
+
+【{{module_title}}】
+{{body}}`,
+    systemSuffix: '只输出摘要正文，一段话，不超过 150 字。',
+    contentLocalized: {
+      en: `Condense the following setting-bible module into a declarative summary of at most 150 words, to be injected into every chapter prompt.
+Keep only rules that bind character behaviour and the single most important exception; drop drama, forbidden patterns, headings, bullets and explanations.
+
+【{{module_title}}】
+{{body}}`,
+    },
+  },
 
   // ================================================================
   // 章节蓝图生成
@@ -1013,6 +1123,7 @@ Requirements:
       future_blueprints: '后续章节蓝图（不可抢戏、不可提前消耗）',
       global_guidance: '全局写作要求与禁忌',
       pacing_guidance: '节奏/风格指导（可选）',
+      setting_digest: '设定纲要常驻摘要（可选）',
     },
     content: `连载已经推进到 第 {{chapter_number}} 章（全书共 {{number_of_chapters}} 章）。这一章的蓝图是**开写前很早规划好的**，而前面若干章在实际落笔时往往已经深化或偏移了原计划。你的任务是：对照**已经真实写出来的内容**，把本章蓝图修正到可以直接执行的状态。
 
@@ -1021,6 +1132,9 @@ Requirements:
 
 【全书架构】
 {{novel_architecture}}
+
+【设定纲要（如有）】
+{{setting_digest}}
 
 【本章原始蓝图（主线锚点，务必尊重其主线定位）】
 {{original_blueprint}}
@@ -1095,11 +1209,15 @@ Requirements:
       style_reference: '作者文风指纹（可选，从样章提炼）',
       user_guidance: '作者本章微操指导（可选）',
       ending_guidance: '章末收束要求（悬念断章或平稳过渡）',
+      setting_digest: '设定纲要常驻摘要（可选）',
     },
     content: `请开始创作这本小说的第一章（破冰章）。
 
 【全书设定池】
 {{architecture}}
+
+【设定纲要（如有）】
+{{setting_digest}}
 
 【本章信息】
 {{chapter_info}}
@@ -1144,6 +1262,9 @@ Requirements:
 【Full Novel Setting Pool】
 {{architecture}}
 
+【Setting Bible（如有）】
+{{setting_digest}}
+
 【This Chapter's Info】
 {{chapter_info}}
 
@@ -1165,6 +1286,9 @@ Requirements:
 
 【Пул настроек романа】
 {{architecture}}
+
+【Библия сеттинга（如有）】
+{{setting_digest}}
 
 【Информация об этой главе】
 {{chapter_info}}
@@ -1215,11 +1339,15 @@ Requirements:
       anti_repetition: '近期章节开场/断章速览（可选，用于反雷同）',
       character_voices: '出场角色说话风格（可选）',
       ending_guidance: '章末收束要求（悬念断章或平稳过渡）',
+      setting_digest: '设定纲要常驻摘要（可选）',
     },
     content: `你正在连载写作最新章节。
 
 【★★★ 叙事一致性 Canon 上下文（必须严格遵循 · 优先级最高）★★★】
 {{canon_context}}
+
+【设定纲要（如有）】
+{{setting_digest}}
 
 【剧情记忆库与前置断点上下文】
 - [全局剧情进展]：{{global_summary}}
@@ -1279,6 +1407,9 @@ Requirements:
 【★★★ Narrative Consistency Canon Context (MUST follow strictly · HIGHEST PRIORITY) ★★★】
 {{canon_context}}
 
+【Setting Bible（如有）】
+{{setting_digest}}
+
 【Plot Memory Bank & Prior Breakpoint Context】
 - [Global plot progress]: {{global_summary}}
 - [Character state monitoring]: {{character_states}}
@@ -1308,6 +1439,9 @@ Requirements:
 
 【★★★ Контекст канона нарративной согласованности (СТРОГО соблюдать · ВЫСШИЙ ПРИОРИТЕТ) ★★★】
 {{canon_context}}
+
+【Библия сеттинга（如有）】
+{{setting_digest}}
 
 【Банк памяти сюжета и контекст предыдущей точки разрыва】
 - [Глобальный прогресс сюжета]: {{global_summary}}
@@ -2932,10 +3066,12 @@ Requirements:
       length_note: '本轮篇幅要求（未设置时为空）',
       line_context: '场间前情与同线摘要（未启用时为空）',
       option_note: '控场选项要求（未开启时为空）',
+      setting_digest: '设定纲要常驻摘要（未配置时为空）',
     },
     content: `你在为一部小说写一场戏。只写可读的叙事和对话，不要解释、不要列大纲、不要道歉。
 用户消息是控场指令，不是要你扮演用户。遵守世界观与人设，不要把控场者写成另一个具名角色，除非人设如此要求。
 世界观：{{world_setting}}
+{{setting_digest}}
 主角人设：{{protagonist_profile}}
 文风：{{style_guidance}}
 本章（{{chapter_title}}）目标：{{chapter_goal}}
@@ -2967,10 +3103,12 @@ Requirements:
       character_names: '出场角色名单',
       references_block: '知识库召回的参考设定',
       length_note: '蒸馏篇幅要求（未设置时为空）',
+      setting_digest: '设定纲要常驻摘要（未配置时为空）',
     },
     content: `你把一场小说的对话草稿蒸馏成可直接收入章节的叙事正文。
 保留关键对白与身体/心理变化，删掉重复内容和指令口吻。遵守世界观与主角人设。
 世界观：{{world_setting}}
+{{setting_digest}}
 主角人设：{{protagonist_profile}}
 文风：{{style_guidance}}
 本章（{{chapter_title}}）目标：{{chapter_goal}}

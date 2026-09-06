@@ -195,6 +195,22 @@ export default function ProjectTree() {
       {/* 2. 故事架构 — 点击标题行打开编辑器，子文件仍可单独点开 */}
       <WorldBuildingGroup archStatus={archStatus} archDone={archDone} />
 
+      {/* 2b. 设定纲要 — 世界运转规则，按模块常驻/按需注入 */}
+      <LeafItem
+        iconName="scroll-text"
+        label={t('projectTree.settingBible')}
+        desc={t('projectTree.settingBibleDesc')}
+        onClick={() => openBuiltinEditor('setting-bible-editor', t('projectTree.settingBible'), 'setting-bible')}
+        onContextMenu={e => showSidebarMenu([
+          {
+            key: 'open',
+            label: t('projectTree.openSettingBible'),
+            icon: <FolderOpen size={13} />,
+            onClick: () => openBuiltinEditor('setting-bible-editor', t('projectTree.settingBible'), 'setting-bible'),
+          },
+        ], e)}
+      />
+
       {/* 3. 章节蓝图 — 点击打开编辑器页 */}
       <LeafItem
         iconName="layout-list"

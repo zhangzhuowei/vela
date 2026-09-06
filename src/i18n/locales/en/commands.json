@@ -364,6 +364,17 @@
     "reviewResultFormat": "Review report: Ch.{{chapter}}",
     "refineUserPrompt": "★【User extra refinement guidance (absolute priority)】★:\n{{prompt}}"
   },
+  "settingModule": {
+    "notFound": "Setting module not found; it may have been deleted",
+    "generating": "  📜 Generating setting module \"{{title}}\"...",
+    "rewriting": "  📜 Rewriting setting module \"{{title}}\" per instruction...",
+    "summarizing": "  📎 Condensing digest for \"{{title}}\"...",
+    "saved": "✅ Setting module \"{{title}}\" saved and synced to knowledge base",
+    "summarySaved": "✅ Digest for \"{{title}}\" updated",
+    "emptyResult": "⚠️ Empty result for \"{{title}}\"; keeping existing content",
+    "genericHint": "How \"{{title}}\" works in this world: who is bound, thresholds and consequences, who may break it, how it becomes drama",
+    "noOtherModules": "(no other modules yet)"
+  },
   "chapterEnding": {
     "cliffhanger": "Cliffhanger required",
     "smooth": "Smooth landing",

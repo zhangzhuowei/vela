@@ -28,6 +28,7 @@ import { getPromptTemplate, renderPrompt } from '../prompt-templates'
 import { logLLMCall } from '../stats-service'
 import { runWithModScopeAsync } from '../mods'
 import { buildScenePrelude, resolveScenePreludeMode } from './scene-prelude'
+import { loadSettingDigest } from '../setting-bible-service'
 
 type LLMUsage = { promptTokens: number; completionTokens: number; totalTokens: number }
 
@@ -279,6 +280,7 @@ export async function assembleTurnMessages(params: AssembleTurnParams): Promise<
   )
   const lineContext = await getLineContext(scene)
   const scenePrelude = await getScenePrelude(scene)
+  const settingDigest = await loadSettingDigest()
   const target = params.targetLength
   const promptInput =
     !params.retry && target
@@ -303,6 +305,7 @@ export async function assembleTurnMessages(params: AssembleTurnParams): Promise<
       turns: turns.map((t) => ({ role: t.role, content: splitProseAndState(t.content).prose })),
       userInput: params.retry ? undefined : promptInput,
       references,
+      settingDigest,
       targetLength: target,
       optionCount: params.optionCount,
       optionMaxChars: params.optionMaxChars,
@@ -465,6 +468,7 @@ export async function distillScene(params: {
   )
   const workingState = await ipc.invoke('db:chapter-working-state-get', params.scene.chapterNumber)
   const cast = await sceneCharacters(params.scene.chapterNumber, workingState)
+  const settingDigest = await loadSettingDigest()
   const messages = await runWithModScopeAsync(
     { chapterNumber: params.scene.chapterNumber, sceneId: params.scene.id },
     async () =>
@@ -477,6 +481,7 @@ export async function distillScene(params: {
         sceneGoal: params.scene.goal,
         turns: turns.map((t) => ({ role: t.role, content: t.content })),
         references,
+        settingDigest,
         targetLength: params.targetLength,
         postHistory: await fetchModPostHistory(),
       })

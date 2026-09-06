@@ -8,7 +8,7 @@ import React from 'react'
 import {
   Target, Users, Globe, Map, BookOpen, FolderTree, LayoutList,
   FilePen, PenTool, BrainCircuit, Sparkles, FolderOpen, Zap,
-  FileText, MessageCircle, RefreshCw, GitCompare,
+  FileText, MessageCircle, RefreshCw, GitCompare, ScrollText,
 } from 'lucide-react'
 import i18n from '../../../i18n'
 import type { ContextMenuEntry } from '../../ui/ContextMenu'
@@ -74,7 +74,7 @@ export async function openArchFile(filePath: string, name: string) {
 }
 
 /** 打开内置编辑器 */
-export function openBuiltinEditor(id: string, name: string, type: 'chapter-card' | 'character' | 'world-building') {
+export function openBuiltinEditor(id: string, name: string, type: 'chapter-card' | 'character' | 'world-building' | 'setting-bible') {
   useEditorStore.getState().openFile({ id, name, type })
 }
 
@@ -141,6 +141,7 @@ const ICON_MAP: Record<string, React.ComponentType<{ size?: number; className?: 
   'message-circle': MessageCircle,
   'refresh-cw': RefreshCw,
   'git-compare': GitCompare,
+  'scroll-text': ScrollText,
 }
 
 /** 根据 iconName 渲染 Lucide 图标；未找到时返回空占位 */

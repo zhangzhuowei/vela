@@ -12,6 +12,7 @@ import { PostProcessRepository } from '../repositories/post-process-repository'
 
 import { ForeshadowingRepository, ForeshadowingData } from '../repositories/foreshadowing-repository'
 import { SceneRepository } from '../repositories/scene-repository'
+import { SettingModuleRepository } from '../repositories/setting-module-repository'
 import { ChapterImageRepository } from '../repositories/chapter-image-repository'
 
 // 沿用的旧表
@@ -26,6 +27,7 @@ import {
   validateCanonCharacterStateSnapshot,
   validateCanonChapterSummary,
   validateCanonWritebackPayload,
+  validateSettingModuleInput,
 } from '../ipc-validation'
 import type {
   TimelineEvent,
@@ -224,6 +226,42 @@ export function registerDatabaseController() {
   ipcMain.handle('db:chapter-mode-set', async (_event, chapterNumber: number, mode: string) => {
     try {
       SceneRepository.setChapterMode(chapterNumber, mode)
+      return { success: true }
+    } catch (err) {
+      return { success: false, error: String(err) }
+    }
+  })
+
+  // ============================================================
+  // 2c. 设定纲要模块
+  // ============================================================
+  ipcMain.handle('db:setting-module-list', async () => {
+    return SettingModuleRepository.list()
+  })
+
+  ipcMain.handle('db:setting-module-upsert', async (_event, raw: unknown) => {
+    const v = safeValidate(validateSettingModuleInput, raw)
+    if (!v.ok) return { success: false, error: v.error }
+    try {
+      const id = SettingModuleRepository.upsert(v.data)
+      return { success: true, id }
+    } catch (err) {
+      return { success: false, error: String(err) }
+    }
+  })
+
+  ipcMain.handle('db:setting-module-delete', async (_event, id: number) => {
+    try {
+      SettingModuleRepository.delete(id)
+      return { success: true }
+    } catch (err) {
+      return { success: false, error: String(err) }
+    }
+  })
+
+  ipcMain.handle('db:setting-module-reorder', async (_event, ids: number[]) => {
+    try {
+      SettingModuleRepository.reorder(Array.isArray(ids) ? ids.filter((n) => Number.isInteger(n)) : [])
       return { success: true }
     } catch (err) {
       return { success: false, error: String(err) }

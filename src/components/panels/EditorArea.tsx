@@ -1,4 +1,4 @@
-import { X, FileText, Settings, Users, ArrowLeftRight, MoreHorizontal, BookOpen, History, ClipboardCheck, Globe, Save, ChevronLeft, ChevronRight, PenTool } from 'lucide-react'
+import { X, FileText, Settings, Users, ArrowLeftRight, MoreHorizontal, BookOpen, History, ClipboardCheck, Globe, Save, ChevronLeft, ChevronRight, PenTool, ScrollText } from 'lucide-react'
 import { useEffect, useRef, useState, useCallback } from 'react'
 import { useTranslation } from 'react-i18next'
 import { ContextMenu, type ContextMenuEntry } from '../ui/ContextMenu'
@@ -11,6 +11,7 @@ import NovelConfigEditor from '../editor/NovelConfigEditor'
 import CharacterEditor from '../editor/CharacterEditor'
 import ChapterCardEditor from '../editor/ChapterCardEditor'
 import WorldBuildingEditor from '../editor/WorldBuildingEditor'
+import SettingBibleEditor from '../editor/SettingBibleEditor'
 import ArchFileViewer from '../editor/ArchFileViewer'
 import DraftEditor from '../editor/DraftEditor'
 import DialogueEditor from '../editor/DialogueEditor'
@@ -463,6 +464,7 @@ export default function EditorArea({ onNewProject }: EditorAreaProps) {
     if (type === 'diff') return <ArrowLeftRight size={14} />
     if (type === 'chapter-card') return <BookOpen size={14} />
     if (type === 'world-building') return <Globe size={14} />
+    if (type === 'setting-bible') return <ScrollText size={14} />
     if (type === 'version-history') return <History size={14} />
     if (type === 'review-report') return <ClipboardCheck size={14} />
     return <FileText size={14} />
@@ -644,6 +646,9 @@ export default function EditorArea({ onNewProject }: EditorAreaProps) {
         )}
         {activeTab?.type === 'world-building' && (
           <WorldBuildingEditor />
+        )}
+        {activeTab?.type === 'setting-bible' && (
+          <SettingBibleEditor />
         )}
         {activeTab?.type === 'arch-file' && activeTab.filePath && (
           <ArchFileViewer

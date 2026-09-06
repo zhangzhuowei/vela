@@ -17,6 +17,12 @@ export class BasePromptBuilder {
     return this;
   }
 
+  /** 设定纲要常驻摘要（空串时模板里的「（如有）」标签会被自动裁掉）。模板应预留 {{setting_digest}} */
+  withSettingDigest(digest: string) {
+    this.variables.setting_digest = digest;
+    return this;
+  }
+
   constructor(template: PromptTemplate) {
     this.template = template;
   }

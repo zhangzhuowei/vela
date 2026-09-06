@@ -297,6 +297,7 @@ import type { ReviewMeta, ReviewFull } from '../../electron/repositories/review-
 import type { PostProcessRunData, PostProcessStepData } from '../../electron/repositories/post-process-repository'
 import type { ForeshadowingData } from '../../electron/repositories/foreshadowing-repository'
 import type { SceneData, SceneTurnData } from '../../electron/repositories/scene-repository'
+import type { SettingModuleData, SettingModuleInput } from '../../electron/repositories/setting-module-repository'
 
 /** 章级角色进行中状态：{ 角色名: { 字段: 值 } } */
 export type WorkingState = Record<string, Record<string, string>>
@@ -333,6 +334,12 @@ export interface DatabaseChannels {
   'db:chapter-working-state-set': { args: [chapterNumber: number, state: WorkingState]; return: { success: boolean; error?: string } }
   'db:chapter-mode-get': { args: [chapterNumber: number]; return: string }
   'db:chapter-mode-set': { args: [chapterNumber: number, mode: string]; return: { success: boolean; error?: string } }
+
+  // 2c. 设定纲要模块
+  'db:setting-module-list': { args: []; return: SettingModuleData[] }
+  'db:setting-module-upsert': { args: [data: SettingModuleInput]; return: { success: boolean; id?: number; error?: string } }
+  'db:setting-module-delete': { args: [id: number]; return: { success: boolean; error?: string } }
+  'db:setting-module-reorder': { args: [ids: number[]]; return: { success: boolean; error?: string } }
 
   // 3. characters
   'db:character-get-all': { args: []; return: CharacterData[] }

@@ -4,7 +4,7 @@ import { create } from 'zustand'
 export interface EditorTab {
   id: string
   name: string
-  type: 'chapter' | 'outline' | 'character' | 'config' | 'diff' | 'chapter-card' | 'world-building' | 'arch-file' | 'version-history' | 'review-report' | 'dialogue'
+  type: 'chapter' | 'outline' | 'character' | 'config' | 'diff' | 'chapter-card' | 'world-building' | 'setting-bible' | 'arch-file' | 'version-history' | 'review-report' | 'dialogue'
   filePath?: string
   content?: string
   /** diff 视图的原始内容 */

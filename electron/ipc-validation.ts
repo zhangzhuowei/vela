@@ -293,6 +293,29 @@ export function validateCanonWritebackPayload(v: unknown, path = 'payload') {
   }
 }
 
+// ============================================================
+// 领域校验（设定纲要模块）
+// ============================================================
+
+export const VALID_SETTING_INJECT_MODES = ['always', 'retrieval', 'off'] as const
+
+export function validateSettingModuleInput(v: unknown, path = 'module') {
+  if (!isObject(v)) {
+    throw new ValidationError(path, 'expected object')
+  }
+  return {
+    id: checkOptional(v.id, `${path}.id`, (n, p) => checkNumberRange(n, p, { min: 0, max: 1e9, integer: true })),
+    key: checkStringLength(v.key, `${path}.key`, { min: 1, max: 100 }),
+    title: checkStringLength(v.title, `${path}.title`, { max: 100 }),
+    sortOrder: checkNumberRange(v.sortOrder ?? 0, `${path}.sortOrder`, { min: 0, max: 1e6, integer: true }),
+    injectMode: checkEnum(v.injectMode ?? 'retrieval', `${path}.injectMode`, VALID_SETTING_INJECT_MODES),
+    body: checkStringLength(v.body ?? '', `${path}.body`, { max: 30000 }),
+    summary: checkStringLength(v.summary ?? '', `${path}.summary`, { max: 1000 }),
+    source: checkEnum(v.source ?? 'user', `${path}.source`, ['ai', 'user'] as const),
+    kbDocId: checkStringLength(v.kbDocId ?? '', `${path}.kbDocId`, { max: 100 }),
+  }
+}
+
 /**
  * 安全调用 validator 包装器：捕获 ValidationError 并返回 { success, error }
  * 用于 ipcMain.handle 内部

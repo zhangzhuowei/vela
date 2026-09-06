@@ -14,6 +14,7 @@ import {
 } from '../workflow-utils'
 import type { ChapterInfo } from '../chapter-workflow'
 import { resolveChapterEnding } from '../../chapter-ending'
+import { loadSettingDigest } from '../../setting-bible-service'
 import i18n from '../../../i18n'
 
 /** 蓝图刷新结果 */
@@ -131,6 +132,7 @@ export class RefreshBlueprintCommand extends BaseWorkflowCommand<RefreshBlueprin
         suspenseHook: fallback.suspenseHook || '',
       })
       .withNovelArchitecture(architecture)
+      .withSettingDigest(await loadSettingDigest())
       .withGlobalSummary(timeline)
       .withPreviousEnding(previousEnding)
       .withCharacterStates(characterStates)
