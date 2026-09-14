@@ -2,7 +2,7 @@ import { ipcMain, dialog } from 'electron'
 import fs from 'node:fs'
 import {
   importDocument, importFolder, importText, searchKnowledge, searchKnowledgeFTS,
-  listDocuments, removeDocument, getKnowledgeStats,
+  listDocuments, listDocumentChunks, removeDocument, getKnowledgeStats,
   getVectorlessCount, backfillVectors,
 } from '../knowledge-base'
 import { readJsonFile, GLOBAL_CONFIG_PATH, DEFAULT_GLOBAL_CONFIG, MODELS_CONFIG_PATH, RECENT_PROJECTS_PATH } from '../utils/config-utils'
@@ -82,6 +82,12 @@ export function registerKBController() {
     const projectPath = getCurrentProjectPath()
     if (!projectPath) return []
     return listDocuments(projectPath)
+  })
+
+  ipcMain.handle('kb:list-chunks', async (_event, docId: string) => {
+    const projectPath = getCurrentProjectPath()
+    if (!projectPath || !docId) return []
+    return listDocumentChunks(String(docId), projectPath)
   })
 
   ipcMain.handle('kb:remove-document', async (_event, docId: string) => {

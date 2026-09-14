@@ -1,7 +1,25 @@
 import { describe, expect, it } from 'vitest'
-import { allocateKbHits, kbKindOf, kbOverfetch, kbQuota, wordlistUsageNote } from '../kb-allocate'
+import { allocateKbHits, isBlockedKbImportName, kbKindOf, kbOverfetch, kbQuota, normalizeKbChunks, wordlistUsageNote } from '../kb-allocate'
 
 const hit = (fileName: string, score: number) => ({ fileName, text: fileName, score })
+
+describe('isBlockedKbImportName', () => {
+  it('blocks worksheet files marked 不导入', () => {
+    expect(isBlockedKbImportName('设定决策表·待填（不导入）.md')).toBe(true)
+    expect(isBlockedKbImportName('C:\\\\Downloads\\\\场面规划清单·不导入.md')).toBe(true)
+    expect(isBlockedKbImportName('词表·情色描写用词.md')).toBe(false)
+  })
+})
+
+describe('normalizeKbChunks', () => {
+  it('sorts by chunkIndex', () => {
+    const out = normalizeKbChunks([
+      { id: 'b', chunkIndex: 1, text: 'second', fileName: 'a.md' },
+      { id: 'a', chunkIndex: 0, text: 'first', fileName: 'a.md' },
+    ])
+    expect(out.map((c) => c.text)).toEqual(['first', 'second'])
+  })
+})
 
 describe('kbKindOf', () => {
   it('classifies by file name prefix', () => {

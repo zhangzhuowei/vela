@@ -25,6 +25,33 @@ export function kbKindOf(fileName: string): KbKind {
   return 'other'
 }
 
+/** 整理产出里标明「不导入」的菜单/决策表，选中后也要挡掉 */
+export function isBlockedKbImportName(filePathOrName: string): boolean {
+  const name = (filePathOrName || '').replace(/\\/g, '/').split('/').pop() || ''
+  return /不导入/.test(name)
+}
+
+export interface KBChunkPreview {
+  id: string
+  chunkIndex: number
+  totalChunks: number
+  text: string
+  fileName: string
+}
+
+/** 把 LanceDB 行收成按 chunkIndex 排序的预览切片 */
+export function normalizeKbChunks(rows: Array<Partial<KBChunkPreview>>): KBChunkPreview[] {
+  return rows
+    .map((r, i) => ({
+      id: String(r.id ?? i),
+      chunkIndex: Number(r.chunkIndex ?? i),
+      totalChunks: Number(r.totalChunks ?? rows.length),
+      text: String(r.text ?? ''),
+      fileName: String(r.fileName ?? ''),
+    }))
+    .sort((a, b) => a.chunkIndex - b.chunkIndex)
+}
+
 /** 取 topK 时向底层多要几倍，才有东西可分 */
 export function kbOverfetch(topK: number): number {
   return Math.min(Math.max(topK * 3, topK), 15)

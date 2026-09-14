@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback } from 'react'
 import {
-  Database, BookOpen, FileText,
+  Database, BookOpen, FileText, FileUp, Trash2, X,
   Search, RefreshCw, Layers, Zap, Server, Activity,
 } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
@@ -10,11 +10,17 @@ import { EmptyState } from '../ui/EmptyState'
 import { useProjectStore } from '../../stores/project-store'
 import { cn } from '../../lib/utils'
 import { toast } from '../ui/Toast'
+import { confirm } from '../ui/Confirm'
 import { globalEventBus } from '../../shared/event-bus'
 import {
   loadKBData, getVectorlessCount, searchKB, backfillVectors,
-  type KBDocument, type SearchResult, type KBStatsData,
+  listDocumentChunks, removeKbDocument,
+  type KBDocument, type SearchResult, type KBStatsData, type KBChunkPreview,
 } from '../../services/knowledge-service'
+import { useKbImport } from '../../hooks/use-kb-import'
+import { useKbUiStore } from '../../stores/kb-ui-store'
+import { KbKindBadge } from '../panels/KbKindBadge'
+import { kbKindOf } from '../../services/kb-allocate'
 
 /**
  * 知识库概览页面 — LanceDB 向量数据库的管理中心
@@ -32,6 +38,12 @@ export default function KnowledgeOverview() {
   const [backfilling, setBackfilling] = useState(false)
 
   const currentProject = useProjectStore(s => s.currentProject)
+  const { importing, importFiles } = useKbImport()
+  const selectedDocId = useKbUiStore((s) => s.selectedDocId)
+  const selectDoc = useKbUiStore((s) => s.selectDoc)
+  const [chunks, setChunks] = useState<KBChunkPreview[]>([])
+  const [chunksLoading, setChunksLoading] = useState(false)
+  const [removing, setRemoving] = useState(false)
 
   const loadData = useCallback(async () => {
     if (!currentProject) return
@@ -55,6 +67,28 @@ export default function KnowledgeOverview() {
     loadData()
     checkVectorless()
   }, [loadData, checkVectorless])
+
+  useEffect(() => {
+    if (!selectedDocId) {
+      setChunks([])
+      return
+    }
+    let cancelled = false
+    setChunksLoading(true)
+    listDocumentChunks(selectedDocId)
+      .then((rows) => { if (!cancelled) setChunks(rows) })
+      .catch(() => { if (!cancelled) setChunks([]) })
+      .finally(() => { if (!cancelled) setChunksLoading(false) })
+    return () => { cancelled = true }
+  }, [selectedDocId])
+
+  const selectedDoc = documents.find((d) => d.id === selectedDocId) ?? null
+
+  useEffect(() => {
+    if (selectedDocId && documents.length > 0 && !documents.some((d) => d.id === selectedDocId)) {
+      selectDoc(null)
+    }
+  }, [documents, selectedDocId, selectDoc])
 
   useEffect(() => { checkVectorless() }, [checkVectorless, documents])
 
@@ -128,6 +162,30 @@ export default function KnowledgeOverview() {
     }
   }
 
+  const handleRemove = async () => {
+    if (!selectedDoc) return
+    const isSetting = kbKindOf(selectedDoc.fileName) === 'setting'
+    const ok = await confirm(
+      isSetting ? t('deleteConfirmSetting', { name: selectedDoc.fileName }) : t('deleteConfirm', { name: selectedDoc.fileName }),
+      { danger: true, confirmText: t('deleteDocument') },
+    )
+    if (!ok) return
+    setRemoving(true)
+    try {
+      const success = await removeKbDocument(selectedDoc.id)
+      if (success) {
+        toast.success(t('deleteOk'))
+        selectDoc(null)
+      } else {
+        toast.error(t('deleteFailed'))
+      }
+    } catch (e) {
+      toast.error(t('deleteFailed') + ': ' + String(e))
+    } finally {
+      setRemoving(false)
+    }
+  }
+
   return (
     <div className="h-full overflow-y-auto" style={{ backgroundColor: 'var(--color-editor-bg)' }}>
       <div className="max-w-4xl mx-auto px-8 py-6">
@@ -140,12 +198,20 @@ export default function KnowledgeOverview() {
           >
             <Database size={20} className="text-white" />
           </div>
-          <div>
+          <div className="flex-1 min-w-0">
             <h2 className="text-lg font-bold text-[var(--color-text)]">{t('title')}</h2>
             <p className="text-xs text-[var(--color-text-muted)]">
               {t('description')}
             </p>
           </div>
+          <Button
+            variant="outline"
+            onClick={() => importFiles()}
+            disabled={importing}
+          >
+            {importing ? <RefreshCw size={13} className="animate-spin" /> : <FileUp size={13} />}
+            {importing ? t('importing') : t('importDocument')}
+          </Button>
         </div>
 
         {/* ===== 统计卡片 ===== */}
@@ -202,6 +268,76 @@ export default function KnowledgeOverview() {
             {backfilling && (
               <div className="h-1 w-full bg-amber-500/10">
                 <div className="h-full bg-gradient-to-r from-amber-500 to-amber-300 animate-pulse rounded-full w-full" />
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* ===== 文档预览 ===== */}
+        {selectedDocId && (
+          <div
+            className="rounded-xl border border-[var(--color-border)] mb-6 overflow-hidden"
+            style={{ backgroundColor: 'var(--color-sidebar)' }}
+          >
+            <div className="flex items-start justify-between gap-3 px-4 py-3 border-b border-[var(--color-border)]">
+              <div className="min-w-0">
+                <div className="text-sm font-semibold text-[var(--color-text)] flex items-center gap-1.5">
+                  <FileText size={14} className="flex-shrink-0 text-[var(--color-accent)]" />
+                  <KbKindBadge fileName={selectedDoc?.fileName || chunks[0]?.fileName || ''} />
+                  <span className="truncate">{selectedDoc?.fileName || chunks[0]?.fileName || t('previewTitle')}</span>
+                </div>
+                <div className="text-[0.7rem] text-[var(--color-text-muted)] mt-1">
+                  {t('previewMeta', {
+                    chunks: selectedDoc?.chunkCount ?? chunks.length,
+                    date: selectedDoc ? new Date(selectedDoc.importedAt).toLocaleString('zh-CN') : '—',
+                  })}
+                </div>
+              </div>
+              <div className="flex items-center gap-1 flex-shrink-0">
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="text-[var(--color-error)] hover:text-[var(--color-error)]"
+                  onClick={handleRemove}
+                  disabled={removing || !selectedDoc}
+                  title={t('deleteDocument')}
+                >
+                  <Trash2 size={13} />
+                  {t('deleteDocument')}
+                </Button>
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  onClick={() => selectDoc(null)}
+                  title={t('previewClose')}
+                >
+                  <X size={14} />
+                </Button>
+              </div>
+            </div>
+            {chunksLoading ? (
+              <div className="px-4 py-8 text-xs text-center text-[var(--color-text-muted)]">
+                {t('previewLoading')}
+              </div>
+            ) : chunks.length === 0 ? (
+              <div className="px-4 py-8 text-xs text-center text-[var(--color-text-muted)]">
+                {t('previewEmpty')}
+              </div>
+            ) : (
+              <div className="max-h-[480px] overflow-y-auto">
+                {chunks.map((c) => (
+                  <div
+                    key={c.id}
+                    className="px-4 py-3 border-t border-[var(--color-border)]"
+                  >
+                    <div className="text-[0.65rem] text-[var(--color-text-muted)] mb-1.5 font-mono">
+                      {t('chunkLabel', { index: c.chunkIndex + 1, total: c.totalChunks || chunks.length })}
+                    </div>
+                    <p className="text-xs text-[var(--color-text-secondary)] leading-relaxed whitespace-pre-wrap">
+                      {c.text}
+                    </p>
+                  </div>
+                ))}
               </div>
             )}
           </div>

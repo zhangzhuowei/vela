@@ -20,7 +20,9 @@
   },
   "knowledgeOverview": {
     "title": "Knowledge Base",
-    "description": "Local vector database based on LanceDB. Auto-indexed after finalization, providing semantic search context for AI writing.",
+    "description": "Local LanceDB vector store. Finalized chapters are indexed automatically; you can also import reference files.",
+    "importDocument": "Import Document",
+    "importing": "Importing...",
     "openProjectFirst": "Please open a project first",
     "docCount": "Documents",
     "chunkCount": "Chunks",
@@ -47,6 +49,17 @@
     "searchResults": "Search Results ({{count}})",
     "clear": "Clear",
     "fullTextMatch": "Full-text match",
-    "similarity": "Similarity {{score}}%"
+    "similarity": "Similarity {{score}}%",
+    "previewTitle": "Document preview",
+    "previewMeta": "{{chunks}} chunks · {{date}}",
+    "previewClose": "Close preview",
+    "previewLoading": "Loading chunks…",
+    "previewEmpty": "This document has no chunks",
+    "chunkLabel": "Chunk {{index}} / {{total}}",
+    "deleteDocument": "Delete",
+    "deleteConfirm": "Remove “{{name}}” from the knowledge base? Chunks will be deleted; the original file on disk is untouched.",
+    "deleteConfirmSetting": "“{{name}}” is synced from the setting bible. Saving that module again will re-import it.",
+    "deleteOk": "Removed from the knowledge base",
+    "deleteFailed": "Failed to delete"
   }
 }

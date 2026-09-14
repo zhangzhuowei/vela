@@ -570,6 +570,10 @@ export interface KnowledgeBaseChannels {
   'kb:search': { args: [query: string, topK?: number]; return: Array<{ text: string; score: number; fileName: string }> }
   'kb:search-with-scope': { args: [query: string, fromChapter: number, toChapter: number, topK?: number]; return: Array<{ text: string; score: number; fileName: string }> }
   'kb:list-documents': { args: []; return: Array<{ id: string; fileName: string; importedAt: string; chunkCount: number; filePath: string }> }
+  'kb:list-chunks': {
+    args: [docId: string]
+    return: Array<{ id: string; chunkIndex: number; totalChunks: number; text: string; fileName: string }>
+  }
   'kb:remove-document': { args: [docId: string]; return: { success: boolean } }
   'kb:stats': { args: []; return: { documentCount: number; totalChunks: number; vectorDimension: number } }
   'dialog:select-files': { args: []; return: string[] | null }

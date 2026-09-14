@@ -20,7 +20,9 @@
   },
   "knowledgeOverview": {
     "title": "知识库",
-    "description": "基于 LanceDB 的本地向量数据库，定稿后自动入库，为 AI 写作提供语义检索上下文",
+    "description": "基于 LanceDB 的本地向量数据库，定稿后自动入库，也可手工导入资料",
+    "importDocument": "导入文档",
+    "importing": "导入中...",
     "openProjectFirst": "请先打开项目",
     "docCount": "文档数量",
     "chunkCount": "知识切片",
@@ -47,6 +49,17 @@
     "searchResults": "检索结果 ({{count}} 条)",
     "clear": "清除",
     "fullTextMatch": "全文匹配",
-    "similarity": "相似度 {{score}}%"
+    "similarity": "相似度 {{score}}%",
+    "previewTitle": "文档预览",
+    "previewMeta": "{{chunks}} 块 · {{date}}",
+    "previewClose": "关闭预览",
+    "previewLoading": "正在读取切片…",
+    "previewEmpty": "这份文档没有切片",
+    "chunkLabel": "第 {{index}} / {{total}} 块",
+    "deleteDocument": "删除",
+    "deleteConfirm": "从知识库删除「{{name}}」？切片会一起去掉，磁盘上的原稿不会动。",
+    "deleteConfirmSetting": "「{{name}}」是设定纲要同步的。删掉后，下次保存该模块还会再导回来。",
+    "deleteOk": "已从知识库删除",
+    "deleteFailed": "删除失败"
   }
 }

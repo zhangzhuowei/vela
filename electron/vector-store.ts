@@ -560,6 +560,40 @@ export async function searchWithScope(
   }
 }
 
+/** 按文档列出切片（不含向量），供预览 */
+export async function listChunksByDocId(
+  projectPath: string,
+  docId: string,
+): Promise<Array<{ id: string; chunkIndex: number; totalChunks: number; text: string; fileName: string }>> {
+  if (!docId) return []
+  try {
+    const db = await getConnection(projectPath)
+    const tableNames = await db.tableNames()
+    if (!tableNames.includes(TABLE_NAME)) return []
+
+    const table = await db.openTable(TABLE_NAME)
+    const escaped = docId.replace(/'/g, "''")
+    const rows = await table
+      .query()
+      .where(`docId = '${escaped}'`)
+      .select(['id', 'chunkIndex', 'totalChunks', 'text', 'fileName'])
+      .toArray()
+
+    return rows
+      .map((r: { id: string; chunkIndex: number; totalChunks: number; text: string; fileName: string }) => ({
+        id: String(r.id),
+        chunkIndex: Number(r.chunkIndex),
+        totalChunks: Number(r.totalChunks),
+        text: String(r.text ?? ''),
+        fileName: String(r.fileName ?? ''),
+      }))
+      .sort((a, b) => a.chunkIndex - b.chunkIndex)
+  } catch (error) {
+    console.error('[Vela VectorStore] 按文档列切片失败:', error)
+    return []
+  }
+}
+
 /**
  * 列出所有已导入文档
  */

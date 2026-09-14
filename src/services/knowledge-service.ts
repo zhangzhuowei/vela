@@ -6,6 +6,10 @@
  */
 
 import { ipc } from './ipc-client'
+import { globalEventBus } from '../shared/event-bus'
+import { isBlockedKbImportName, normalizeKbChunks, type KBChunkPreview } from './kb-allocate'
+
+export type { KBChunkPreview }
 
 /** 已导入文档 */
 export interface KBDocument {
@@ -60,7 +64,67 @@ export async function searchKB(query: string, topK: number): Promise<SearchResul
   return ipc.invoke('kb:search', query, topK)
 }
 
+/** 按文档列出切片（预览） */
+export async function listDocumentChunks(docId: string): Promise<KBChunkPreview[]> {
+  const rows = await ipc.invoke('kb:list-chunks', docId)
+  return normalizeKbChunks(rows)
+}
+
+/** 删除知识库文档及其切片 */
+export async function removeKbDocument(docId: string): Promise<boolean> {
+  const res = await ipc.invoke('kb:remove-document', docId)
+  if (res.success) {
+    globalEventBus.emit('REFRESH_RESOURCE', { resources: ['all'] })
+  }
+  return res.success
+}
+
 /** 执行向量回填 */
 export async function backfillVectors(): Promise<{ success: boolean; processed: number; failed: number; error?: string }> {
   return ipc.invoke('kb:backfill-vectors') as Promise<{ success: boolean; processed: number; failed: number; error?: string }>
+}
+
+export interface KbImportResult {
+  cancelled: boolean
+  imported: number
+  chunks: number
+  skipped: string[]
+  failed: Array<{ fileName: string; error: string }>
+}
+
+function fileBaseName(filePath: string): string {
+  return filePath.replace(/\\/g, '/').split('/').pop() || filePath
+}
+
+/** 弹出多选框，导入 .md / .txt；文件名含「不导入」的跳过 */
+export async function importKbFilesFromDialog(): Promise<KbImportResult> {
+  const empty: KbImportResult = { cancelled: true, imported: 0, chunks: 0, skipped: [], failed: [] }
+  const paths = await ipc.invoke('dialog:select-files')
+  if (!paths || paths.length === 0) return empty
+
+  const skipped: string[] = []
+  const toImport: string[] = []
+  for (const p of paths) {
+    if (isBlockedKbImportName(p)) skipped.push(fileBaseName(p))
+    else toImport.push(p)
+  }
+
+  let imported = 0
+  let chunks = 0
+  const failed: Array<{ fileName: string; error: string }> = []
+  for (const p of toImport) {
+    const res = await ipc.invoke('kb:import-document', p)
+    if (res.success) {
+      imported++
+      chunks += res.chunkCount ?? 0
+    } else {
+      failed.push({ fileName: fileBaseName(p), error: res.error || 'unknown' })
+    }
+  }
+
+  if (imported > 0) {
+    globalEventBus.emit('REFRESH_RESOURCE', { resources: ['all'] })
+  }
+
+  return { cancelled: false, imported, chunks, skipped, failed }
 }

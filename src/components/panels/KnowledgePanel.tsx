@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback } from 'react'
 import {
-  Database, RefreshCw, BookOpen,
+  Database, RefreshCw, BookOpen, FileUp,
 } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { ipc } from '../../services/ipc-client'
@@ -9,28 +9,18 @@ import { EmptyState } from '../ui/EmptyState'
 import { useProjectStore } from '../../stores/project-store'
 import { globalEventBus } from '../../shared/event-bus'
 import { loadKBData, type KBDocument } from '../../services/knowledge-service'
-import { kbKindOf, type KbKind } from '../../services/kb-allocate'
-
-/** 来源角标：设定纲要同步的 / 词表示范类；正文与手导资料不标 */
-function KindBadge({ kind }: { kind: KbKind }) {
-  const { t } = useTranslation('panels')
-  if (kind === 'other') return null
-  const color = kind === 'setting' ? 'var(--color-success)' : 'var(--color-warning, #eab308)'
-  return (
-    <span
-      className="text-[0.6rem] px-1 py-px rounded flex-shrink-0"
-      style={{ color, border: `1px solid ${color}` }}
-      title={t(`knowledge.kind.${kind}Hint`)}
-    >
-      {t(`knowledge.kind.${kind}`)}
-    </span>
-  )
-}
+import { useKbImport } from '../../hooks/use-kb-import'
+import { useKbUiStore } from '../../stores/kb-ui-store'
+import { KbKindBadge } from './KbKindBadge'
+import { cn } from '../../lib/utils'
 
 
-/** 知识库管理面板（侧栏）— 纯只读展示 + 搜索，数据由定稿自动驱动 */
+/** 知识库管理面板（侧栏）— 列表 + 手工导入 .md/.txt，定稿与纲要保存也会自动入库 */
 export default function KnowledgePanel() {
   const { t } = useTranslation('panels')
+  const { importing, importFiles } = useKbImport()
+  const selectedDocId = useKbUiStore((s) => s.selectedDocId)
+  const selectDoc = useKbUiStore((s) => s.selectDoc)
   const [documents, setDocuments] = useState<KBDocument[]>([])
   const [stats, setStats] = useState({ documentCount: 0, totalChunks: 0 })
   const [currentPage, setCurrentPage] = useState(1)
@@ -98,6 +88,10 @@ export default function KnowledgePanel() {
 
   const currentProject = useProjectStore(s => s.currentProject)
 
+  useEffect(() => {
+    selectDoc(null)
+  }, [currentProject?.path, selectDoc])
+
   if (!currentProject) {
     return (
       <EmptyState 
@@ -120,14 +114,25 @@ export default function KnowledgePanel() {
             {t('knowledge.docsChunks', { docs: stats.documentCount, chunks: stats.totalChunks })}
           </span>
         </span>
-        <Button
-          variant="ghost" size="icon"
-          onClick={() => loadData()}
-          title={t('common.refresh')}
-          className="h-6 w-6"
-        >
-          <RefreshCw size={11} />
-        </Button>
+        <div className="flex items-center gap-0.5">
+          <Button
+            variant="ghost" size="icon"
+            onClick={() => importFiles()}
+            disabled={importing}
+            title={t('knowledge.importDocument')}
+            className="h-6 w-6"
+          >
+            {importing ? <RefreshCw size={11} className="animate-spin" /> : <FileUp size={11} />}
+          </Button>
+          <Button
+            variant="ghost" size="icon"
+            onClick={() => loadData()}
+            title={t('common.refresh')}
+            className="h-6 w-6"
+          >
+            <RefreshCw size={11} />
+          </Button>
+        </div>
       </div>
 
       <div className="flex-1 overflow-y-auto">
@@ -140,7 +145,7 @@ export default function KnowledgePanel() {
           <div className="flex flex-col items-center justify-center py-8 gap-2 opacity-40">
             <BookOpen size={28} />
             <span className="text-xs">{t('knowledge.noManuscript')}</span>
-            <span className="text-[0.7rem] text-center px-4">{t('knowledge.importDocumentAuto')}</span>
+            <span className="text-[0.7rem] text-center px-4">{t('knowledge.importHint')}</span>
           </div>
         ) : (
           <div className="pb-4">
@@ -150,11 +155,25 @@ export default function KnowledgePanel() {
               .map((doc) => (
                 <div
                   key={doc.id}
-                  className="flex items-center justify-between px-3 py-2 hover:bg-[var(--color-hover)] transition-colors group"
+                  role="button"
+                  tabIndex={0}
+                  onClick={() => selectDoc(doc.id === selectedDocId ? null : doc.id)}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter' || e.key === ' ') {
+                      e.preventDefault()
+                      selectDoc(doc.id === selectedDocId ? null : doc.id)
+                    }
+                  }}
+                  className={cn(
+                    'flex items-center justify-between px-3 py-2 cursor-pointer transition-colors group',
+                    doc.id === selectedDocId
+                      ? 'bg-[var(--color-hover)] border-l-2 border-[var(--color-accent)]'
+                      : 'hover:bg-[var(--color-hover)] border-l-2 border-transparent',
+                  )}
                 >
                   <div className="flex-1 min-w-0">
                     <div className="text-xs text-[var(--color-text)] truncate flex items-center gap-1.5" title={doc.fileName}>
-                      <KindBadge kind={kbKindOf(doc.fileName)} />
+                      <KbKindBadge fileName={doc.fileName} />
                       <span className="truncate">{titleMap[doc.id] || doc.fileName}</span>
                     </div>
                     <div className="flex items-center gap-2 text-[0.7rem] text-[var(--color-text-muted)] mt-0.5">

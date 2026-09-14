@@ -17,6 +17,7 @@ import {
   removeDocument as removeDocFromStore,
   searchWithScope as storeSearchWithScope,
   listDocuments as storeListDocuments,
+  listChunksByDocId as storeListChunksByDocId,
   getStats as storeGetStats,
   migrateFromJSON,
   getChunksWithoutVectors as storeGetChunksWithoutVectors,
@@ -135,6 +136,11 @@ export async function searchKnowledge(
  */
 export function listDocuments(projectPath: string) {
   return storeListDocuments(projectPath)
+}
+
+/** 按文档预览切片 */
+export function listDocumentChunks(docId: string, projectPath: string) {
+  return storeListChunksByDocId(projectPath, docId)
 }
 
 /**
