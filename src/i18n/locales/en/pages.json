@@ -86,6 +86,7 @@
     "tabOutline": "Outline",
     "tabLines": "Character lines",
     "tabDigests": "Chapter digests",
+    "tabExports": "Exports",
     "runOutline": "Build outline (L1–L3)",
     "lines": {
       "title": "Character lines",
@@ -123,6 +124,7 @@
       "collapse": "Collapse",
       "expand": "Expand",
       "rollback": "Roll back",
+      "rollbackFailed": "Rollback failed: {{error}}",
       "noOutline": "Nothing yet. Confirm lines, then build the outline.",
       "runOutline": "Build outline (L1–L3)",
       "needDigests": "Digest chapters first.",
@@ -148,6 +150,53 @@
       "example2": "Turn the relationship-line rotation section into a table",
       "example3": "Keep only foreshadowing that spans 50+ chapters",
       "noScope": "Click Refine on a layer or segment on the left first"
+    },
+    "bookSeed": {
+      "open": "Generate book seed",
+      "title": "Generate book seed",
+      "hint": "Borrow this work's stages, character lines and pacing to draft another book from your requirements. Output is files; the current project is untouched.",
+      "placeholder": "Describe the new book: genre / world / protagonist / chapter count & length / things to keep or avoid…",
+      "run": "Generate",
+      "noDir": "No folder selected; cancelled.",
+      "needL2Hint": "Build the L2 outline first",
+      "reuseNames": "Reuse the work's characters & names",
+      "reuseNamesOff": "Off: borrow structure and pacing only; names, places, factions and lore are all replaced.",
+      "reuseNamesOn": "On: characters from the character lines are kept as-is; only the world / events you name in your requirements change.",
+      "digestMode": {
+        "label": "Chapter digests",
+        "none": "None",
+        "brief": "Brief",
+        "full": "Full",
+        "noneHint": "Send only L2 / L3, stages and character arcs; smallest input.",
+        "briefHint": "One line per chapter (summary + hook), evenly sampled to 60 chapters; lets you change events by chapter number.",
+        "fullHint": "Every chapter with events, hook and active line; drops to Brief above 60k chars. Slow and costly for hundreds of chapters."
+      },
+      "opt": {
+        "config": "Novel config",
+        "architecture": "Story architecture (4 files)",
+        "characters": "Character cards"
+      }
+    },
+    "exports": {
+      "title": "Exports",
+      "empty": "No book seed yet. Use “Generate book seed” in the header.",
+      "status": {
+        "ok": "ok",
+        "failed": "failed"
+      },
+      "instruction": "My requirements",
+      "files": "Files written",
+      "error": "Error",
+      "bookJson": "book.json",
+      "charactersJson": "characters.json",
+      "rawOutput": "Raw model output",
+      "copy": "Copy",
+      "copied": "Copied",
+      "resave": "Re-save files",
+      "resaved": "Re-wrote {{count}} file(s)",
+      "reuse": "Generate again with this",
+      "delete": "Delete record",
+      "deleteConfirm": "Delete this record? Files on disk are kept."
     },
     "status": {
       "idle": "idle",

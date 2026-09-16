@@ -36,6 +36,33 @@ export function pickStageDraft(drafts: StageDraft[], from: number, to: number): 
   })[0]
 }
 
+/**
+ * 把新切出的阶段从锁定段的章范围里挖掉：整段在锁定范围内的丢弃，压边的裁掉，跨过去的劈成两段。
+ * 归纳大纲只替换未锁定段，不做这一步会和锁定段重叠。
+ */
+export function excludeLockedRanges(
+  drafts: StageDraft[],
+  locked: Array<{ fromChapter: number; toChapter: number }>,
+): StageDraft[] {
+  if (locked.length === 0) return drafts
+  const ranges = [...locked].sort((a, b) => a.fromChapter - b.fromChapter)
+  const out: StageDraft[] = []
+  for (const d of drafts) {
+    let pieces: StageDraft[] = [d]
+    for (const r of ranges) {
+      const next: StageDraft[] = []
+      for (const p of pieces) {
+        if (p.toChapter < r.fromChapter || p.fromChapter > r.toChapter) { next.push(p); continue }
+        if (p.fromChapter < r.fromChapter) next.push({ ...p, toChapter: r.fromChapter - 1 })
+        if (p.toChapter > r.toChapter) next.push({ ...p, fromChapter: r.toChapter + 1 })
+      }
+      pieces = next
+    }
+    out.push(...pieces)
+  }
+  return out.sort((a, b) => a.fromChapter - b.fromChapter)
+}
+
 export function mergeStageBatches(batches: StageDraft[][]): StageWithSeq[] {
   const merged: StageDraft[] = []
   for (const batch of batches) {

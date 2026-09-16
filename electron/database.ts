@@ -642,6 +642,23 @@ function createTables(db: BetterSqlite3.Database) {
     );
     CREATE INDEX IF NOT EXISTS idx_ref_revisions_work ON ref_revisions(work_id, created_at);
 
+    CREATE TABLE IF NOT EXISTS ref_exports (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      work_id INTEGER NOT NULL,
+      instruction TEXT DEFAULT '',
+      options TEXT DEFAULT '{}',
+      model_id TEXT DEFAULT '',
+      status TEXT DEFAULT 'ok',
+      error TEXT DEFAULT '',
+      raw_output TEXT DEFAULT '',
+      book_json TEXT DEFAULT '',
+      characters_json TEXT DEFAULT '',
+      file_paths TEXT DEFAULT '[]',
+      created_at TEXT DEFAULT (datetime('now')),
+      FOREIGN KEY (work_id) REFERENCES ref_works(id) ON DELETE CASCADE
+    );
+    CREATE INDEX IF NOT EXISTS idx_ref_exports_work ON ref_exports(work_id, id);
+
     -- 索引
     CREATE INDEX IF NOT EXISTS idx_llm_calls_time ON llm_calls(created_at);
   `)

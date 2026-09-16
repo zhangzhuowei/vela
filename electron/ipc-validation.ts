@@ -466,6 +466,29 @@ export function validateRefRevisionInput(v: unknown, path = 'refRevision') {
   }
 }
 
+export function validateRefExportInput(v: unknown, path = 'refExport') {
+  if (!isObject(v)) throw new ValidationError(path, 'expected object')
+  if (!isObject(v.options)) throw new ValidationError(`${path}.options`, 'expected object')
+  return {
+    workId: checkNumberRange(v.workId, `${path}.workId`, { min: 1, max: 1e9, integer: true }),
+    instruction: checkStringLength(v.instruction ?? '', `${path}.instruction`, { max: 8000 }),
+    options: {
+      config: Boolean(v.options.config),
+      architecture: Boolean(v.options.architecture),
+      characters: Boolean(v.options.characters),
+      reuseNames: Boolean(v.options.reuseNames),
+      digestMode: checkEnum(v.options.digestMode ?? 'none', `${path}.options.digestMode`, ['none', 'brief', 'full'] as const),
+    },
+    modelId: checkStringLength(v.modelId ?? '', `${path}.modelId`, { max: 200 }),
+    status: checkEnum(v.status, `${path}.status`, ['ok', 'failed'] as const),
+    error: checkStringLength(v.error ?? '', `${path}.error`, { max: 4000 }),
+    rawOutput: checkStringLength(v.rawOutput ?? '', `${path}.rawOutput`, { max: 400000 }),
+    bookJson: checkStringLength(v.bookJson ?? '', `${path}.bookJson`, { max: 400000 }),
+    charactersJson: checkStringLength(v.charactersJson ?? '', `${path}.charactersJson`, { max: 400000 }),
+    filePaths: checkStringArray(v.filePaths ?? [], `${path}.filePaths`, 8, 1000),
+  }
+}
+
 /**
  * 安全调用 validator 包装器：捕获 ValidationError 并返回 { success, error }
  * 用于 ipcMain.handle 内部

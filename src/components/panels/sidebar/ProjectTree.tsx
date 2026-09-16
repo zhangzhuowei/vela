@@ -5,7 +5,7 @@
  */
 
 import { useState, useEffect, useCallback, useRef } from 'react'
-import { ChevronRight, ChevronDown, RefreshCw, CheckCircle2, Circle, FolderOpen, Copy, FolderTree } from 'lucide-react'
+import { ChevronRight, ChevronDown, RefreshCw, CheckCircle2, Circle, FolderOpen, Copy, FolderTree, Upload } from 'lucide-react'
 import { useProjectStore } from '../../../stores/project-store'
 import { useWorkflowStore } from '../../../stores/workflow-store'
 import { useDraftStore } from '../../../stores/draft-store'
@@ -14,8 +14,11 @@ import { useLayoutStore } from '../../../stores/layout-store'
 import { ipc } from '../../../services/ipc-client'
 import { Button } from '../../ui/Button'
 import { EmptyState } from '../../ui/EmptyState'
+import { toast } from '../../ui/Toast'
+import { confirm } from '../../ui/Confirm'
 import { useTranslation } from 'react-i18next'
 import { globalEventBus } from '../../../shared/event-bus'
+import { prepareBookSeedImport, commitBookSeedImport } from '../../../services/book-seed-import'
 
 
 
@@ -94,6 +97,24 @@ export default function ProjectTree() {
     })
   }, [refreshAll])
 
+  // 新书导入包（book.json）：只写小说配置与故事架构四件，角色卡走角色侧栏
+  const seedInputRef = useRef<HTMLInputElement>(null)
+  const handleSeedFile = async (file: File) => {
+    const prepared = await prepareBookSeedImport(await file.text())
+    if (!prepared) { toast.error(t('projectTree.seedImportInvalid')); return }
+    if (prepared.overwrites.length > 0) {
+      const list = prepared.overwrites
+        .map((k) => `• ${t(`projectTree.seedField.${k.split('.')[1]}`, { defaultValue: k })}`)
+        .join('\n')
+      const ok = await confirm(t('projectTree.seedImportOverwrite', { list }), { danger: true, confirmText: t('projectTree.seedImportConfirm') })
+      if (!ok) return
+    }
+    const res = await commitBookSeedImport(prepared.seed)
+    if (!res.ok) { toast.error(t('projectTree.seedImportFailed', { error: res.error ?? res.reason })); return }
+    toast.success(t('projectTree.seedImportOk', { count: res.written }))
+    void refreshAll()
+  }
+
   if (!currentProject) {
     return (
       <EmptyState
@@ -165,9 +186,25 @@ export default function ProjectTree() {
         <span className="font-semibold text-xs truncate" style={{ color: 'var(--color-text)' }}>
           {currentProject.name}
         </span>
-        <Button variant="ghost" size="icon" onClick={() => refreshAll()} title={t('common.refresh')}>
-          <RefreshCw size={12} />
-        </Button>
+        <div className="flex items-center gap-0.5">
+          <Button variant="ghost" size="icon" onClick={() => seedInputRef.current?.click()} title={t('projectTree.seedImport')}>
+            <Upload size={12} />
+          </Button>
+          <input
+            ref={seedInputRef}
+            type="file"
+            accept=".json,application/json"
+            className="hidden"
+            onChange={(e) => {
+              const file = e.target.files?.[0]
+              e.target.value = ''
+              if (file) void handleSeedFile(file)
+            }}
+          />
+          <Button variant="ghost" size="icon" onClick={() => refreshAll()} title={t('common.refresh')}>
+            <RefreshCw size={12} />
+          </Button>
+        </div>
       </div>
 
       {/* 1. 小说配置 */}

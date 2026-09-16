@@ -23,6 +23,7 @@ import { NativeSelect } from '../ui/NativeSelect'
 import { cn } from '../../lib/utils'
 import { ipc } from '../../services/ipc-client'
 import { Switch } from '../ui/Switch'
+import { DEFAULT_LENGTH_FLOOR_RATIO, resolveLengthFloorRatio } from '../../services/length-gate'
 
 // 打赏/赞助 图片资源（通过 import 让 Vite 处理路径，确保打包后可正常加载）
 import wepayImg from '/buyme/wepay.jpg?url'
@@ -1020,6 +1021,23 @@ function FontSelect({
 function EditorSection() {
   const { writingFont, setWritingFont, uiFont, setUiFont } = useThemeStore()
   const { t } = useTranslation('settings')
+  const [seedDir, setSeedDir] = useState('')
+  const [floorPercent, setFloorPercent] = useState(Math.round(DEFAULT_LENGTH_FLOOR_RATIO * 100))
+  useEffect(() => {
+    ipc.invoke('config:get').then((cfg) => {
+      setSeedDir(cfg.bookSeedExportDir ?? '')
+      setFloorPercent(Math.round(resolveLengthFloorRatio(cfg.lengthFloorRatio) * 100))
+    }).catch(() => { })
+  }, [])
+  const saveSeedDir = async (dir: string) => {
+    setSeedDir(dir)
+    await ipc.invoke('config:set', { bookSeedExportDir: dir }).catch(() => { })
+  }
+  const saveFloorPercent = async (percent: number) => {
+    const ratio = resolveLengthFloorRatio(percent)
+    setFloorPercent(Math.round(ratio * 100))
+    await ipc.invoke('config:set', { lengthFloorRatio: ratio }).catch(() => { })
+  }
 
   return (
     <div className="max-w-md space-y-5">
@@ -1054,6 +1072,50 @@ function EditorSection() {
       >
         <span className="flex-shrink-0 mt-0.5" style={{ color: 'var(--color-text-muted)' }}>{t('appearance.hint')}</span>
         <span>{t('appearance.fontsBuiltIn')}</span>
+      </div>
+
+      {/* 篇幅下限比例 */}
+      <div className="space-y-1.5">
+        <div>
+          <p className="text-xs font-semibold" style={{ color: 'var(--color-text)' }}>{t('appearance.lengthFloor')}</p>
+          <p className="text-[0.68rem] mt-0.5" style={{ color: 'var(--color-text-muted)' }}>{t('appearance.lengthFloorDesc')}</p>
+        </div>
+        <div className="flex items-center gap-2">
+          <Input
+            type="number"
+            min={50}
+            max={100}
+            step={5}
+            className="w-24"
+            value={floorPercent}
+            onChange={(e) => setFloorPercent(Number(e.target.value))}
+            onBlur={(e) => void saveFloorPercent(Number(e.target.value))}
+          />
+          <span className="text-xs" style={{ color: 'var(--color-text-muted)' }}>%</span>
+        </div>
+      </div>
+
+      {/* 导入包保存目录 */}
+      <div className="space-y-1.5">
+        <div>
+          <p className="text-xs font-semibold" style={{ color: 'var(--color-text)' }}>{t('appearance.seedDir')}</p>
+          <p className="text-[0.68rem] mt-0.5" style={{ color: 'var(--color-text-muted)' }}>{t('appearance.seedDirDesc')}</p>
+        </div>
+        <div className="flex items-center gap-2">
+          <div
+            className="flex-1 px-3 py-1.5 rounded-lg text-xs truncate"
+            style={{ backgroundColor: 'var(--color-input)', border: '1px solid var(--color-border)', color: seedDir ? 'var(--color-text)' : 'var(--color-text-muted)' }}
+            title={seedDir}
+          >
+            {seedDir || t('appearance.seedDirEmpty')}
+          </div>
+          <Button variant="outline" size="sm" onClick={() => void ipc.invoke('dialog:select-folder').then((d) => { if (d) void saveSeedDir(d) })}>
+            {t('appearance.seedDirPick')}
+          </Button>
+          <Button variant="ghost" size="sm" disabled={!seedDir} onClick={() => void saveSeedDir('')}>
+            {t('appearance.seedDirClear')}
+          </Button>
+        </div>
       </div>
     </div>
   )

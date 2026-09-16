@@ -6,7 +6,7 @@
 
 | 项 | 决定 |
 | --- | --- |
-| 导入到本书 | 第一版不做；用法 B「原著人物可出场」留给后续 |
+| 导入到本书 | 不直接写；由「生成新书导入包」产出 `*.book.json`（配置 + 架构四件）与 `*.characters.json`（角色卡包），在新书项目结构头部 / 角色卡侧栏分别导入。用法 B「原著人物可出场」仍留后续 |
 | 层级 | L0 章摘要 / L1 阶段轴 + 人物线轴 / L2 总纲 / L3 推进模式 |
 | 抽样 | 范围 `from..to`，默认前 200 章；可继续跑剩余 |
 | 分模型 | `digestModelId`（L0）、`outlineModelId`（L1～L3、微调、单块重跑）；空 = 默认生成模型。创建后可在详情页改，任务运行中不可改 |
@@ -24,10 +24,11 @@
 - `ref_stages`：阶段轴（目标、敌人、入段钩子、出段爆点、锁定）
 - `ref_outlines`：L2 / L3 Markdown、版本、锁定
 - `ref_revisions`：作用域微调快照，可回退
+- `ref_exports`：每次生成导入包的要求、勾选、模型、状态、原始输出、两份 JSON、文件路径
 
 ## 模板 key
 
-`ref_chapter_digest`、`ref_stage_segment`、`ref_line_arc`、`ref_global_outline`、`ref_progression_pattern`、`ref_refine`
+`ref_chapter_digest`、`ref_stage_segment`、`ref_line_arc`、`ref_global_outline`、`ref_progression_pattern`、`ref_refine`、`ref_book_seed`
 
 ## 续跑
 
@@ -41,3 +42,4 @@
 - L0 单次正文上限 8000 字；超过则按空白段 / 换行 / 句读打包成多块（每块 ≤8000），再按块调用并合并。无边界的超长串才硬切。
 - 任务中途退出时 `status` 可能停在 running；打开项目且当前没有拆书任务时，按已完成的 L0 收口为 done / error / idle。
 - L0 `characterStates` 的 stage / func 两套枚举不相交；填反时落库前纠正（对调或落到 none / mention），未知值仍拒绝。
+- 导入包默认只借结构不带范文专名；面板上「沿用范文人物与专名」开关打开后改为原样保留人物线角色，只改用户点名的世界观 / 事件（模板变量 `naming_rule`，随记录保存）。「逐章摘要」三档：不带 / 精简（每章一行摘要 + 钩子，等距最多 60 章）/ 全部（含事件、钩子、主攻线；超 6 万字自动降精简并记日志），模板变量 `chapter_digests`，同样随记录保存。导入时非空字段先确认再覆盖，章数字数缺省保留。保存目录在全局设置，为空每次询问。生成失败也落一条记录并保留模型原文，用户取消不落。

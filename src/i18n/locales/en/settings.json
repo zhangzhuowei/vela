@@ -30,7 +30,14 @@
     "writingFontDesc": "Drafts, final chapters, architecture documents and other body text areas",
     "zoomLevel": "Zoom Level",
     "fontsBuiltIn": "All fonts are built into the application, no network connection required. Changes take effect immediately.",
-    "hint": "Hint"
+    "hint": "Hint",
+    "lengthFloor": "Length floor",
+    "lengthFloorDesc": "Drafting and dialogue mode auto-continue when prose falls below this share of the target length (50–100%, default 85%).",
+    "seedDir": "Book seed folder",
+    "seedDirDesc": "Where “Generate book seed” writes book.json / characters.json. Empty = ask every time.",
+    "seedDirEmpty": "Not set; asked on each run",
+    "seedDirPick": "Choose",
+    "seedDirClear": "Clear"
   },
   "models": {
     "title": "Model Configuration",
@@ -205,6 +212,8 @@
     "directory_incremental": { "name": "Chapter Blueprint (Incremental)", "description": "Continue generating chapter blueprints from existing ones, supporting chunked generation" },
     "first_chapter_draft": { "name": "First Chapter Draft", "description": "Generate the complete text of the novel's first chapter" },
     "next_chapter_draft": { "name": "Subsequent Chapter Draft", "description": "Generate subsequent chapters based on context and chapter blueprints" },
+    "draft_continue": { "name": "Length Top-up Continuation", "description": "Extra round appended when a draft falls short: carries the previous ending, style, on-stage character states and setting digest, and continues from the last sentence" },
+    "dialogue_continue": { "name": "Dialogue Mode Length Top-up", "description": "Continuation instruction appended when a dialogue-mode turn falls short of the floor" },
     "refine_chapter": { "name": "Master-Level Revision", "description": "Elevate the draft to master-level quality" },
     "consistency_check": { "name": "Consistency Review", "description": "Check the chapter for consistency issues" },
     "analyze_writing_style": { "name": "Writing Style Analysis", "description": "Extract the author's writing style characteristics from prose samples" },

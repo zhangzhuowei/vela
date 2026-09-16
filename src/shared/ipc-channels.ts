@@ -33,6 +33,10 @@ export interface GlobalConfig {
     host: string
     port: number
   }
+  /** 拆书「生成新书导入包」的保存目录；空 = 每次询问 */
+  bookSeedExportDir?: string
+  /** 篇幅闸门：正文低于目标字数的这个比例才自动续写（0.5～1，默认 0.85） */
+  lengthFloorRatio?: number
 }
 
 // ===== 项目管理 =====
@@ -304,7 +308,7 @@ import type { BranchData, BranchInput, BranchStats } from '../../electron/reposi
 import type {
   RefWorkData, RefWorkInput, RefChapterMeta, RefChapterData, RefDigestData, RefDigestInput,
   RefLineData, RefLineInput, RefStageData, RefStageInput, RefOutlineData, RefOutlineLevel,
-  RefRevisionData, RefRevisionInput,
+  RefRevisionData, RefRevisionInput, RefExportData, RefExportInput,
 } from '../../electron/repositories/reference-repository'
 import type { ChapterVisibility } from './chapter-addressing'
 
@@ -373,6 +377,10 @@ export interface DatabaseChannels {
   'db:ref-outline-lock': { args: [workId: number, level: RefOutlineLevel, locked: boolean]; return: { success: boolean; error?: string } }
   'db:ref-revision-insert': { args: [data: RefRevisionInput]; return: { success: boolean; data?: number; error?: string } }
   'db:ref-revision-list': { args: [workId: number]; return: RefRevisionData[] }
+  'db:ref-export-insert': { args: [data: RefExportInput]; return: { success: boolean; data?: number; error?: string } }
+  'db:ref-export-list': { args: [workId: number]; return: RefExportData[] }
+  'db:ref-export-get': { args: [id: number]; return: RefExportData | null }
+  'db:ref-export-delete': { args: [id: number]; return: { success: boolean; error?: string } }
 
   // 2d. 线（番外 / IF）
   'db:branch-list': { args: []; return: BranchData[] }

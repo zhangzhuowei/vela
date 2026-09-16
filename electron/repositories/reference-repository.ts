@@ -98,6 +98,31 @@ export interface RefRevisionData {
 }
 export type RefRevisionInput = Omit<RefRevisionData, 'id' | 'createdAt'>
 
+export type RefExportStatus = 'ok' | 'failed'
+export type RefExportDigestMode = 'none' | 'brief' | 'full'
+export interface RefExportOptions {
+  config: boolean
+  architecture: boolean
+  characters: boolean
+  reuseNames: boolean
+  digestMode: RefExportDigestMode
+}
+export interface RefExportData {
+  id: number
+  workId: number
+  instruction: string
+  options: RefExportOptions
+  modelId: string
+  status: RefExportStatus
+  error: string
+  rawOutput: string
+  bookJson: string
+  charactersJson: string
+  filePaths: string[]
+  createdAt: string
+}
+export type RefExportInput = Omit<RefExportData, 'id' | 'createdAt'>
+
 function parseJsonArray<T>(raw: unknown, fallback: T[] = []): T[] {
   if (typeof raw !== 'string' || !raw) return fallback
   try {
@@ -199,6 +224,32 @@ function rowToRevision(r: Record<string, unknown>): RefRevisionData {
     instruction: String(r.instruction ?? ''),
     before: String(r.before ?? ''),
     after: String(r.after ?? ''),
+    createdAt: String(r.created_at ?? ''),
+  }
+}
+
+function rowToExport(r: Record<string, unknown>): RefExportData {
+  let options: RefExportOptions = { config: true, architecture: true, characters: true, reuseNames: false, digestMode: 'none' }
+  try {
+    const o = JSON.parse(String(r.options ?? '{}')) as Partial<RefExportOptions>
+    options = {
+      config: o.config !== false, architecture: o.architecture !== false, characters: o.characters !== false,
+      reuseNames: o.reuseNames === true,
+      digestMode: o.digestMode === 'brief' || o.digestMode === 'full' ? o.digestMode : 'none',
+    }
+  } catch { /* 用默认 */ }
+  return {
+    id: r.id as number,
+    workId: Number(r.work_id),
+    instruction: String(r.instruction ?? ''),
+    options,
+    modelId: String(r.model_id ?? ''),
+    status: r.status === 'failed' ? 'failed' : 'ok',
+    error: String(r.error ?? ''),
+    rawOutput: String(r.raw_output ?? ''),
+    bookJson: String(r.book_json ?? ''),
+    charactersJson: String(r.characters_json ?? ''),
+    filePaths: parseJsonArray<string>(r.file_paths),
     createdAt: String(r.created_at ?? ''),
   }
 }
@@ -355,7 +406,7 @@ export class ReferenceRepository {
     return rows.map(rowToStage)
   }
 
-  /** 整体替换未锁定阶段：锁定的保留，其余删掉再按 seq 插入 */
+  /** 整体替换未锁定阶段：锁定的保留，其余删掉再插入，最后按起始章统一重排 seq（锁定段与新段混排） */
   static replaceUnlockedStages(workId: number, stages: Array<Omit<RefStageInput, 'id' | 'workId'>>): void {
     const d = db()
     d.transaction(() => {
@@ -363,6 +414,9 @@ export class ReferenceRepository {
       const ins = d.prepare(`INSERT INTO ref_stages (work_id, seq, title, from_chapter, to_chapter, goal, antagonist, entry_hook, exit_peak, locked)
         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 0)`)
       for (const s of stages) ins.run(workId, s.seq, s.title, s.fromChapter, s.toChapter, s.goal, s.antagonist, s.entryHook, s.exitPeak)
+      const ordered = d.prepare('SELECT id FROM ref_stages WHERE work_id = ? ORDER BY from_chapter, id').all(workId) as Array<{ id: number }>
+      const upd = d.prepare('UPDATE ref_stages SET seq = ? WHERE id = ?')
+      ordered.forEach((row, i) => upd.run(i + 1, row.id))
     })()
   }
 
@@ -408,5 +462,30 @@ export class ReferenceRepository {
   static listRevisions(workId: number, limit = 50): RefRevisionData[] {
     const rows = db().prepare('SELECT * FROM ref_revisions WHERE work_id = ? ORDER BY id DESC LIMIT ?').all(workId, limit) as Record<string, unknown>[]
     return rows.map(rowToRevision)
+  }
+
+  static insertExport(data: RefExportInput): number {
+    const res = db().prepare(`
+      INSERT INTO ref_exports (work_id, instruction, options, model_id, status, error, raw_output, book_json, characters_json, file_paths)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `).run(
+      data.workId, data.instruction, JSON.stringify(data.options), data.modelId, data.status,
+      data.error, data.rawOutput, data.bookJson, data.charactersJson, JSON.stringify(data.filePaths),
+    )
+    return Number(res.lastInsertRowid)
+  }
+
+  static listExports(workId: number, limit = 50): RefExportData[] {
+    const rows = db().prepare('SELECT * FROM ref_exports WHERE work_id = ? ORDER BY id DESC LIMIT ?').all(workId, limit) as Record<string, unknown>[]
+    return rows.map(rowToExport)
+  }
+
+  static getExport(id: number): RefExportData | null {
+    const r = db().prepare('SELECT * FROM ref_exports WHERE id = ?').get(id) as Record<string, unknown> | undefined
+    return r ? rowToExport(r) : null
+  }
+
+  static deleteExport(id: number): void {
+    db().prepare('DELETE FROM ref_exports WHERE id = ?').run(id)
   }
 }

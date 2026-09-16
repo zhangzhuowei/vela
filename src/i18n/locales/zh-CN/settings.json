@@ -30,7 +30,14 @@
     "writingFontDesc": "草稿、终稿、架构文档等正文区域",
     "zoomLevel": "缩放级别",
     "fontsBuiltIn": "所有字体已内置在应用中，无需网络连接，切换后立即生效。",
-    "hint": "提示"
+    "hint": "提示",
+    "lengthFloor": "篇幅下限比例",
+    "lengthFloorDesc": "写稿与对话模式的正文低于目标字数的这个比例时自动续写补足（50%～100%，默认 85%）。",
+    "seedDir": "导入包保存目录",
+    "seedDirDesc": "拆书「生成新书导入包」写出的 book.json / characters.json 放在这里；为空则每次询问。",
+    "seedDirEmpty": "未设置，每次生成时选择",
+    "seedDirPick": "选择",
+    "seedDirClear": "清空"
   },
   "models": {
     "title": "模型配置",
@@ -205,6 +212,8 @@
     "directory_incremental": { "name": "章节蓝图续写（分块）", "description": "在已有目录基础上续写后续章节蓝图，支持分块生成" },
     "first_chapter_draft": { "name": "第一章草稿", "description": "生成小说第一章的完整正文" },
     "next_chapter_draft": { "name": "后续章节草稿", "description": "基于上下文和章节蓝图生成后续章节" },
+    "draft_continue": { "name": "篇幅补足续写", "description": "写稿字数低于下限时自动追加的一轮续写：带上一章结尾、文风、出场角色状态与设定纲要，从已写正文最后一句接着写" },
+    "dialogue_continue": { "name": "对话模式篇幅补足", "description": "对话模式一轮正文低于下限时追加的续写指令" },
     "refine_chapter": { "name": "大神级修稿", "description": "将草稿提升到大神级质量" },
     "consistency_check": { "name": "一致性审稿", "description": "检查章节的一致性问题" },
     "analyze_writing_style": { "name": "文风分析", "description": "从正文样本中提取作者的写作风格特征" },

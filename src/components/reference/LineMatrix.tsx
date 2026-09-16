@@ -1,3 +1,4 @@
+import { useMemo } from 'react'
 import { useTranslation } from 'react-i18next'
 import type { RefLineData, RefStageData, RefFunc } from '../../../electron/repositories/reference-repository'
 import type { LineMatrix as LineMatrixData } from '../../services/reference/line-matrix'
@@ -28,8 +29,7 @@ export default function LineMatrix({ matrix, lines, stages, onCellClick }: Props
   const { t } = useTranslation('pages')
   const colWidth = cellWidth(matrix.chapters.length)
   const gridWidth = matrix.chapters.length * colWidth
-  const stats = computeLineStats(matrix)
-  const switchSet = new Set(stats.switchPoints.map((p) => p.chapter))
+  const switchSet = useMemo(() => new Set(computeLineStats(matrix).switchPoints.map((p) => p.chapter)), [matrix])
   const nameOf = (id: number) => lines.find((l) => l.id === id)?.name ?? String(id)
   const stageOf = (ch: number) => stages.find((s) => ch >= s.fromChapter && ch <= s.toChapter)
   const showChapterNumbers = colWidth >= 14

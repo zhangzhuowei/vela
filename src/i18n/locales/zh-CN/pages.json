@@ -86,6 +86,7 @@
     "tabOutline": "大纲",
     "tabLines": "人物线",
     "tabDigests": "逐章摘要",
+    "tabExports": "生成记录",
     "runOutline": "归纳大纲（L1～L3）",
     "lines": {
       "title": "人物线",
@@ -123,6 +124,7 @@
       "collapse": "收起",
       "expand": "展开",
       "rollback": "回退到此前",
+      "rollbackFailed": "回退失败：{{error}}",
       "noOutline": "还没有内容。定义人物线后点「归纳大纲」。",
       "runOutline": "归纳大纲（L1～L3）",
       "needDigests": "先拆出逐章摘要。",
@@ -148,6 +150,53 @@
       "example2": "关系线轮换一节改成表格",
       "example3": "伏笔只保留跨 50 章以上的",
       "noScope": "先在左侧点「微调」选中一层或一段"
+    },
+    "bookSeed": {
+      "open": "生成新书导入包",
+      "title": "生成新书导入包",
+      "hint": "借这部范文的阶段、人物线与推进方式，按你的要求生成另一部书的起始资料。产物是文件，不会改当前项目。",
+      "placeholder": "写你的新书要求：题材 / 世界 / 主角设定 / 章数字数 / 想保留或避开的东西…",
+      "run": "生成",
+      "noDir": "没有选择保存目录，已取消。",
+      "needL2Hint": "先归纳出 L2 全书总纲",
+      "reuseNames": "沿用范文人物与专名",
+      "reuseNamesOff": "关：只借结构与节奏，人名、地名、组织、专有设定全部换成新的。",
+      "reuseNamesOn": "开：人物线里的角色原样保留，只改你在要求里点名的世界观 / 事件。",
+      "digestMode": {
+        "label": "逐章摘要",
+        "none": "不带",
+        "brief": "精简",
+        "full": "全部",
+        "noneHint": "只送 L2 / L3、阶段轴、人物线弧，输入最小。",
+        "briefHint": "每章一行（摘要 + 钩子），等距最多 60 章；能对着章号改事件。",
+        "fullHint": "每章带事件、钩子、主攻线；超过 6 万字自动降为精简。上百章时会明显变慢变贵。"
+      },
+      "opt": {
+        "config": "小说配置",
+        "architecture": "故事架构四件",
+        "characters": "角色卡"
+      }
+    },
+    "exports": {
+      "title": "生成记录",
+      "empty": "还没有生成过导入包。点头部「生成新书导入包」。",
+      "status": {
+        "ok": "成功",
+        "failed": "失败"
+      },
+      "instruction": "我的要求",
+      "files": "写出的文件",
+      "error": "失败原因",
+      "bookJson": "book.json",
+      "charactersJson": "characters.json",
+      "rawOutput": "模型原始输出",
+      "copy": "复制",
+      "copied": "已复制",
+      "resave": "重新保存文件",
+      "resaved": "已重新写出 {{count}} 个文件",
+      "reuse": "按此要求再生成",
+      "delete": "删除记录",
+      "deleteConfirm": "删除这条生成记录？文件不会被删。"
     },
     "status": {
       "idle": "未开始",

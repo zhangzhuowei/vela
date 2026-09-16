@@ -3,7 +3,14 @@ import i18n from '../../i18n'
 
 const t = (key: string, opts?: Record<string, unknown>) => i18n.t(key, { ns: 'commands', ...opts })
 
-export function createReferenceDigestWorkflow(params: { workId: number; workName: string; from: number; to: number }): WorkflowDefinition {
+export function createReferenceDigestWorkflow(params: {
+  workId: number
+  workName: string
+  from: number
+  to: number
+  /** 只跑这些章（重跑失败章用），不传则跑范围内所有未成功章 */
+  onlyChapters?: number[]
+}): WorkflowDefinition {
   return {
     type: 'reference_analysis',
     title: t('workflowDefs.refDigestTitle', { name: params.workName, from: params.from, to: params.to }),
@@ -13,7 +20,7 @@ export function createReferenceDigestWorkflow(params: { workId: number; workName
         description: t('workflowDefs.refDigestStepDesc', { from: params.from, to: params.to }),
         executor: async (step, context, callbacks) => {
           const { RefDigestChaptersCommand } = await import('./commands/reference-analysis.command')
-          return new RefDigestChaptersCommand(params.workId, params.from, params.to).execute({ step, context, callbacks })
+          return new RefDigestChaptersCommand(params.workId, params.from, params.to, params.onlyChapters).execute({ step, context, callbacks })
         },
       },
     ],
@@ -113,5 +120,29 @@ export function createReferenceRerunWorkflow(params: {
       },
     }],
     onComplete: { mode: 'silent', message: t('workflowDefs.refRerunDone') },
+  }
+}
+
+export function createReferenceBookSeedWorkflow(params: {
+  workId: number
+  workName: string
+  instruction: string
+  options: import('../reference/book-seed-io').BookSeedOptions
+  exportDir: string
+  modelId?: string
+}): WorkflowDefinition {
+  return {
+    type: 'reference_analysis',
+    title: t('workflowDefs.refBookSeedTitle', { name: params.workName }),
+    steps: [{
+      name: t('workflowDefs.refBookSeedStep'),
+      description: params.instruction.slice(0, 80),
+      executor: async (step, context, callbacks) => {
+        const { RefBookSeedCommand } = await import('./commands/reference-analysis.command')
+        return new RefBookSeedCommand(params.workId, params.instruction, params.options, params.exportDir, params.modelId)
+          .execute({ step, context, callbacks })
+      },
+    }],
+    onComplete: { mode: 'silent', message: t('workflowDefs.refBookSeedDone') },
   }
 }

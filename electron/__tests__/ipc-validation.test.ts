@@ -22,6 +22,7 @@ import {
   validateRefDigestInput,
   validateRefLineInput,
   validateRefStageInput,
+  validateRefExportInput,
   VALID_PLOT_STATUS,
 } from '../ipc-validation'
 
@@ -240,5 +241,19 @@ describe('reference validation', () => {
   })
   it('rejects stage with from > to', () => {
     expect(() => validateRefStageInput({ workId: 1, seq: 1, title: 't', fromChapter: 10, toChapter: 5 })).toThrow(ValidationError)
+  })
+  it('accepts a book-seed export record', () => {
+    const v = validateRefExportInput({
+      workId: 3, instruction: '写碧蓝航线同人', options: { config: true, architecture: false, characters: true, reuseNames: true, digestMode: 'brief' },
+      modelId: 'qwen', status: 'ok', error: '', rawOutput: '{}', bookJson: '{"kind":"vela.book-seed"}', charactersJson: '', filePaths: ['E:\\out\\a.book.json'],
+    })
+    expect(v.options).toEqual({ config: true, architecture: false, characters: true, reuseNames: true, digestMode: 'brief' })
+    expect(v.filePaths).toEqual(['E:\\out\\a.book.json'])
+  })
+  it('rejects a bad export status and non-object options', () => {
+    expect(() => validateRefExportInput({ workId: 3, status: 'pending', options: {} })).toThrow(ValidationError)
+    expect(() => validateRefExportInput({ workId: 3, status: 'ok', options: 'x' })).toThrow(ValidationError)
+    expect(() => validateRefExportInput({ workId: 3, status: 'ok', options: { digestMode: 'all' } })).toThrow(ValidationError)
+    expect(validateRefExportInput({ workId: 3, status: 'ok', options: {} }).options.digestMode).toBe('none')
   })
 })

@@ -33,6 +33,8 @@ export default defineConfig({
       'src/services/reference/__tests__/stage-batching.test.ts',
       'src/services/reference/__tests__/digest-chunking.test.ts',
       'src/services/reference/__tests__/digest-state.test.ts',
+      'src/services/reference/__tests__/book-seed-io.test.ts',
+      'src/services/__tests__/length-gate.test.ts',
     ],
     globals: false,
   },

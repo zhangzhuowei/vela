@@ -11,9 +11,15 @@ import { DIGEST_MAX_CHARS, DIGEST_CONCURRENCY, STAGE_BATCH_SIZE } from '../../re
 import { splitDigestParts } from '../../reference/digest-chunking'
 import { chapterRunQueue, settleDigestWorkProgress } from '../../reference/analyzed-range'
 import { coerceCharacterStates } from '../../reference/digest-state'
-import { batchByCount, mergeStageBatches, pickStageDraft, type StageDraft } from '../../reference/stage-batching'
+import { batchByCount, mergeStageBatches, pickStageDraft, excludeLockedRanges, type StageDraft } from '../../reference/stage-batching'
 import { buildLineMatrix, computeLineStats } from '../../reference/line-matrix'
-import type { RefDigestInput, RefCharacterState, RefIntroduced, RefLineData, RefWorkData, RefStageData } from '../../../../electron/repositories/reference-repository'
+import {
+  buildBookSeedFile, extractSeedCharacters, buildDigestPromptText,
+  BOOK_SEED_INSTRUCTION_MAX, type BookSeedOptions,
+} from '../../reference/book-seed-io'
+import { writeBookSeedFiles } from '../../book-seed-files'
+import { exportCharactersToJson } from '../../character-io'
+import type { RefDigestInput, RefCharacterState, RefIntroduced, RefLineData, RefWorkData, RefStageData, RefExportInput } from '../../../../electron/repositories/reference-repository'
 import i18n from '../../../i18n'
 
 const t = (key: string, opts?: Record<string, unknown>) => i18n.t(key, { ns: 'commands', ...opts })
@@ -122,7 +128,7 @@ export class RefDigestChaptersCommand extends BaseWorkflowCommand<void> {
           events: merged?.events ?? [],
           hook: merged?.hook ?? '',
           activeLine: merged?.activeLine ?? '',
-          characterStates: coerceCharacterStates(merged?.characterStates),
+          characterStates: coerceCharacterStates(merged?.characterStates) as RefCharacterState[],
           introduced: merged?.introduced ?? [],
           intimate: Boolean(merged?.intimate),
           status: 'ok',
@@ -180,8 +186,10 @@ function sampleNote(work: RefWorkData): string {
     : ''
 }
 
-function stagesToPrompt(stages: Array<Pick<RefStageData, 'seq' | 'title' | 'fromChapter' | 'toChapter' | 'goal' | 'antagonist' | 'exitPeak'>>): string {
-  return stages.map((s) => `${s.seq}｜${s.title}｜第${s.fromChapter}～${s.toChapter}章｜${s.goal}｜敌:${s.antagonist}｜爆点:${s.exitPeak}`).join('\n')
+function stagesToPrompt(stages: Array<Pick<RefStageData, 'seq' | 'title' | 'fromChapter' | 'toChapter' | 'goal' | 'antagonist' | 'entryHook' | 'exitPeak'>>): string {
+  return stages
+    .map((s) => `${s.seq}｜${s.title}｜第${s.fromChapter}～${s.toChapter}章｜${s.goal}｜敌:${s.antagonist}｜入段:${s.entryHook || '—'}｜爆点:${s.exitPeak}`)
+    .join('\n')
 }
 
 export class RefSegmentStagesCommand extends BaseWorkflowCommand<void> {
@@ -190,9 +198,10 @@ export class RefSegmentStagesCommand extends BaseWorkflowCommand<void> {
   constructor(private workId: number, private userHint = '') { super() }
 
   async execute({ context, callbacks }: CommandExecuteParams): Promise<void> {
-    const { work, digests, lines } = await loadWorkBundle(this.workId)
+    const { work, digests, lines, stages } = await loadWorkBundle(this.workId)
     const template = getPromptTemplate('ref_stage_segment')
     if (!template) throw new Error(t('reference.templateNotFound', { key: 'ref_stage_segment' }))
+    const locked = stages.filter((s) => s.locked)
 
     const batches = batchByCount(digests, STAGE_BATCH_SIZE)
     const results: StageDraft[][] = []
@@ -217,9 +226,10 @@ export class RefSegmentStagesCommand extends BaseWorkflowCommand<void> {
       callbacks.log(t('reference.stageBatchDone', { index: i + 1, total: batches.length, count: json.stages?.length ?? 0 }))
       callbacks.setProgress(Math.round(((i + 1) / Math.max(1, batches.length)) * 100))
     }
-    const merged = mergeStageBatches(results)
+    const merged = excludeLockedRanges(mergeStageBatches(results), locked).map((s, i) => ({ ...s, seq: i + 1 }))
     const res = await ipc.invoke('db:ref-stage-replace-unlocked', this.workId, merged.map(({ continuesPrevious: _c, ...s }) => ({ ...s, locked: false })))
     if (!res.success) throw new Error(res.error)
+    if (locked.length > 0) callbacks.log(t('reference.stagesKeptLocked', { count: locked.length }))
     callbacks.log(t('reference.stagesSaved', { count: merged.length }))
     this.notifyRefresh(['references'])
   }
@@ -451,11 +461,116 @@ export class RefRefineCommand extends BaseWorkflowCommand<void> {
     const json = this.parseJSON<DigestJson>(raw)
     const next: RefDigestInput = {
       workId: this.workId, chapterNumber: ch.number, summary: json.summary ?? '', events: json.events ?? [], hook: json.hook ?? '',
-      activeLine: json.activeLine ?? '', characterStates: coerceCharacterStates(json.characterStates), introduced: json.introduced ?? [],
+      activeLine: json.activeLine ?? '', characterStates: coerceCharacterStates(json.characterStates) as RefCharacterState[], introduced: json.introduced ?? [],
       intimate: Boolean(json.intimate), status: 'ok', error: '',
     }
     await ipc.invoke('db:ref-revision-insert', { workId: this.workId, scope: 'digest', targetId: ch.number, instruction: this.instruction, before: JSON.stringify(chapterDigest ?? {}), after: JSON.stringify(next) })
     await ipc.invoke('db:ref-digest-upsert', next)
+    this.notifyRefresh(['references'])
+  }
+}
+
+// =================================================================
+// 生成新书导入包：L2/L3 + 阶段 + 线弧 + 用户要求 → book.json / characters.json
+// 只写导出目录与 ref_exports，不碰当前项目配置 / 架构 / 角色卡。
+// =================================================================
+/** 与 electron/ipc-validation validateRefExportInput 的文本上限一致；超出会被 IPC 拒绝而丢记录 */
+const REF_EXPORT_TEXT_MAX = 400000
+
+const NAMING_RULE_BORROW_STRUCTURE =
+  '只借范文的阶段划分方式、力量阶梯节奏、人物线数量与轮换方式、钩子密度；**不要**出现范文的人名、地名、组织名、专有设定，全部换成符合用户要求的新设定。'
+const NAMING_RULE_REUSE_NAMES =
+  '沿用范文的人物与专名：人物线里的角色（人名、别名、性格、彼此关系、线的定位、首次出场阶段、轮换顺序）原样保留，一个不换；阶段划分与推进节奏也照范文。世界观、身份、事件只改用户要求里点名的地方，未点名的一律照范文。'
+
+export class RefBookSeedCommand extends BaseWorkflowCommand<void> {
+  protected attachModGuidance = true
+  protected get callPurpose() { return 'RefBookSeed' }
+  constructor(
+    private workId: number,
+    instruction: string,
+    private options: BookSeedOptions,
+    private exportDir: string,
+    private modelId?: string,
+  ) {
+    super()
+    this.instruction = instruction.slice(0, BOOK_SEED_INSTRUCTION_MAX)
+  }
+
+  private instruction: string
+
+  /** 落记录；IPC 校验不过等于记录丢失，必须暴露出来 */
+  private async saveRecord(record: RefExportInput): Promise<void> {
+    const res = await ipc.invoke('db:ref-export-insert', record)
+    if (!res.success) throw new Error(t('reference.bookSeed.recordFailed', { error: res.error ?? '' }))
+  }
+
+  async execute({ context, callbacks }: CommandExecuteParams): Promise<void> {
+    const { work, digests, lines, stages } = await loadWorkBundle(this.workId)
+    const [l2, l3] = await Promise.all([
+      ipc.invoke('db:ref-outline-get', this.workId, 'L2'),
+      ipc.invoke('db:ref-outline-get', this.workId, 'L3'),
+    ])
+    if (!l2?.body) throw new Error(t('reference.bookSeed.needL2'))
+    const template = getPromptTemplate('ref_book_seed')
+    if (!template) throw new Error(t('reference.templateNotFound', { key: 'ref_book_seed' }))
+
+    const digestText = buildDigestPromptText(digests, this.options.digestMode)
+    if (digestText.downgraded) callbacks.log(t('reference.bookSeed.digestDowngraded', { count: digestText.text.split('\n').length }))
+    const digestBlock = digestText.text
+      ? `${sampleNote(work)}\n${digestText.text}`.trim()
+      : '（未提供）'
+
+    const yesNo = (b: boolean) => (b ? '是' : '否')
+    const builder = new RefPromptBuilder(template).set({
+      work_name: work.name,
+      outline_l2: l2.body,
+      outline_l3: l3?.body || '（范文尚未归纳 L3，按阶段纲与线弧推断推进节奏）',
+      stages: stagesToPrompt(stages) || '（尚未切阶段）',
+      line_arcs: lines.filter((l) => l.arcSummary).map((l) => `### ${l.name}\n${l.arcSummary}`).join('\n\n') || '（尚无人物线弧）',
+      chapter_digests: digestBlock,
+      user_requirements: this.instruction,
+      naming_rule: this.options.reuseNames ? NAMING_RULE_REUSE_NAMES : NAMING_RULE_BORROW_STRUCTURE,
+      want_config: yesNo(this.options.config),
+      want_architecture: yesNo(this.options.architecture),
+      want_characters: yesNo(this.options.characters),
+    })
+    const modelId = this.modelId || work.outlineModelId || undefined
+    const generatedAt = new Date().toISOString()
+    const record: RefExportInput = {
+      workId: this.workId, instruction: this.instruction, options: this.options, modelId: modelId ?? '',
+      status: 'ok', error: '', rawOutput: '', bookJson: '', charactersJson: '', filePaths: [],
+    }
+
+    callbacks.log(t('reference.bookSeed.calling'))
+    try {
+      const raw = await this.callLLMWithBuilder(builder, callbacks, { responseFormat: { type: 'json_object' } }, context, modelId)
+      record.rawOutput = raw.slice(0, REF_EXPORT_TEXT_MAX)
+      const json = this.parseJSON<Record<string, unknown>>(raw)
+
+      const file = buildBookSeedFile({ workName: work.name, instruction: this.instruction, modelId: modelId ?? '', generatedAt, options: this.options, llmResult: json })
+      record.bookJson = JSON.stringify(file, null, 2)
+      const cards = this.options.characters ? extractSeedCharacters(json) : []
+      if (cards.length > 0) record.charactersJson = exportCharactersToJson(cards)
+      if (this.options.characters && cards.length === 0) callbacks.log(t('reference.bookSeed.noCharacters'))
+
+      record.filePaths = await writeBookSeedFiles({
+        dir: this.exportDir, workName: work.name, generatedAt,
+        bookJson: record.bookJson, charactersJson: record.charactersJson,
+      })
+      callbacks.log(t('reference.bookSeed.saved', { count: record.filePaths.length, dir: this.exportDir }))
+    } catch (e) {
+      if (context.cancelled) throw e
+      record.status = 'failed'
+      record.error = (e instanceof Error ? e.message : String(e)).slice(0, 4000)
+      try {
+        await this.saveRecord(record)
+      } catch (saveErr) {
+        callbacks.log(saveErr instanceof Error ? saveErr.message : String(saveErr))
+      }
+      this.notifyRefresh(['references'])
+      throw e
+    }
+    await this.saveRecord(record)
     this.notifyRefresh(['references'])
   }
 }

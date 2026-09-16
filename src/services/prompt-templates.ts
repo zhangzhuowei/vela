@@ -1539,6 +1539,63 @@ Requirements:
   },
 
   // ================================================================
+  // 篇幅闸门：写稿字数不足时的续写补足
+  // ================================================================
+
+  {
+    key: 'draft_continue',
+    name: '篇幅补足续写',
+    description: '写稿字数低于下限时自动追加的一轮续写：带上一章结尾、文风、出场角色状态与设定纲要，从已写正文最后一句接着写。',
+    variables: {
+      chapter_info: '本章写作方向（章节信息 JSON）',
+      previous_ending: '上一章结尾片段（首章为「（无前文）」）',
+      writing_style: '文风描述（未设置为空）',
+      character_states: '本章出场角色当前状态档案',
+      setting_digest: '设定纲要常驻摘要（未配置为空）',
+      current_text: '本章已写好的全文',
+      gap: '还需补足的字数',
+      target_words: '本章目标字数',
+      ending_guidance: '章末收束要求（卡悬念 / 平稳）',
+    },
+    content: `你正在完成一章尚未写完的小说正文。下面是本章已经写好的部分，它的篇幅不足，需要你直接续写下去。
+
+【本章写作方向】
+{{chapter_info}}
+
+【上一章结尾（本章从这里接过来，续写不得与之矛盾）】
+{{previous_ending}}
+
+【文风】
+{{writing_style}}
+
+【出场角色当前状态（不得违背）】
+{{character_states}}
+{{setting_digest}}
+【本章已写好的部分（全文）】
+{{current_text}}
+
+【续写要求】
+1. 直接从上文的最后一句往下接着写，不要重写开头，不要复述或改写上文已有的任何段落，不要写"（续）"之类的标记。
+2. 需要补足约 {{gap}} 字，使本章总字数达到 {{target_words}} 字左右；写到位就停，不要为凑字数拖到目标以上。
+3. 补足篇幅的方式是把本章既定情节的每个节拍写足：补足场景的五感细节、角色的动作与微表情、对白的来回交锋与言外之意、主角的即时心理判断。严禁靠设定科普、无关寒暄、重复同一信息点来凑字数，更不许把后续章节的情节提前写进来。
+4. 如果上文末尾已经像是一个收尾，请把它当作本章中途的一个停顿，继续往下推进剧情。
+5. {{ending_guidance}}
+6. 只输出续写的正文纯文本，不要 Markdown 符号，对话用中文双引号，段落之间保留一个空行。`,
+  },
+
+  {
+    key: 'dialogue_continue',
+    name: '对话模式篇幅补足',
+    description: '对话模式一轮正文低于下限时追加的续写指令（作为 user 消息追加到同一段对话后）。',
+    variables: {
+      written: '目前已写字数',
+      target: '本轮目标字数',
+      floor: '硬性下限字数',
+    },
+    content: `目前正文共约 {{written}} 字，尚未达到本轮目标（约 {{target}} 字，硬性下限 {{floor}} 字）。继续写下去补足篇幅：无缝衔接上文，不要重复已写内容、不要总结、不要重新开头；写完后同样输出 <state> 状态块（只含相对最新状态的变化）。`,
+  },
+
+  // ================================================================
   // 修稿
   // ================================================================
 
@@ -2984,7 +3041,7 @@ Requirements:
     systemRole: '你是一位资深网文主编，擅长从结构提炼全书骨架。',
     variables: {
       work_name: '范文名',
-      stages: '阶段纲（每段：序号｜标题｜章范围｜目标｜敌人｜爆点）',
+      stages: '阶段纲（每段：序号｜标题｜章范围｜目标｜敌人｜入段钩子｜爆点）',
       line_arcs: '各人物线弧（Markdown 拼接）',
       sample_note: '抽样说明（如「仅基于前 200 章」）',
       user_hint: '用户要求（可为空）',
@@ -3076,6 +3133,85 @@ Requirements:
 
 要求：只改建议涉及的部分，其余原样保留；不要新增与建议无关的内容。
 {{output_format}}`,
+  },
+  {
+    key: 'ref_book_seed',
+    name: '参考作品·生成新书导入包',
+    description: '按用户要求，借范文的层级大纲（阶段轴、人物线弧、L2 总纲、L3 推进模式）生成一部新书的小说配置、故事架构四件与角色卡。只借结构与推进方式，不照搬范文人名地名设定。',
+    systemRole: '你是一位资深网文策划，擅长把一部成功作品的结构迁移到新题材上，输出可直接落地的新书策划案。只输出 JSON。',
+    variables: {
+      work_name: '范文名',
+      outline_l2: 'L2 全书总纲（Markdown）',
+      outline_l3: 'L3 推进模式（Markdown，可为空）',
+      stages: '阶段纲（每段：序号｜标题｜章范围｜目标｜敌人｜入段钩子｜爆点）',
+      line_arcs: '各人物线弧（Markdown 拼接）',
+      user_requirements: '用户对新书的要求全文',
+      naming_rule: '人物与专名规则（由「沿用范文人物与专名」开关决定）',
+      chapter_digests: '范文逐章摘要（按「逐章摘要」三档：不带 / 精简 / 全部；不带时为「（未提供）」）',
+      want_config: '是否要小说配置（是/否）',
+      want_architecture: '是否要故事架构四件（是/否）',
+      want_characters: '是否要角色卡（是/否）',
+    },
+    content: `请以范文《{{work_name}}》的结构为骨架，为一部新书生成策划案。
+
+【用户对新书的要求（最高优先级，与范文冲突时以此为准）】
+{{user_requirements}}
+
+【范文 L2 全书总纲】
+{{outline_l2}}
+
+【范文 L3 推进模式】
+{{outline_l3}}
+
+【范文阶段纲】
+{{stages}}
+
+【范文人物线弧】
+{{line_arcs}}
+
+【范文逐章摘要】
+{{chapter_digests}}
+
+---
+规则：
+1. {{naming_rule}}
+2. 用户要求里给了题材、世界、主角、章数字数等，一律照办；没给的按范文同类结构自拟。
+3. 角色只出主角与主要配角，不出龙套；数量按用户要求，没说就按范文人物线条数。
+4. 需要的部分：小说配置={{want_config}}；故事架构={{want_architecture}}；角色卡={{want_characters}}。不需要的部分返回空对象 / 空数组，不要省略键。
+5. 若给了逐章摘要，只用它核对事件先后、人物出场与钩子节奏；synopsis 仍按阶段写，不要逐章复述。
+
+只输出下面这个 JSON，不要任何说明文字：
+{
+  "novelConfig": {
+    "genre": "主类型",
+    "subGenre": "细分类型及标签",
+    "targetAudience": "男频/女频/通用",
+    "plotStructure": "three_act|heros_journey|save_the_cat|kishotenketsu|multi_thread|freeform",
+    "narrativePOV": "third_limited|first_person|third_omniscient|multi_pov",
+    "totalChapters": 0,
+    "wordsPerChapter": 0,
+    "coreOutline": "核心大纲（200 字以上：主线目标、核心冲突、阶段走向、结局）",
+    "worldSetting": "世界观与力量体系",
+    "goldenFinger": "主角金手指 / 核心能力",
+    "protagonistProfile": "主角人设（性格、背景、驱动力）",
+    "globalGuidance": "全局写作风格与节奏要求（借范文推进模式改写成对新书的指令）",
+    "writingStyle": "文风描述"
+  },
+  "architecture": {
+    "premise": "故事前提（200 字以内）",
+    "characters": "角色图谱：主要角色关系网与动力学（Markdown）",
+    "worldbuilding": "世界观矩阵：力量体系、阶层、重要场景（Markdown）",
+    "synopsis": "情节大纲：按阶段列出每阶段目标、对手、入段钩子、出段爆点（Markdown）"
+  },
+  "characters": [
+    {
+      "name": "角色名",
+      "role": "protagonist|antagonist|supporting|minor",
+      "gender": "", "age": "", "appearance": "", "personality": "", "background": "",
+      "abilities": "", "motivation": "", "relationships": "", "arc": "", "notes": ""
+    }
+  ]
+}`,
   },
 
   // ================================================================

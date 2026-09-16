@@ -18,6 +18,21 @@ export function formatRelativeTime(timestamp: number): string {
 }
 
 /**
+ * SQLite `datetime('now')` 存的是无时区的 UTC 字串（"2026-09-16 08:00:00"），
+ * 直接显示会比本地时间差一个时区；这里转成本地时间戳。解析失败返回 NaN。
+ */
+export function parseSqliteUtc(value: string): number {
+  const iso = value.trim().replace(' ', 'T')
+  return Date.parse(/[zZ]|[+-]\d{2}:?\d{2}$/.test(iso) ? iso : `${iso}Z`)
+}
+
+/** SQLite UTC 字串 → 本地化显示；解析失败原样返回 */
+export function formatSqliteUtc(value: string, options?: Intl.DateTimeFormatOptions): string {
+  const ts = parseSqliteUtc(value)
+  return Number.isNaN(ts) ? value : formatDate(ts, options)
+}
+
+/**
  * 格式化日期为本地化字符串
  */
 export function formatDate(timestamp: number, options?: Intl.DateTimeFormatOptions): string {

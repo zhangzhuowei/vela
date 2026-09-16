@@ -72,6 +72,17 @@
     "canonAutoRepair": "  🛡️ [Canon] Автоисправление после {{attempts}} попыток, сохранение исправленной версии",
     "canonCheckPassed": "  ✅ [Canon] Проверка согласованности пройдена",
     "canonGateError": "  ❌ [Canon] Исключение шлюза: {{error}}",
+    "lengthTemplateMissing": "  ⚠️ Нет шаблона draft_continue; дописывание пропущено",
+    "lengthOk": "  📏 Объём в норме: {{count}} знаков (цель {{target}} / минимум {{floor}})",
+    "lengthShort": "  📏 Мало текста: {{count}} < минимума {{floor}}; дописываю ещё ~{{gap}} знаков (раунд {{round}}/{{max}})...",
+    "lengthContinueFailed": "  ⚠️ Дописывание не удалось; оставляю текущий объём: {{error}}",
+    "lengthTooLittle": "  ⚠️ Дописывание вернуло слишком мало; остановлено",
+    "lengthAllOverlap": "  ⚠️ Дописывание лишь повторило уже написанное; отброшено, остановлено",
+    "lengthAfter": "  📏 После дописывания: {{count}} знаков",
+    "lengthAfterOk": "  📏 После дописывания: {{count}} знаков, минимум достигнут",
+    "lengthMaxRounds": "  ⚠️ Достигнут лимит раундов; итог {{count}} знаков (цель {{target}})",
+    "lengthOvershoot": "  ⚠️ Перебор: {{count}} знаков превышает 125% от цели {{target}}; при шлифовке не расширять",
+    "lengthAfterGate": "  ⚠️ После исправления согласованности текст {{count}} знаков, ниже минимума {{floor}} (сохранён как есть, без дописывания)",
     "projectGuidanceHeading": "## Специфичные для проекта указания ({{name}})",
     "charStateArchive": "【Архив состояний персонажей】",
     "noCharStateArchive": "(Архив состояний персонажей ещё не создан)",
@@ -235,11 +246,20 @@
     "digestSummary": "Разбор завершён: успешно {{done}}, ошибок {{failed}}",
     "stageBatchDone": "Пакет этапов {{index}}/{{total}}: {{count}} сегментов",
     "stagesSaved": "Ось этапов записана: {{count}} сегментов",
+    "stagesKeptLocked": "Сохранено заблокированных этапов: {{count}}; новые сегменты обрезаны вокруг их диапазонов глав",
     "lineArcDone": "Дуга линии записана: {{name}}",
     "outlineLockedSkip": "{{level}} заблокирован, пропуск",
     "outlineSaved": "Сохранено {{level}}",
     "nothingToRefine": "Нечего править",
-    "targetLocked": "Цель заблокирована"
+    "targetLocked": "Цель заблокирована",
+    "bookSeed": {
+      "needL2": "Сначала постройте общий план L2, затем генерируйте заготовку книги.",
+      "calling": "Составляю план новой книги по вашим требованиям…",
+      "noCharacters": "Модель не вернула персонажей; записан только book.json.",
+      "digestDowngraded": "Полные дайджесты превысили лимит; переключено на «Кратко» ({{count}} глав)",
+      "recordFailed": "Не удалось сохранить запись экспорта: {{error}}",
+      "saved": "Записано файлов: {{count}} в {{dir}}"
+    }
   },
   "workflowDefs": {
     "architectureTitle": "🏗️ Генерация сюжетной архитектуры",
@@ -362,7 +382,10 @@
     "refRefineDone": "Правка готова",
     "refRerunTitle": "Перезапуск: {{name}} · {{scope}}",
     "refRerunStep": "Перегенерировать блок",
-    "refRerunDone": "Перезапуск готов"
+    "refRerunDone": "Перезапуск готов",
+    "refBookSeedTitle": "Заготовка книги: {{name}}",
+    "refBookSeedStep": "Создать book.json / characters.json",
+    "refBookSeedDone": "Заготовка создана. Откройте вкладку «Экспорты», чтобы просмотреть или пересохранить."
   },
   "pipeline": {
     "retryFailed": "  ⚠️ {{label}} завершилось ошибкой (попытка {{attempt}}), повтор... ({{error}})",

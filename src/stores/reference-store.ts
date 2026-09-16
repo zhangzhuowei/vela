@@ -2,7 +2,7 @@ import { create } from 'zustand'
 import { ipc } from '../services/ipc-client'
 import { useWorkflowStore } from './workflow-store'
 import type {
-  RefWorkData, RefChapterMeta, RefDigestData, RefLineData, RefStageData, RefOutlineData, RefRevisionData,
+  RefWorkData, RefChapterMeta, RefDigestData, RefLineData, RefStageData, RefOutlineData, RefRevisionData, RefExportData,
 } from '../../electron/repositories/reference-repository'
 
 interface ReferenceState {
@@ -15,11 +15,13 @@ interface ReferenceState {
   outlineL2: RefOutlineData | null
   outlineL3: RefOutlineData | null
   revisions: RefRevisionData[]
+  exports: RefExportData[]
   loading: boolean
   loadWorks: () => Promise<void>
   selectWork: (id: number | null) => Promise<void>
   reloadSelected: () => Promise<void>
   deleteWork: (id: number) => Promise<void>
+  deleteExport: (id: number) => Promise<void>
 }
 
 export const useReferenceStore = create<ReferenceState>((set, get) => ({
@@ -32,6 +34,7 @@ export const useReferenceStore = create<ReferenceState>((set, get) => ({
   outlineL2: null,
   outlineL3: null,
   revisions: [],
+  exports: [],
   loading: false,
 
   loadWorks: async () => {
@@ -44,7 +47,7 @@ export const useReferenceStore = create<ReferenceState>((set, get) => ({
   selectWork: async (id) => {
     set({ selectedWorkId: id })
     if (id === null) {
-      set({ chapters: [], digests: [], lines: [], stages: [], outlineL2: null, outlineL3: null, revisions: [] })
+      set({ chapters: [], digests: [], lines: [], stages: [], outlineL2: null, outlineL3: null, revisions: [], exports: [] })
       return
     }
     await get().reloadSelected()
@@ -57,7 +60,7 @@ export const useReferenceStore = create<ReferenceState>((set, get) => ({
     try {
       const live = useWorkflowStore.getState().activeRuns.some((r) => r.type === 'reference_analysis')
       if (!live) await ipc.invoke('db:ref-work-recover-interrupted')
-      const [chapters, digests, lines, stages, outlineL2, outlineL3, revisions, works] = await Promise.all([
+      const [chapters, digests, lines, stages, outlineL2, outlineL3, revisions, exports, works] = await Promise.all([
         ipc.invoke('db:ref-chapter-meta-list', id),
         ipc.invoke('db:ref-digest-list', id),
         ipc.invoke('db:ref-line-list', id),
@@ -65,9 +68,10 @@ export const useReferenceStore = create<ReferenceState>((set, get) => ({
         ipc.invoke('db:ref-outline-get', id, 'L2'),
         ipc.invoke('db:ref-outline-get', id, 'L3'),
         ipc.invoke('db:ref-revision-list', id),
+        ipc.invoke('db:ref-export-list', id),
         ipc.invoke('db:ref-work-list'),
       ])
-      set({ chapters, digests, lines, stages, outlineL2, outlineL3, revisions, works })
+      set({ chapters, digests, lines, stages, outlineL2, outlineL3, revisions, exports, works })
     } finally {
       set({ loading: false })
     }
@@ -77,5 +81,10 @@ export const useReferenceStore = create<ReferenceState>((set, get) => ({
     await ipc.invoke('db:ref-work-delete', id)
     if (get().selectedWorkId === id) await get().selectWork(null)
     await get().loadWorks()
+  },
+
+  deleteExport: async (id) => {
+    await ipc.invoke('db:ref-export-delete', id)
+    await get().reloadSelected()
   },
 }))

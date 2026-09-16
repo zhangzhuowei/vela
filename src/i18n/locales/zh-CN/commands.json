@@ -72,6 +72,17 @@
     "canonAutoRepair": "  🛡️ [Canon] 自动修复 {{attempts}} 轮后保存修复稿",
     "canonCheckPassed": "  ✅ [Canon] 一致性检查通过",
     "canonGateError": "  ❌ [Canon] Gate 异常：{{error}}",
+    "lengthTemplateMissing": "  ⚠️ 缺少模板 draft_continue，跳过篇幅补足",
+    "lengthOk": "  📏 篇幅校验通过：{{count}} 字（目标 {{target}} / 下限 {{floor}}）",
+    "lengthShort": "  📏 篇幅不足：{{count}} 字 < 下限 {{floor}} 字，自动续写补足约 {{gap}} 字（第 {{round}}/{{max}} 轮）...",
+    "lengthContinueFailed": "  ⚠️ 续写补足失败，保留当前篇幅：{{error}}",
+    "lengthTooLittle": "  ⚠️ 续写返回内容过少，停止补足",
+    "lengthAllOverlap": "  ⚠️ 续写内容与上文完全重复，已丢弃并停止补足",
+    "lengthAfter": "  📏 补足后 {{count}} 字",
+    "lengthAfterOk": "  📏 补足后 {{count}} 字，已达标",
+    "lengthMaxRounds": "  ⚠️ 已达最大补足轮次，最终 {{count}} 字（目标 {{target}}）",
+    "lengthOvershoot": "  ⚠️ 篇幅超出：{{count}} 字，已超过目标 {{target}} 的 125%，精修时留意不要再扩",
+    "lengthAfterGate": "  ⚠️ 一致性修复后正文 {{count}} 字，低于下限 {{floor}} 字（已入库，不再续写）",
     "projectGuidanceHeading": "## 项目专属指导（{{name}}）",
     "charStateArchive": "【角色状态档案】",
     "noCharStateArchive": "（暂无角色状态档案）",
@@ -235,11 +246,20 @@
     "digestSummary": "拆解结束：成功 {{done}}，失败 {{failed}}",
     "stageBatchDone": "阶段批 {{index}}/{{total}}：切出 {{count}} 段",
     "stagesSaved": "阶段轴已写入 {{count}} 段",
+    "stagesKeptLocked": "保留 {{count}} 段锁定阶段，新切出的段已避开其章范围",
     "lineArcDone": "已写人物线弧：{{name}}",
     "outlineLockedSkip": "{{level}} 已锁定，跳过覆盖",
     "outlineSaved": "已保存 {{level}}",
     "nothingToRefine": "没有可微调的目标",
-    "targetLocked": "目标已锁定"
+    "targetLocked": "目标已锁定",
+    "bookSeed": {
+      "needL2": "先归纳出 L2 全书总纲，再生成新书导入包。",
+      "calling": "按你的要求生成新书策划案…",
+      "noCharacters": "模型没有返回角色卡，只写出 book.json。",
+      "digestDowngraded": "逐章摘要全量超出字数预算，已降为精简（{{count}} 章）",
+      "recordFailed": "生成记录写入失败：{{error}}",
+      "saved": "已写出 {{count}} 个文件到 {{dir}}"
+    }
   },
   "workflowDefs": {
     "architectureTitle": "🏗️ 生成故事架构",
@@ -362,7 +382,10 @@
     "refRefineDone": "微调完成",
     "refRerunTitle": "重跑：{{name}} · {{scope}}",
     "refRerunStep": "单独重新生成",
-    "refRerunDone": "重跑完成"
+    "refRerunDone": "重跑完成",
+    "refBookSeedTitle": "生成新书导入包：{{name}}",
+    "refBookSeedStep": "生成 book.json / characters.json",
+    "refBookSeedDone": "导入包已生成，到「生成记录」页签查看或重新保存"
   },
   "pipeline": {
     "retryFailed": "  ⚠️ {{label}} 第{{attempt}}次失败，正在重试...（{{error}}）",

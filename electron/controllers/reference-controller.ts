@@ -3,7 +3,7 @@ import { ReferenceRepository } from '../repositories/reference-repository'
 import type { RefChapterData, RefOutlineLevel, RefStageInput } from '../repositories/reference-repository'
 import {
   safeValidate, validateRefWorkInput, validateRefDigestInput, validateRefLineInput,
-  validateRefStageInput, validateRefOutlineInput, validateRefRevisionInput,
+  validateRefStageInput, validateRefOutlineInput, validateRefRevisionInput, validateRefExportInput,
 } from '../ipc-validation'
 
 function ok<T>(fn: () => T): { success: boolean; data?: T; error?: string } {
@@ -78,4 +78,13 @@ export function registerReferenceController() {
     return ok(() => ReferenceRepository.insertRevision(v.data))
   })
   ipcMain.handle('db:ref-revision-list', async (_e, workId: number) => ReferenceRepository.listRevisions(workId))
+
+  ipcMain.handle('db:ref-export-insert', async (_e, raw: unknown) => {
+    const v = safeValidate(validateRefExportInput, raw)
+    if (!v.ok) return { success: false, error: v.error }
+    return ok(() => ReferenceRepository.insertExport(v.data))
+  })
+  ipcMain.handle('db:ref-export-list', async (_e, workId: number) => ReferenceRepository.listExports(workId))
+  ipcMain.handle('db:ref-export-get', async (_e, id: number) => ReferenceRepository.getExport(id))
+  ipcMain.handle('db:ref-export-delete', async (_e, id: number) => ok(() => ReferenceRepository.deleteExport(id)))
 }

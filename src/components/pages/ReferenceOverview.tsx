@@ -1,5 +1,5 @@
-import { useEffect, useState } from 'react'
-import { Library, Play, RotateCcw, GitBranch, ChevronDown, ChevronRight } from 'lucide-react'
+import { useEffect, useRef, useState } from 'react'
+import { Library, Play, RotateCcw, GitBranch, PackagePlus } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { useProjectStore } from '../../stores/project-store'
 import { useReferenceStore } from '../../stores/reference-store'
@@ -8,45 +8,24 @@ import { useWorkflowStore } from '../../stores/workflow-store'
 import { createReferenceDigestWorkflow, createReferenceOutlineWorkflow, createReferenceRerunWorkflow } from '../../services/workflows/reference-workflow'
 import { nextDigestRange } from '../../services/reference/analyzed-range'
 import type { RefRefineScope, RefRerunScope } from '../../services/workflows/commands/reference-analysis.command'
-import type { RefRevisionData } from '../../../electron/repositories/reference-repository'
 import { ipc } from '../../services/ipc-client'
 import { globalEventBus } from '../../shared/event-bus'
 import { Button } from '../ui/Button'
 import { EmptyState } from '../ui/EmptyState'
 import { NativeSelect } from '../ui/NativeSelect'
-import { Switch } from '../ui/Switch'
 import { toast } from '../ui/Toast'
 import { cn } from '../../lib/utils'
-import MarkdownContent from '../ui/MarkdownContent'
+import CollapseTitle from '../reference/CollapseTitle'
 import LineEditor from '../reference/LineEditor'
+import OutlineTab from '../reference/OutlineTab'
 import RefinePanel from '../reference/RefinePanel'
-import LineMatrix from '../reference/LineMatrix'
-import { buildLineMatrix } from '../../services/reference/line-matrix'
+import BookSeedPanel, { type BookSeedPanelInitial } from '../reference/BookSeedPanel'
+import ExportRecordsTab from '../reference/ExportRecordsTab'
 
-type Tab = 'outline' | 'lines' | 'digests'
+type Tab = 'outline' | 'lines' | 'digests' | 'exports'
 
-function CollapseTitle({
-  open, onToggle, title, collapseLabel, expandLabel,
-}: {
-  open: boolean
-  onToggle: () => void
-  title: string
-  collapseLabel: string
-  expandLabel: string
-}) {
-  return (
-    <button
-      type="button"
-      className="flex items-center gap-1 min-w-0 text-left text-xs font-medium"
-      title={open ? collapseLabel : expandLabel}
-      aria-expanded={open}
-      onClick={onToggle}
-    >
-      {open ? <ChevronDown size={12} className="flex-shrink-0" /> : <ChevronRight size={12} className="flex-shrink-0" />}
-      <span className="truncate">{title}</span>
-    </button>
-  )
-}
+/** 命令末尾的 REFRESH_RESOURCE 与 WORKFLOW_COMPLETE 几乎同时到，合并成一次刷新 */
+const RELOAD_DEBOUNCE_MS = 200
 
 export default function ReferenceOverview() {
   const { t } = useTranslation('pages')
@@ -55,10 +34,20 @@ export default function ReferenceOverview() {
   const startWorkflow = useWorkflowStore((s) => s.startWorkflow)
   const analyzing = useWorkflowStore((s) => s.activeRuns.some((r) => r.type === 'reference_analysis'))
   const {
-    works, selectedWorkId, chapters, digests, lines, stages, outlineL2, outlineL3, revisions, loading, reloadSelected,
+    works, selectedWorkId, chapters, digests, lines, stages, outlineL2, outlineL3, revisions, exports, loading, reloadSelected, deleteExport,
   } = useReferenceStore()
   const [tab, setTab] = useState<Tab>('outline')
-  const [refine, setRefine] = useState<{ scope: RefRefineScope; label: string } | null>(null)
+  const [refine, setRefineState] = useState<{ scope: RefRefineScope; label: string } | null>(null)
+  const [seedPanel, setSeedPanel] = useState<{ initial: BookSeedPanelInitial | null } | null>(null)
+  // 右侧只放一个面板：打开微调就收起生成面板，反之亦然
+  const setRefine = (v: { scope: RefRefineScope; label: string } | null) => {
+    if (v) setSeedPanel(null)
+    setRefineState(v)
+  }
+  const openSeedPanel = (initial: BookSeedPanelInitial | null) => {
+    setRefineState(null)
+    setSeedPanel({ initial })
+  }
   const [collapsed, setCollapsed] = useState<Record<string, boolean>>({})
   const isOpen = (key: string, defaultOpen = true) => (collapsed[key] === undefined ? defaultOpen : !collapsed[key])
   const toggle = (key: string, defaultOpen = true) => {
@@ -75,21 +64,29 @@ export default function ReferenceOverview() {
   const busy = !!work && (work.status === 'running' || analyzing)
   const canContinue = !!work && !busy && pendingNums.length > 0
   const canOutline = !!work && !busy && okNums.size > 0 && lines.length > 0
+  const canSeed = !!work && !busy && !!outlineL2?.body
   const digestCandidates = models.filter((m) => m.purposes.includes('summary') || m.purposes.includes('generation'))
   const outlineCandidates = models.filter((m) => m.purposes.includes('generation'))
 
+  const reloadTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
   useEffect(() => {
-    const offRefresh = globalEventBus.on('REFRESH_RESOURCE', (payload) => {
-      if (payload.resources.includes('all') || payload.resources.includes('references')) {
+    const scheduleReload = () => {
+      if (reloadTimer.current) clearTimeout(reloadTimer.current)
+      reloadTimer.current = setTimeout(() => {
+        reloadTimer.current = null
         void reloadSelected()
-      }
+      }, RELOAD_DEBOUNCE_MS)
+    }
+    const offRefresh = globalEventBus.on('REFRESH_RESOURCE', (payload) => {
+      if (payload.resources.includes('all') || payload.resources.includes('references')) scheduleReload()
     })
     const offDone = globalEventBus.on('WORKFLOW_COMPLETE', (payload) => {
-      if (payload.type === 'reference_analysis') void reloadSelected()
+      if (payload.type === 'reference_analysis') scheduleReload()
     })
     return () => {
       offRefresh()
       offDone()
+      if (reloadTimer.current) clearTimeout(reloadTimer.current)
     }
   }, [reloadSelected])
 
@@ -107,7 +104,7 @@ export default function ReferenceOverview() {
     if (!work || failed.length === 0) return
     const nums = failed.map((d) => d.chapterNumber)
     await startWorkflow(createReferenceDigestWorkflow({
-      workId: work.id, workName: work.name, from: Math.min(...nums), to: Math.max(...nums),
+      workId: work.id, workName: work.name, from: Math.min(...nums), to: Math.max(...nums), onlyChapters: nums,
     }), false)
   }
 
@@ -133,21 +130,6 @@ export default function ReferenceOverview() {
     await reloadSelected()
   }
 
-  const rollback = async (rev: RefRevisionData) => {
-    if (!rev.before || rev.before === '{}') return
-    if (rev.scope === 'L2' || rev.scope === 'L3') {
-      await ipc.invoke('db:ref-outline-upsert', { workId: rev.workId, level: rev.scope, body: rev.before, force: true })
-    } else if (rev.scope === 'stage') {
-      await ipc.invoke('db:ref-stage-upsert', JSON.parse(rev.before))
-    } else if (rev.scope === 'line') {
-      const line = lines.find((l) => l.id === rev.targetId)
-      if (line) await ipc.invoke('db:ref-line-upsert', { ...line, arcSummary: rev.before })
-    } else {
-      await ipc.invoke('db:ref-digest-upsert', JSON.parse(rev.before))
-    }
-    await reloadSelected()
-  }
-
   if (!currentProject || !work) {
     return (
       <EmptyState
@@ -163,6 +145,7 @@ export default function ReferenceOverview() {
     { id: 'outline', label: t('reference.tabOutline') },
     { id: 'lines', label: t('reference.tabLines') },
     { id: 'digests', label: t('reference.tabDigests') },
+    { id: 'exports', label: t('reference.tabExports') },
   ]
 
   return (
@@ -229,6 +212,16 @@ export default function ReferenceOverview() {
                 <GitBranch size={12} />
                 {t('reference.runOutline')}
               </Button>
+              <Button
+                size="sm"
+                variant="outline"
+                disabled={!canSeed || loading}
+                title={canSeed ? undefined : t('reference.bookSeed.needL2Hint')}
+                onClick={() => openSeedPanel(null)}
+              >
+                <PackagePlus size={12} />
+                {t('reference.bookSeed.open')}
+              </Button>
             </div>
           </div>
           <div className="flex gap-1">
@@ -259,6 +252,18 @@ export default function ReferenceOverview() {
                   </li>
                 ))}
               </ul>
+            </section>
+          )}
+
+          {tab === 'exports' && (
+            <section>
+              <h3 className="text-xs font-medium mb-2">{t('reference.exports.title')}</h3>
+              <ExportRecordsTab
+                workName={work.name}
+                records={exports}
+                onDelete={deleteExport}
+                onReuse={(initial) => openSeedPanel(initial)}
+              />
             </section>
           )}
 
@@ -344,279 +349,32 @@ export default function ReferenceOverview() {
           )}
 
           {tab === 'outline' && (
-            <div className="space-y-6">
-              {okNums.size === 0 && (
-                <p className="text-xs text-[var(--color-text-muted)]">{t('reference.outline.needDigests')}</p>
-              )}
-              {okNums.size > 0 && lines.length === 0 && (
-                <p className="text-xs text-[var(--color-text-muted)]">{t('reference.outline.needLines')}</p>
-              )}
-
-              <section>
-                <div className="flex items-center justify-between mb-2">
-                  <CollapseTitle
-                    open={isOpen('l2')}
-                    onToggle={() => toggle('l2')}
-                    title={t('reference.outline.l2')}
-                    collapseLabel={t('reference.outline.collapse')}
-                    expandLabel={t('reference.outline.expand')}
-                  />
-                  <div className="flex items-center gap-2">
-                    {outlineL2 && (
-                      <Switch
-                        checked={outlineL2.locked}
-                        onCheckedChange={(locked) => void ipc.invoke('db:ref-outline-lock', work.id, 'L2', locked).then(() => reloadSelected())}
-                        aria-label={outlineL2.locked ? t('reference.outline.unlock') : t('reference.outline.lock')}
-                      />
-                    )}
-                    <Button size="sm" variant="ghost" disabled={!outlineL2} onClick={() => setRefine({ scope: { kind: 'L2' }, label: t('reference.outline.l2') })}>
-                      {t('reference.outline.refine')}
-                    </Button>
-                    <Button
-                      size="sm"
-                      variant="ghost"
-                      disabled={busy || !!outlineL2?.locked}
-                      title={t('reference.outline.rerunHint')}
-                      onClick={() => startRerun({ kind: 'L2' }, t('reference.outline.l2'))}
-                    >
-                      {t('reference.outline.rerun')}
-                    </Button>
-                  </div>
-                </div>
-                {isOpen('l2') && (outlineL2?.body
-                  ? <div className="text-xs"><MarkdownContent content={outlineL2.body} /></div>
-                  : <p className="text-xs text-[var(--color-text-muted)]">{t('reference.outline.noOutline')}</p>)}
-              </section>
-
-              <section>
-                <div className="flex items-center justify-between mb-2">
-                  <CollapseTitle
-                    open={isOpen('l3')}
-                    onToggle={() => toggle('l3')}
-                    title={t('reference.outline.l3')}
-                    collapseLabel={t('reference.outline.collapse')}
-                    expandLabel={t('reference.outline.expand')}
-                  />
-                  <div className="flex items-center gap-2">
-                    {outlineL3 && (
-                      <Switch
-                        checked={outlineL3.locked}
-                        onCheckedChange={(locked) => void ipc.invoke('db:ref-outline-lock', work.id, 'L3', locked).then(() => reloadSelected())}
-                        aria-label={outlineL3.locked ? t('reference.outline.unlock') : t('reference.outline.lock')}
-                      />
-                    )}
-                    <Button size="sm" variant="ghost" disabled={!outlineL3} onClick={() => setRefine({ scope: { kind: 'L3' }, label: t('reference.outline.l3') })}>
-                      {t('reference.outline.refine')}
-                    </Button>
-                    <Button
-                      size="sm"
-                      variant="ghost"
-                      disabled={busy || !!outlineL3?.locked}
-                      title={t('reference.outline.rerunHint')}
-                      onClick={() => startRerun({ kind: 'L3' }, t('reference.outline.l3'))}
-                    >
-                      {t('reference.outline.rerun')}
-                    </Button>
-                  </div>
-                </div>
-                {isOpen('l3') && (outlineL3?.body
-                  ? <div className="text-xs"><MarkdownContent content={outlineL3.body} /></div>
-                  : <p className="text-xs text-[var(--color-text-muted)]">{t('reference.outline.noOutline')}</p>)}
-              </section>
-
-              <section>
-                <div className="mb-2">
-                  <CollapseTitle
-                    open={isOpen('stages')}
-                    onToggle={() => toggle('stages')}
-                    title={t('reference.outline.stages')}
-                    collapseLabel={t('reference.outline.collapse')}
-                    expandLabel={t('reference.outline.expand')}
-                  />
-                </div>
-                {isOpen('stages') && (stages.length === 0 ? (
-                  <p className="text-xs text-[var(--color-text-muted)]">{t('reference.outline.noOutline')}</p>
-                ) : (
-                  <ul className="space-y-2">
-                    {stages.map((s) => {
-                      const open = isOpen(`stage-${s.id}`, false)
-                      const inRange = digests.filter((d) => d.chapterNumber >= s.fromChapter && d.chapterNumber <= s.toChapter)
-                      return (
-                      <li key={s.id} className="rounded-lg px-3 py-2 border border-[var(--color-border)] text-xs space-y-1">
-                        <div className="flex items-center justify-between gap-2">
-                          <CollapseTitle
-                            open={open}
-                            onToggle={() => toggle(`stage-${s.id}`, false)}
-                            title={`${s.seq} · ${s.title} · ${s.fromChapter}–${s.toChapter}`}
-                            collapseLabel={t('reference.outline.collapse')}
-                            expandLabel={t('reference.outline.expand')}
-                          />
-                          <div className="flex items-center gap-2 flex-shrink-0">
-                            <Switch
-                              checked={s.locked}
-                              onCheckedChange={(locked) => void ipc.invoke('db:ref-stage-upsert', { ...s, locked }).then(() => reloadSelected())}
-                              aria-label={s.locked ? t('reference.outline.unlock') : t('reference.outline.lock')}
-                            />
-                            <Button size="sm" variant="ghost" onClick={() => setRefine({ scope: { kind: 'stage', stageId: s.id }, label: s.title })}>
-                              {t('reference.outline.refine')}
-                            </Button>
-                            <Button
-                              size="sm"
-                              variant="ghost"
-                              disabled={busy || s.locked}
-                              title={t('reference.outline.rerunHint')}
-                              onClick={() => startRerun({ kind: 'stage', stageId: s.id }, s.title)}
-                            >
-                              {t('reference.outline.rerun')}
-                            </Button>
-                          </div>
-                        </div>
-                        {open && (
-                          <>
-                            {s.goal && <p className="text-[var(--color-text-secondary)]">{s.goal}</p>}
-                            {s.antagonist && <p className="text-[var(--color-text-muted)]">{t('reference.outline.stageAntagonist', { text: s.antagonist })}</p>}
-                            {s.entryHook && <p className="text-[var(--color-text-muted)]">{t('reference.outline.stageEntry', { text: s.entryHook })}</p>}
-                            {s.exitPeak && <p className="text-[var(--color-text-muted)]">{t('reference.outline.stageExit', { text: s.exitPeak })}</p>}
-                            {inRange.map((d) => (
-                              <button
-                                key={d.chapterNumber}
-                                type="button"
-                                className="block w-full text-left pl-4 py-0.5 text-[var(--color-text-secondary)] hover:text-[var(--color-accent)]"
-                                onClick={() => setRefine({
-                                  scope: { kind: 'digest', chapterNumber: d.chapterNumber },
-                                  label: t('reference.chapterHeading', { number: d.chapterNumber, title: chapterTitle(d.chapterNumber) }),
-                                })}
-                              >
-                                {t('reference.chapterHeading', { number: d.chapterNumber, title: chapterTitle(d.chapterNumber) })}
-                                {d.summary ? ` · ${d.summary.slice(0, 80)}` : ''}
-                              </button>
-                            ))}
-                          </>
-                        )}
-                      </li>
-                      )
-                    })}
-                  </ul>
-                ))}
-              </section>
-
-              <section>
-                <div className="flex items-center justify-between mb-2">
-                  <CollapseTitle
-                    open={isOpen('lines')}
-                    onToggle={() => toggle('lines')}
-                    title={t('reference.outline.lines')}
-                    collapseLabel={t('reference.outline.collapse')}
-                    expandLabel={t('reference.outline.expand')}
-                  />
-                  <Button
-                    size="sm"
-                    variant="ghost"
-                    disabled={busy || lines.length === 0 || lines.every((l) => l.locked)}
-                    title={
-                      busy ? t('reference.outline.rerunBusy')
-                        : lines.length === 0 ? t('reference.outline.needLines')
-                          : lines.every((l) => l.locked) ? t('reference.outline.rerunAllLocked')
-                            : t('reference.outline.rerunLinesHint')
-                    }
-                    onClick={() => startRerun({ kind: 'lines' }, t('reference.outline.lines'))}
-                  >
-                    {t('reference.outline.rerun')}
-                  </Button>
-                </div>
-                {isOpen('lines') && (lines.length === 0 ? (
-                  <p className="text-xs text-[var(--color-text-muted)]">{t('reference.outline.needLines')}</p>
-                ) : (
-                  <>
-                    <LineMatrix
-                      matrix={buildLineMatrix(digests, lines)}
-                      lines={lines}
-                      stages={stages}
-                      onCellClick={(ch) => {
-                        setTab('digests')
-                        setRefine({
-                          scope: { kind: 'digest', chapterNumber: ch },
-                          label: t('reference.chapterHeading', { number: ch, title: chapterTitle(ch) }),
-                        })
-                      }}
-                    />
-                    <ul className="space-y-2 mt-3">
-                    {lines.map((l) => {
-                      const open = isOpen(`line-${l.id}`, false)
-                      return (
-                      <li key={l.id} className="rounded-lg px-3 py-2 border border-[var(--color-border)] text-xs">
-                        <div className="flex items-center justify-between mb-1">
-                          <CollapseTitle
-                            open={open}
-                            onToggle={() => toggle(`line-${l.id}`, false)}
-                            title={l.name}
-                            collapseLabel={t('reference.outline.collapse')}
-                            expandLabel={t('reference.outline.expand')}
-                          />
-                          <div className="flex items-center gap-1">
-                            <Button size="sm" variant="ghost" onClick={() => setRefine({ scope: { kind: 'line', lineId: l.id }, label: l.name })}>
-                              {t('reference.outline.refine')}
-                            </Button>
-                            <Button
-                              size="sm"
-                              variant="ghost"
-                              disabled={busy || l.locked}
-                              title={t('reference.outline.rerunHint')}
-                              onClick={() => startRerun({ kind: 'line', lineId: l.id }, l.name)}
-                            >
-                              {t('reference.outline.rerun')}
-                            </Button>
-                          </div>
-                        </div>
-                        {open && (l.arcSummary
-                          ? <div className="text-xs"><MarkdownContent content={l.arcSummary} /></div>
-                          : <p className="text-[var(--color-text-muted)]">{t('reference.outline.noOutline')}</p>)}
-                      </li>
-                      )
-                    })}
-                    </ul>
-                  </>
-                ))}
-              </section>
-
-              <section>
-                <div className="mb-2">
-                  <CollapseTitle
-                    open={isOpen('revisions', false)}
-                    onToggle={() => toggle('revisions', false)}
-                    title={t('reference.outline.revisions')}
-                    collapseLabel={t('reference.outline.collapse')}
-                    expandLabel={t('reference.outline.expand')}
-                  />
-                </div>
-                {isOpen('revisions', false) && (revisions.length === 0 ? (
-                  <p className="text-xs text-[var(--color-text-muted)]">{t('reference.outline.noOutline')}</p>
-                ) : (
-                  <ul className="space-y-1">
-                    {revisions.slice(0, 20).map((rev) => (
-                      <li key={rev.id} className="flex items-center justify-between gap-2 text-xs">
-                        <span className="truncate text-[var(--color-text-muted)]">
-                          {rev.scope} · {rev.instruction.slice(0, 40)}
-                        </span>
-                        <Button
-                          size="sm"
-                          variant="ghost"
-                          disabled={!rev.before || rev.before === '{}'}
-                          onClick={() => void rollback(rev)}
-                        >
-                          {t('reference.outline.rollback')}
-                        </Button>
-                      </li>
-                    ))}
-                  </ul>
-                ))}
-              </section>
-            </div>
+            <OutlineTab
+              work={work}
+              digests={digests}
+              lines={lines}
+              stages={stages}
+              outlineL2={outlineL2}
+              outlineL3={outlineL3}
+              revisions={revisions}
+              busy={busy}
+              okCount={okNums.size}
+              isOpen={isOpen}
+              toggle={toggle}
+              chapterTitle={chapterTitle}
+              onRefine={(scope, label) => setRefine({ scope, label })}
+              onRerun={startRerun}
+              onOpenDigest={(ch) => {
+                setTab('digests')
+                setRefine({ scope: { kind: 'digest', chapterNumber: ch }, label: t('reference.chapterHeading', { number: ch, title: chapterTitle(ch) }) })
+              }}
+              reloadSelected={reloadSelected}
+            />
           )}
         </div>
       </div>
 
-      {refine && (
+      {refine && !seedPanel && (
         <RefinePanel
           key={JSON.stringify(refine.scope)}
           workId={work.id}
@@ -624,6 +382,16 @@ export default function ReferenceOverview() {
           scope={refine.scope}
           scopeLabel={refine.label}
           onClear={() => setRefine(null)}
+        />
+      )}
+      {seedPanel && (
+        <BookSeedPanel
+          workId={work.id}
+          workName={work.name}
+          defaultModelId={work.outlineModelId}
+          busy={busy}
+          initial={seedPanel.initial}
+          onClose={() => setSeedPanel(null)}
         />
       )}
     </div>

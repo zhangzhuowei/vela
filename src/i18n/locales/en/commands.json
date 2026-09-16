@@ -72,6 +72,17 @@
     "canonAutoRepair": "  🛡️ [Canon] Auto-repaired after {{attempts}} rounds, saving fixed version",
     "canonCheckPassed": "  ✅ [Canon] Consistency check passed",
     "canonGateError": "  ❌ [Canon] Gate exception: {{error}}",
+    "lengthTemplateMissing": "  ⚠️ Template draft_continue missing; skipping length top-up",
+    "lengthOk": "  📏 Length OK: {{count}} chars (target {{target}} / floor {{floor}})",
+    "lengthShort": "  📏 Too short: {{count}} < floor {{floor}}; continuing for ~{{gap}} more chars (round {{round}}/{{max}})...",
+    "lengthContinueFailed": "  ⚠️ Continuation failed; keeping current length: {{error}}",
+    "lengthTooLittle": "  ⚠️ Continuation returned too little; stopping",
+    "lengthAllOverlap": "  ⚠️ Continuation only repeated the existing text; discarded and stopped",
+    "lengthAfter": "  📏 After top-up: {{count}} chars",
+    "lengthAfterOk": "  📏 After top-up: {{count}} chars, floor reached",
+    "lengthMaxRounds": "  ⚠️ Max top-up rounds reached; final {{count}} chars (target {{target}})",
+    "lengthOvershoot": "  ⚠️ Overshoot: {{count}} chars exceeds 125% of target {{target}}; avoid expanding further during refinement",
+    "lengthAfterGate": "  ⚠️ After consistency repair the draft is {{count}} chars, below floor {{floor}} (saved as-is, no further continuation)",
     "projectGuidanceHeading": "## Project-specific guidance ({{name}})",
     "charStateArchive": "【Character State Archive】",
     "noCharStateArchive": "(No character state archive yet)",
@@ -235,11 +246,20 @@
     "digestSummary": "Digest finished: {{done}} ok, {{failed}} failed",
     "stageBatchDone": "Stage batch {{index}}/{{total}}: {{count}} segments",
     "stagesSaved": "Stage axis saved: {{count}} segments",
+    "stagesKeptLocked": "Kept {{count}} locked stage(s); new segments were trimmed around their chapter ranges",
     "lineArcDone": "Wrote character-line arc: {{name}}",
     "outlineLockedSkip": "{{level}} is locked, skip overwrite",
     "outlineSaved": "Saved {{level}}",
     "nothingToRefine": "Nothing to refine",
-    "targetLocked": "Target is locked"
+    "targetLocked": "Target is locked",
+    "bookSeed": {
+      "needL2": "Build the L2 outline before generating a book seed.",
+      "calling": "Drafting the new book plan from your requirements…",
+      "noCharacters": "The model returned no characters; only book.json was written.",
+      "digestDowngraded": "Full chapter digests exceeded the budget; downgraded to Brief ({{count}} chapters)",
+      "recordFailed": "Failed to save the export record: {{error}}",
+      "saved": "Wrote {{count}} file(s) to {{dir}}"
+    }
   },
   "workflowDefs": {
     "architectureTitle": "🏗️ Generate Story Architecture",
@@ -362,7 +382,10 @@
     "refRefineDone": "Refine complete",
     "refRerunTitle": "Rerun: {{name}} · {{scope}}",
     "refRerunStep": "Regenerate this block",
-    "refRerunDone": "Rerun complete"
+    "refRerunDone": "Rerun complete",
+    "refBookSeedTitle": "Book seed: {{name}}",
+    "refBookSeedStep": "Generate book.json / characters.json",
+    "refBookSeedDone": "Book seed generated. See the “Exports” tab to review or re-save."
   },
   "pipeline": {
     "retryFailed": "  ⚠️ {{label}} failed on attempt {{attempt}}, retrying... ({{error}})",
