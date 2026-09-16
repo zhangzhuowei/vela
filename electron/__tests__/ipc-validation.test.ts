@@ -222,6 +222,18 @@ describe('reference validation', () => {
     expect(() => validateRefDigestInput({ workId: 1, chapterNumber: 1, characterStates: [{ name: 'a', stage: 'none', func: 'boss' }] }))
       .toThrow(ValidationError)
   })
+  it('coerces swapped stage/func instead of rejecting', () => {
+    const v = validateRefDigestInput({
+      workId: 1, chapterNumber: 5,
+      characterStates: [
+        { name: '空银子', stage: 'assist', func: 'assist' },
+        { name: '相沢', stage: 'progress', func: 'none' },
+      ],
+      events: [], introduced: [], intimate: false, status: 'ok', error: '',
+    })
+    expect(v.characterStates[0]).toEqual({ name: '空银子', stage: 'none', func: 'assist' })
+    expect(v.characterStates[1]).toEqual({ name: '相沢', stage: 'progress', func: 'mention' })
+  })
   it('validates line aliases as string array', () => {
     const v = validateRefLineInput({ workId: 1, name: '绫波', aliases: ['小绫', 'Ayanami'], kind: 'romance', sortOrder: 0, locked: false, arcSummary: '' })
     expect(v.aliases).toEqual(['小绫', 'Ayanami'])

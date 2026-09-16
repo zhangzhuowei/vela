@@ -10,6 +10,7 @@ import { ipc } from '../../ipc-client'
 import { DIGEST_MAX_CHARS, DIGEST_CONCURRENCY, STAGE_BATCH_SIZE } from '../../reference/cost-estimate'
 import { splitDigestParts } from '../../reference/digest-chunking'
 import { chapterRunQueue, settleDigestWorkProgress } from '../../reference/analyzed-range'
+import { coerceCharacterStates } from '../../reference/digest-state'
 import { batchByCount, mergeStageBatches, pickStageDraft, type StageDraft } from '../../reference/stage-batching'
 import { buildLineMatrix, computeLineStats } from '../../reference/line-matrix'
 import type { RefDigestInput, RefCharacterState, RefIntroduced, RefLineData, RefWorkData, RefStageData } from '../../../../electron/repositories/reference-repository'
@@ -121,7 +122,7 @@ export class RefDigestChaptersCommand extends BaseWorkflowCommand<void> {
           events: merged?.events ?? [],
           hook: merged?.hook ?? '',
           activeLine: merged?.activeLine ?? '',
-          characterStates: merged?.characterStates ?? [],
+          characterStates: coerceCharacterStates(merged?.characterStates),
           introduced: merged?.introduced ?? [],
           intimate: Boolean(merged?.intimate),
           status: 'ok',
@@ -450,7 +451,7 @@ export class RefRefineCommand extends BaseWorkflowCommand<void> {
     const json = this.parseJSON<DigestJson>(raw)
     const next: RefDigestInput = {
       workId: this.workId, chapterNumber: ch.number, summary: json.summary ?? '', events: json.events ?? [], hook: json.hook ?? '',
-      activeLine: json.activeLine ?? '', characterStates: json.characterStates ?? [], introduced: json.introduced ?? [],
+      activeLine: json.activeLine ?? '', characterStates: coerceCharacterStates(json.characterStates), introduced: json.introduced ?? [],
       intimate: Boolean(json.intimate), status: 'ok', error: '',
     }
     await ipc.invoke('db:ref-revision-insert', { workId: this.workId, scope: 'digest', targetId: ch.number, instruction: this.instruction, before: JSON.stringify(chapterDigest ?? {}), after: JSON.stringify(next) })

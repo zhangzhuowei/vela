@@ -32,6 +32,7 @@ export default defineConfig({
       'src/services/reference/__tests__/line-matrix.test.ts',
       'src/services/reference/__tests__/stage-batching.test.ts',
       'src/services/reference/__tests__/digest-chunking.test.ts',
+      'src/services/reference/__tests__/digest-state.test.ts',
     ],
     globals: false,
   },

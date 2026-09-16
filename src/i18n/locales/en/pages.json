@@ -129,7 +129,15 @@
       "needLines": "Confirm at least one character line first.",
       "stageAntagonist": "Antagonist: {{text}}",
       "stageEntry": "Entry hook: {{text}}",
-      "stageExit": "Exit peak: {{text}}"
+      "stageExit": "Exit peak: {{text}}",
+      "matrix": {
+        "main": "focus",
+        "daily": "daily",
+        "assist": "assist",
+        "introduce": "introduce",
+        "mention": "mention",
+        "intimate": "intimate"
+      }
     },
     "refine": {
       "title": "Refine by instruction",

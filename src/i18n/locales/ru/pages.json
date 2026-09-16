@@ -129,7 +129,15 @@
       "needLines": "Сначала задайте хотя бы одну линию.",
       "stageAntagonist": "Противник: {{text}}",
       "stageEntry": "Вход: {{text}}",
-      "stageExit": "Выход: {{text}}"
+      "stageExit": "Выход: {{text}}",
+      "matrix": {
+        "main": "фокус",
+        "daily": "будни",
+        "assist": "помощь",
+        "introduce": "ввод",
+        "mention": "упоминание",
+        "intimate": "интим"
+      }
     },
     "refine": {
       "title": "Правка по совету",

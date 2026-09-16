@@ -11,6 +11,7 @@
  *   - 校验失败抛 ValidationError，主进程 handler 捕获并返回 { success: false, error }
  *   - 校验器都返回 boolean 或 throw，不修改原对象
  */
+import { REF_FUNCS, REF_STAGES, coerceCharacterState } from '../src/services/reference/digest-state'
 
 export class ValidationError extends Error {
   constructor(public readonly path: string, public readonly reason: string) {
@@ -341,8 +342,8 @@ export function validateVisibility(v: unknown, path = 'visibility') {
 }
 
 const VALID_REF_STATUS = ['idle', 'running', 'done', 'error'] as const
-const VALID_REF_STAGE = ['first_meet', 'progress', 'breakthrough', 'closure', 'done', 'none'] as const
-const VALID_REF_FUNC = ['main', 'daily', 'assist', 'introduce', 'mention'] as const
+const VALID_REF_STAGE = REF_STAGES
+const VALID_REF_FUNC = REF_FUNCS
 const VALID_REF_KIND = ['romance', 'plot', 'other'] as const
 
 function checkStringArray(v: unknown, path: string, maxItems: number, maxLen: number): string[] {
@@ -374,10 +375,15 @@ export function validateRefDigestInput(v: unknown, path = 'refDigest') {
   if (!Array.isArray(statesRaw)) throw new ValidationError(`${path}.characterStates`, 'expected array')
   const characterStates = statesRaw.slice(0, 60).map((s, i) => {
     if (!isObject(s)) throw new ValidationError(`${path}.characterStates[${i}]`, 'expected object')
+    const coerced = coerceCharacterState({
+      name: typeof s.name === 'string' ? s.name : '',
+      stage: s.stage,
+      func: s.func,
+    })
     return {
-      name: checkStringLength(s.name, `${path}.characterStates[${i}].name`, { min: 1, max: 60 }),
-      stage: checkEnum(s.stage ?? 'none', `${path}.characterStates[${i}].stage`, VALID_REF_STAGE),
-      func: checkEnum(s.func ?? 'mention', `${path}.characterStates[${i}].func`, VALID_REF_FUNC),
+      name: checkStringLength(coerced.name, `${path}.characterStates[${i}].name`, { min: 1, max: 60 }),
+      stage: checkEnum(coerced.stage, `${path}.characterStates[${i}].stage`, VALID_REF_STAGE),
+      func: checkEnum(coerced.func, `${path}.characterStates[${i}].func`, VALID_REF_FUNC),
     }
   })
   const introducedRaw = v.introduced ?? []

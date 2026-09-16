@@ -129,7 +129,15 @@
       "needLines": "先在「人物线」里确认至少一条线。",
       "stageAntagonist": "对立面：{{text}}",
       "stageEntry": "入段：{{text}}",
-      "stageExit": "出段：{{text}}"
+      "stageExit": "出段：{{text}}",
+      "matrix": {
+        "main": "主攻",
+        "daily": "日常",
+        "assist": "助攻",
+        "introduce": "引出",
+        "mention": "提及",
+        "intimate": "亲密"
+      }
     },
     "refine": {
       "title": "按建议微调",
