@@ -34,6 +34,10 @@ import { toast } from '../ui/Toast'
 import { confirm } from '../ui/Confirm'
 import { globalEventBus } from '../../shared/event-bus'
 import { resolveChapterEnding } from '../../services/chapter-ending'
+import { useBranchStore } from '../../stores/branch-store'
+import {
+  BRANCH_BASE, branchIdOf, displayChapterNameSafe, isMainChapter, localIndexOf, toChapterNumber,
+} from '../../shared/chapter-addressing'
 
 const ROLES = ['建置', '铺垫', '发展', '冲突', '高潮', '转折', '收尾']
 
@@ -85,6 +89,7 @@ export default function ChapterCardEditor() {
   const [showBlueprintDialog, setShowBlueprintDialog] = useState(false)
   // 章级创作模式覆盖（'' = 继承工程默认）
   const [chapterMode, setChapterMode] = useState('')
+  const branches = useBranchStore(s => s.branches)
 
   const loadBlueprints = useCallback(async () => {
     if (!currentProject) return
@@ -93,15 +98,12 @@ export default function ChapterCardEditor() {
       const data = await loadDirectoryBlueprints()
       setBlueprints(data)
       if (data.length > 0) setSelectedIdx(0)
-      // 获取下一个待写章节号
-      const maxFinalized = await ipc.invoke('db:draft-get-max-finalized-chapter')
-      setNextWriteChapter(maxFinalized !== null ? maxFinalized + 1 : 1)
     } catch {
       addLog('error', t('chapterCard.readBlueprintFailed'))
     }
     setLoading(false)
     setDirty(false)
-  }, [currentProject, addLog])
+  }, [currentProject, addLog, t])
 
   useEffect(() => {
     let mounted = true
@@ -122,6 +124,22 @@ export default function ChapterCardEditor() {
   const endingSmooth = selected
     ? resolveChapterEnding(currentProject?.novelConfig?.chapterEnding, selected.chapterEnding) === 'smooth'
     : false
+
+  useEffect(() => {
+    const me = selected?.chapterNumber
+    let cancelled = false
+    void (async () => {
+      if (me == null || isMainChapter(me)) {
+        const maxFinalized = await ipc.invoke('db:draft-get-max-finalized-chapter')
+        if (!cancelled) setNextWriteChapter(maxFinalized ? maxFinalized + 1 : 1)
+        return
+      }
+      const id = branchIdOf(me)
+      const maxInBranch = await ipc.invoke('db:draft-get-max-finalized-in-range', id * BRANCH_BASE + 1, (id + 1) * BRANCH_BASE - 1)
+      if (!cancelled) setNextWriteChapter(maxInBranch ? maxInBranch + 1 : id * BRANCH_BASE + 1)
+    })()
+    return () => { cancelled = true }
+  }, [selected?.chapterNumber, blueprints.length])
 
   // 选中章变化时加载章级模式覆盖
   useEffect(() => {
@@ -194,9 +212,12 @@ export default function ChapterCardEditor() {
 
   /** 新建空章节 */
   const handleAddChapter = () => {
-    const maxNum = blueprints.reduce((m, b) => Math.max(m, b.chapterNumber), 0)
+    const selectedBranch = selected ? branchIdOf(selected.chapterNumber) : 0
+    const inLine = blueprints.filter((b) => branchIdOf(b.chapterNumber) === selectedBranch)
+    const maxLocal = inLine.reduce((m, b) => Math.max(m, localIndexOf(b.chapterNumber)), 0)
+    const chapterNumber = selectedBranch === 0 ? maxLocal + 1 : toChapterNumber(selectedBranch, maxLocal + 1)
     const newBlueprint: ChapterBlueprint = {
-      chapterNumber: maxNum + 1,
+      chapterNumber,
       title: '',
       role: '发展',
       purpose: '',
@@ -343,12 +364,12 @@ export default function ChapterCardEditor() {
                 if (bp) {
                   void handleWriteChapter(bp)
                 } else {
-                  toast.warning(`第 ${nextWriteChapter} 章还没有蓝图，请先用「AI 生成蓝图」生成该章，或点「+」手动新建后再写作`)
+                  toast.warning(`${displayChapterNameSafe(nextWriteChapter, branches)}还没有蓝图，请先用「AI 生成蓝图」生成该章，或点「+」手动新建后再写作`)
                 }
               }}
             >
               <PenLine size={12} />
-              {t('chapterCard.writeChapter', { chapter: nextWriteChapter })}
+              {t('chapterCard.writeNamed', { name: displayChapterNameSafe(nextWriteChapter, branches) })}
             </Button>
           )}
           {/* 批量无人值守生成 */}
@@ -391,7 +412,7 @@ export default function ChapterCardEditor() {
       <DirectoryConfigDialog
         isOpen={showBlueprintDialog}
         onClose={() => setShowBlueprintDialog(false)}
-        existingCount={blueprints.length}
+        defaultBranchId={selected ? branchIdOf(selected.chapterNumber) : 0}
         onConfirm={handleBatchGenerate}
       />
 
@@ -422,9 +443,13 @@ export default function ChapterCardEditor() {
               >
                 <div className="flex items-center gap-1.5">
                   <span className="font-mono text-[0.7rem] opacity-40 flex-shrink-0">
-                    {bp.chapterNumber}
+                    {isMainChapter(bp.chapterNumber) ? bp.chapterNumber : localIndexOf(bp.chapterNumber)}
                   </span>
-                  <span className="font-medium truncate flex-1">{bp.title || t('chapterCard.unnamed')}</span>
+                  <span className="font-medium truncate flex-1">
+                    {isMainChapter(bp.chapterNumber)
+                      ? (bp.title || t('chapterCard.unnamed'))
+                      : displayChapterNameSafe(bp.chapterNumber, branches, bp.title || '')}
+                  </span>
                 </div>
                 <div className="flex items-center gap-1 mt-0.5">
                   <span className={cn(
@@ -468,7 +493,7 @@ export default function ChapterCardEditor() {
               </div>
               <div className="flex items-start justify-between gap-2 mb-4">
                 <h3 className="text-sm font-bold flex-shrink-0 pt-1" style={{ color: 'var(--color-text)' }}>
-                  {t('chapterCard.chapterTitle', { chapter: selected.chapterNumber, title: selected.title || t('chapterCard.unnamed') })}
+                  {displayChapterNameSafe(selected.chapterNumber, branches, selected.title || t('chapterCard.unnamed'))}
                 </h3>
                 <div className="flex flex-wrap items-center justify-end gap-1.5 min-w-0">
                   {/* 仅下一章允许写作 */}

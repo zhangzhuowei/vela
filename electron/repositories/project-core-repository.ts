@@ -39,6 +39,7 @@ export interface ProjectCoreRow {
     option_hints_count: number
     option_hints_max_chars: number
     chapter_ending: string
+    extra_export_mode: string
     created_at: string
     updated_at: string
 }
@@ -75,6 +76,7 @@ export interface ProjectCoreData {
     optionHintsCount: number
     optionHintsMaxChars: number
     chapterEnding: string
+    extraExportMode: 'appendix' | 'inline' | 'separate'
 }
 
 /** 数据库行 → 前端数据 */
@@ -110,6 +112,9 @@ function rowToData(row: ProjectCoreRow): ProjectCoreData {
         optionHintsCount: row.option_hints_count ?? 3,
         optionHintsMaxChars: row.option_hints_max_chars ?? 24,
         chapterEnding: row.chapter_ending === 'smooth' ? 'smooth' : 'cliffhanger',
+        extraExportMode: row.extra_export_mode === 'inline' || row.extra_export_mode === 'separate'
+            ? row.extra_export_mode
+            : 'appendix',
     }
 }
 
@@ -174,6 +179,7 @@ export class ProjectCoreRepository {
             optionHintsCount: 'option_hints_count',
             optionHintsMaxChars: 'option_hints_max_chars',
             chapterEnding: 'chapter_ending',
+            extraExportMode: 'extra_export_mode',
         }
 
         const setClauses: string[] = []

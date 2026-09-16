@@ -123,6 +123,7 @@
     "chapterCount": "({{count}} chapters)",
     "unsaved": "● Unsaved",
     "writeChapter": "Write Ch.{{chapter}}",
+    "writeNamed": "Write {{name}}",
     "aiGenerateBlueprintTooltip": "AI generate chapter blueprints (select range and mode)",
     "aiGenerateBlueprint": "AI Generate Blueprints",
     "reload": "Reload",
@@ -504,6 +505,17 @@
       "cliffhanger": "Cliffhanger: end on a minor climax or sudden turn and leave a hook (default, previous behavior)",
       "smooth": "Smooth landing: close the current beat; do not invent a twist just to break the chapter"
     },
+    "extraExportMode": "Extra export placement",
+    "extraExportModeOptions": {
+      "appendix": "Appendix after the main text",
+      "inline": "Insert after the anchor chapter",
+      "separate": "One file per extra line"
+    },
+    "extraExportModeTips": {
+      "appendix": "One main-text file with extras at the end; IF lines are always separate files",
+      "inline": "Extras follow their anchor chapter; IF lines are always separate files",
+      "separate": "Main text, each extra, and each IF line become their own files"
+    },
     "creationMode": "Creation Mode",
     "creationModeOptions": {
       "pipeline": "Outline pipeline",
@@ -653,7 +665,7 @@
     "selectOrCreate": "Select or create a character on the left",
     "openProjectFirst": "Please open a project first",
     "currentStatusProfile": "Current Status Profile",
-    "lastUpdated": "Last updated: Chapter {{chapter}}",
+    "lastUpdated": "Last updated: {{name}}",
     "stateHint": "The current status profile will be automatically updated by AI after chapter finalization, or you can fill in the initial state manually.",
     "fields": {
       "name": "Name",

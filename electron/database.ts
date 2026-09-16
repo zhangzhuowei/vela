@@ -170,6 +170,7 @@ function migrateSchema(db: BetterSqlite3.Database) {
   // 设定纲要点名：本章 / 本场要全文注入的模块 key（JSON 数组）
   addColumnIfMissing('blueprints', 'setting_keys', `setting_keys TEXT DEFAULT '[]'`)
   addColumnIfMissing('scenes', 'setting_keys', `setting_keys TEXT DEFAULT '[]'`)
+  addColumnIfMissing('project_core', 'extra_export_mode', `extra_export_mode TEXT DEFAULT 'appendix'`)
 }
 
 /** 创建完整表结构（9 张核心表 + 2 张沿用表） */
@@ -526,6 +527,22 @@ function createTables(db: BetterSqlite3.Database) {
       updated_at TEXT DEFAULT (datetime('now'))
     );
     CREATE INDEX IF NOT EXISTS idx_setting_modules_order ON setting_modules(sort_order);
+
+    -- ============================================================
+    -- 线：番外 / IF。章号 = id × 10000 + 线内序号；正文 1～9999
+    -- ============================================================
+    CREATE TABLE IF NOT EXISTS branches (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      name TEXT NOT NULL,
+      kind TEXT NOT NULL DEFAULT 'extra',          -- extra / if
+      anchor_kind TEXT NOT NULL DEFAULT 'chapter', -- chapter（现）/ reference_stage（预留）
+      anchor_chapter INTEGER NOT NULL DEFAULT 0,   -- 番外：发生在第 N 章后；IF：从第 N 章分叉；0 = 前传
+      premise TEXT DEFAULT '',                     -- 一句话前提
+      setting_diff TEXT DEFAULT '',                -- 与正史的设定差异（写稿最高优先级注入）
+      sort_order INTEGER DEFAULT 0,
+      created_at TEXT DEFAULT (datetime('now')),
+      updated_at TEXT DEFAULT (datetime('now'))
+    );
 
     -- 索引
     CREATE INDEX IF NOT EXISTS idx_llm_calls_time ON llm_calls(created_at);

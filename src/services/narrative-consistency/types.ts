@@ -129,6 +129,10 @@ export interface CanonContext {
     ragSources: number
     /** 渲染进 prompt 的时间线窗口（近 N 章完整渲染，更早只保留不可逆事件） */
     renderTimelineWindow?: number
+    /** 本章可见性（正文 / 番外 / IF）；可选，旧数据无此字段 */
+    visibility?: import('../../shared/chapter-addressing').ChapterVisibility
+    /** 线内角色状态所用快照对应的锚点章；null = 未取到快照、退回当前角色卡 */
+    characterSnapshotChapter?: number | null
   }
 }
 

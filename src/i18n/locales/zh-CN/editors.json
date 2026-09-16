@@ -123,6 +123,7 @@
     "chapterCount": "({{count}} 章)",
     "unsaved": "● 未保存",
     "writeChapter": "写作第{{chapter}}章",
+    "writeNamed": "写作{{name}}",
     "aiGenerateBlueprintTooltip": "AI 生成章节蓝图（选择范围和模式）",
     "aiGenerateBlueprint": "AI 生成蓝图",
     "reload": "重新加载",
@@ -504,6 +505,17 @@
       "cliffhanger": "必须卡悬念：写稿最后一段卡小高潮或变故，留下追读钩子（默认，旧项目行为）",
       "smooth": "平稳过渡：按蓝图收在当前节拍，禁止为断章硬造突发，语气能接下章"
     },
+    "extraExportMode": "番外导出位置",
+    "extraExportModeOptions": {
+      "appendix": "附在正文末尾（番外卷）",
+      "inline": "插在锚点章之后",
+      "separate": "每条番外单独文件"
+    },
+    "extraExportModeTips": {
+      "appendix": "正文一个文件，番外接在书末；IF 线始终单独成文",
+      "inline": "番外插到对应锚点章后面；IF 线始终单独成文",
+      "separate": "正文、每条番外、每条 IF 各自一个文件"
+    },
     "creationMode": "创作模式",
     "creationModeOptions": {
       "pipeline": "大纲管线",
@@ -653,7 +665,7 @@
     "selectOrCreate": "在左侧选择或创建角色卡",
     "openProjectFirst": "请先打开项目",
     "currentStatusProfile": "当前状态档案",
-    "lastUpdated": "最后更新：第 {{chapter}} 章",
+    "lastUpdated": "最后更新：{{name}}",
     "stateHint": "当前状态档案将在章节定稿后由 AI 自动更新，也可手动填写初始状态。",
     "fields": {
       "name": "姓名",

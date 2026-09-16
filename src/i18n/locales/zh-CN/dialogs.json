@@ -144,7 +144,30 @@
     "rhythmPlaceholder": "如：前30章快节奏，每章安排一个爽点。中期适当铺设伏笔和角色成长。",
     "startGeneration": "开始生成",
     "taskRunning": "已有蓝图生成任务正在执行，请等待完成后再试",
-    "submitted": "✨ 已提交：正在生成章节蓝图..."
+    "submitted": "✨ 已提交：正在生成章节蓝图...",
+    "targetBranch": "目标线",
+    "mainLine": "正文"
+  },
+  "batchGenerate": {
+    "targetBranch": "目标线"
+  },
+  "branch": {
+    "createTitle": "新建线",
+    "editTitle": "编辑线",
+    "name": "名称",
+    "kind": "类型",
+    "kindExtra": "番外",
+    "kindIf": "IF 线",
+    "anchor": "锚点章",
+    "anchorPrequel": "前传：不读任何正文",
+    "anchorHint": "番外发生在该章之后；IF 从该章分叉。0 = 前传",
+    "premise": "前提",
+    "premisePlaceholder": "本线相对正史的前提，写稿时注入",
+    "settingDiff": "设定差异",
+    "settingDiffPlaceholder": "与正史不同的设定（IF 线建议填写）",
+    "anchorLockedHint": "线内已有定稿，锚点不可改",
+    "save": "保存",
+    "cancel": "取消"
   },
   "export": {
     "title": "导出项目",
@@ -166,7 +189,12 @@
     "noFinalizedChapters": "无可导出的章节（无定稿章节）",
     "foundChapters": "找到 {{count}} 个已定稿章节",
     "exportComplete": "✅ 导出完成: {{path}}",
-    "exportFailed": "❌ 导出失败: {{error}}"
+    "exportFailed": "❌ 导出失败: {{error}}",
+    "extraMode": "番外位置",
+    "extraModeAppendix": "附在正文末尾（番外卷）",
+    "extraModeInline": "插在锚点章之后",
+    "extraModeSeparate": "每条番外单独文件",
+    "includeIf": "包含 IF 线"
   },
   "versionService": {
     "chapterFallback": "第 {{number}} 章",

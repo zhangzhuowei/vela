@@ -525,10 +525,8 @@ export function validateChapter(params: ValidateParams): ConsistencyIssue[] {
   issues = issues.concat(checkRelationshipContinuity(chapterContent, canon.characterStates))
   issues = issues.concat(checkItemOwnership(chapterContent, canon.characterStates))
 
-  // 第一章不检查与上一章的衔接
-  if (chapterNumber > 1) {
-    issues = issues.concat(checkPreviousEndingContinuity(chapterContent, canon.previousEnding))
-  }
+  // 开篇（正文第 1 章 / 前传第 1 章）previousEnding 过短时本函数会直接空返回
+  issues = issues.concat(checkPreviousEndingContinuity(chapterContent, canon.previousEnding))
 
   // rewrite 场景：额外检查不能与已发生事实冲突
   if (isRewrite) {

@@ -11,6 +11,9 @@
  * 全部表在 database.ts 用 CREATE TABLE IF NOT EXISTS 创建，老库零迁移成本。
  */
 import { getProjectDb } from '../database'
+import {
+  visibilityWhere, isPlotLineOpenAt, redactPlotLineForVisibility, type ChapterVisibility,
+} from '../../src/shared/chapter-addressing'
 import type {
   TimelineEvent,
   CharacterStateSnapshot,
@@ -584,5 +587,44 @@ export class CanonRepository {
     })
 
     return tx()
+  }
+
+  static getTimelineVisible(v: ChapterVisibility, includeFlashback = true): TimelineEvent[] {
+    const db = getProjectDb()
+    if (!db) return []
+    const w = visibilityWhere('chapter_number', v)
+    const flash = includeFlashback ? '' : ` AND time_flow != 'flashback'`
+    const rows = db.prepare(`SELECT * FROM canon_timeline_events WHERE ${w.sql}${flash} ORDER BY chapter_number, sequence`).all(...w.params) as TimelineRow[]
+    return rows.map(rowToTimeline)
+  }
+
+  static getFactsVisible(v: ChapterVisibility): Fact[] {
+    const db = getProjectDb()
+    if (!db) return []
+    const w = visibilityWhere('introduced_at', v, { origin: true })
+    const rows = db.prepare(`SELECT * FROM canon_facts WHERE ${w.sql} ORDER BY introduced_at, id`).all(...w.params) as FactRow[]
+    return rows.map(rowToFact)
+  }
+
+  static getRecentSummariesVisible(v: ChapterVisibility, limit = 5): ChapterSummary[] {
+    const db = getProjectDb()
+    if (!db) return []
+    const w = visibilityWhere('chapter_number', v)
+    const rows = db.prepare(`SELECT * FROM canon_chapter_summaries WHERE ${w.sql} ORDER BY chapter_number DESC LIMIT ?`).all(...w.params, limit) as ChapterSummaryRow[]
+    return rows.map(rowToSummary).reverse()
+  }
+
+  /** 线内只读该可见性窗口内已开且尚未了结的剧情线（正史后来才 resolve 的仍算未结） */
+  static getActivePlotLinesVisible(v: ChapterVisibility): PlotLine[] {
+    const db = getProjectDb()
+    if (!db) return []
+    const w = visibilityWhere('started_at', v, { origin: true })
+    const rows = db.prepare(
+      `SELECT * FROM canon_plot_lines WHERE ${w.sql} ORDER BY last_advanced_at DESC`,
+    ).all(...w.params) as PlotLineRow[]
+    return rows
+      .map(rowToPlotLine)
+      .filter((line) => isPlotLineOpenAt(line, v))
+      .map((line) => redactPlotLineForVisibility(line, v))
   }
 }

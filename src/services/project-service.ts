@@ -14,8 +14,10 @@
 
 import { globalEventBus } from '../shared/event-bus'
 import { useProjectStore } from '../stores/project-store'
-import { useCharacterStore } from '../stores/character-store'
 import { useDraftStore } from '../stores/draft-store'
+import { useCharacterStore } from '../stores/character-store'
+import { useBranchStore } from '../stores/branch-store'
+import { invalidateBranchCache } from './branches/branch-service'
 import { ipc } from './ipc-client'
 
 /** 存放解绑函数，用于 dispose 时清理 */
@@ -111,6 +113,10 @@ export function initProjectService(): void {
       if (resources.includes('all') || resources.includes('fileTree')) {
         await useProjectStore.getState().refreshFileTree()
       }
+      if (resources.includes('all') || resources.includes('branches')) {
+        invalidateBranchCache()
+        await useBranchStore.getState().load()
+      }
     })
   )
 
@@ -133,6 +139,7 @@ export async function onProjectOpened(): Promise<void> {
   await Promise.all([
     useCharacterStore.getState().load(),
     useDraftStore.getState().loadAllDrafts(),
+    useBranchStore.getState().load(),
     loadProjectCustomPrompts(project.path),
     loadProjectEnabledMods(project.path),
   ])
@@ -156,6 +163,7 @@ export function onProjectClosed(): void {
   // 重置 Layer 2 Store
   useCharacterStore.getState().reset()
   useDraftStore.getState().reset()
+  useBranchStore.getState().reset()
 
   console.log('[ProjectService] 项目已关闭，Layer 2 Store 已重置')
 }

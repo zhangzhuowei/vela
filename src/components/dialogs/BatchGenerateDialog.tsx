@@ -3,10 +3,13 @@ import { Layers, Play, AlertCircle } from 'lucide-react'
 import { useProjectStore } from '../../stores/project-store'
 import { useLLMStore } from '../../stores/llm-store'
 import { useWorkflowStore } from '../../stores/workflow-store'
+import { useBranchStore } from '../../stores/branch-store'
 import { createBatchGenerateWorkflow } from '../../services/workflows/chapter-workflow'
 import { guardChapterWriting } from '../../services/workflow-guards'
 import { ipc } from '../../services/ipc-client'
 import { toast } from '../ui/Toast'
+import { BRANCH_BASE, displayChapterNameSafe, toChapterNumber } from '../../shared/chapter-addressing'
+import { useTranslation } from 'react-i18next'
 import {
   Dialog, DialogContent, DialogHeader, DialogFooter, DialogTitle, DialogDescription,
 } from '../ui/Dialog'
@@ -60,9 +63,11 @@ function ModelRow({ label, value, onChange, models }: {
  * 配置章节范围与各环节开关，启动 batch_generate 工作流。
  */
 export default function BatchGenerateDialog({ isOpen, onClose }: Props) {
+  const { t } = useTranslation('dialogs')
   const currentProject = useProjectStore(s => s.currentProject)
   const defaultModelId = useLLMStore(s => s.defaultModelId)
   const models = useLLMStore(s => s.models)
+  const branches = useBranchStore(s => s.branches)
   const startWorkflow = useWorkflowStore.getState().startWorkflow
   const isBatchRunning = useWorkflowStore(s => s.isTypeRunning('batch_generate'))
 
@@ -74,6 +79,7 @@ export default function BatchGenerateDialog({ isOpen, onClose }: Props) {
 
   const [startChapter, setStartChapter] = useState<number | ''>(1)
   const [endChapter, setEndChapter] = useState<number | ''>(1)
+  const [branchId, setBranchId] = useState(0)
   const [autoReview, setAutoReview] = useState(true)
   const [reviewMaxRounds, setReviewMaxRounds] = useState(3)
   const [reviewGate, setReviewGate] = useState<'error' | 'error+warning'>('error')
@@ -89,15 +95,20 @@ export default function BatchGenerateDialog({ isOpen, onClose }: Props) {
   const initDefaults = useCallback(async () => {
     if (!currentProject) return
     setGuardError(null)
-    let nextWrite = 1
+    let nextLocal = 1
     try {
-      const maxFinalized = await ipc.invoke('db:draft-get-max-finalized-chapter')
-      nextWrite = (maxFinalized || 0) + 1
+      if (branchId === 0) {
+        const maxFinalized = await ipc.invoke('db:draft-get-max-finalized-chapter')
+        nextLocal = (maxFinalized || 0) + 1
+      } else {
+        const maxInBranch = await ipc.invoke('db:draft-get-max-finalized-in-range', branchId * BRANCH_BASE + 1, (branchId + 1) * BRANCH_BASE - 1)
+        nextLocal = maxInBranch ? (maxInBranch % BRANCH_BASE) + 1 : 1
+      }
     } catch { /* 忽略 */ }
-    const total = currentProject.novelConfig.totalChapters || nextWrite
-    setStartChapter(nextWrite)
-    setEndChapter(Math.min(total, nextWrite + 9))
-  }, [currentProject])
+    const total = currentProject.novelConfig.totalChapters || nextLocal
+    setStartChapter(nextLocal)
+    setEndChapter(branchId === 0 ? Math.min(total, nextLocal + 9) : nextLocal + 9)
+  }, [currentProject, branchId])
 
   useEffect(() => {
     if (isOpen) initDefaults()
@@ -122,7 +133,9 @@ export default function BatchGenerateDialog({ isOpen, onClose }: Props) {
       return
     }
     // 前置校验：起始章能否写（蓝图存在、前一章已定稿等）
-    const guard = await guardChapterWriting(s)
+    const absStart = branchId === 0 ? s : toChapterNumber(branchId, s)
+    const absEnd = branchId === 0 ? e : toChapterNumber(branchId, e)
+    const guard = await guardChapterWriting(absStart)
     if (!guard.ok) {
       setGuardError(guard.message || '前置条件未满足')
       return
@@ -130,8 +143,8 @@ export default function BatchGenerateDialog({ isOpen, onClose }: Props) {
     setGuardError(null)
 
     startWorkflow(createBatchGenerateWorkflow({
-      startChapter: s,
-      endChapter: e,
+      startChapter: absStart,
+      endChapter: absEnd,
       autoReview,
       reviewMaxRounds,
       reviewGate,
@@ -140,6 +153,7 @@ export default function BatchGenerateDialog({ isOpen, onClose }: Props) {
       onReviewFail,
       resume,
       rollingBlueprint,
+      branches,
       models: {
         blueprint: blueprintModel || undefined,
         write: writeModel || undefined,
@@ -148,7 +162,7 @@ export default function BatchGenerateDialog({ isOpen, onClose }: Props) {
       },
     }), false)
     onClose()
-    toast.info(`📚 已启动批量生成：第 ${s}-${e} 章`)
+    toast.info(`📚 已启动批量生成：${displayChapterNameSafe(absStart, branches)} – ${displayChapterNameSafe(absEnd, branches)}`)
   }
 
   return (
@@ -165,6 +179,20 @@ export default function BatchGenerateDialog({ isOpen, onClose }: Props) {
         </DialogHeader>
 
         <div className="px-5 py-4 space-y-4">
+          {branches.length > 0 && (
+            <div>
+              <Label>{t('batchGenerate.targetBranch')}</Label>
+              <NativeSelect
+                value={String(branchId)}
+                onChange={(ev) => setBranchId(parseInt(ev.target.value, 10) || 0)}
+              >
+                <option value="0">{t('directoryConfig.mainLine')}</option>
+                {branches.map((b) => (
+                  <option key={b.id} value={b.id}>{b.kind === 'if' ? `IF·${b.name}` : `番外·${b.name}`}</option>
+                ))}
+              </NativeSelect>
+            </div>
+          )}
           {/* 范围 */}
           <div className="grid grid-cols-2 gap-3">
             <div>

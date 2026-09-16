@@ -190,8 +190,9 @@ export class ReviewChapterCommand extends BaseWorkflowCommand<string> {
   private async buildForeshadowingContext(currentChapter: number): Promise<string> {
     try {
       const { formatOpenForeshadowings } = await import('../workflow-utils')
+      const { resolveVisibility } = await import('../../branches/branch-service')
       const open = await ipc.invoke('db:foreshadow-get-open')
-      return formatOpenForeshadowings(open, currentChapter)
+      return formatOpenForeshadowings(open, currentChapter, 12, await resolveVisibility(currentChapter))
     } catch {
       return '（暂无未回收伏笔）'
     }

@@ -16,6 +16,8 @@ import {
   validateCanonCharacterStateSnapshot,
   validateCanonChapterSummary,
   validateCanonWritebackPayload,
+  validateBranchInput,
+  validateVisibility,
   VALID_PLOT_STATUS,
 } from '../ipc-validation'
 
@@ -174,5 +176,23 @@ describe('safeValidate 包装：实际 IPC 场景', () => {
       category: '<script>alert(1)</script>', statement: 'X', introducedAt: 1, characters: [],
     })
     expect(result.ok).toBe(false)
+  })
+})
+
+describe('branch validation', () => {
+  it('accepts extra with anchor 0 (prequel)', () => {
+    const v = validateBranchInput({ name: '前传', kind: 'extra', anchorKind: 'chapter', anchorChapter: 0, premise: '', settingDiff: '', sortOrder: 0 })
+    expect(v.anchorChapter).toBe(0)
+  })
+  it('rejects anchor beyond main range', () => {
+    expect(() => validateBranchInput({ name: 'x', kind: 'if', anchorChapter: 10000 })).toThrow(ValidationError)
+  })
+  it('rejects unknown kind', () => {
+    expect(() => validateBranchInput({ name: 'x', kind: 'side', anchorChapter: 1 })).toThrow(ValidationError)
+  })
+  it('validates visibility shape', () => {
+    const v = validateVisibility({ mainUpTo: 120, branchId: 1, branchFrom: 10001, branchUpTo: 10002 })
+    expect(v.branchFrom).toBe(10001)
+    expect(() => validateVisibility({ mainUpTo: -5, branchId: 0, branchFrom: 0, branchUpTo: 0 })).toThrow(ValidationError)
   })
 })

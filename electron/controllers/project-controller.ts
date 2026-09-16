@@ -179,6 +179,9 @@ export function registerProjectController() {
           optionHintsCount: updatedCoreData.optionHintsCount ?? 3,
           optionHintsMaxChars: updatedCoreData.optionHintsMaxChars ?? 24,
           chapterEnding: updatedCoreData.chapterEnding === 'smooth' ? 'smooth' : 'cliffhanger',
+          extraExportMode: updatedCoreData.extraExportMode === 'inline' || updatedCoreData.extraExportMode === 'separate'
+            ? updatedCoreData.extraExportMode
+            : 'appendix',
         },
         characterStates: updatedCoreData.characterStates,
         createdAt: new Date().toISOString(), // db 中实际上有，但这里先 mock 一下时间避免前端报错
@@ -225,6 +228,9 @@ export function registerProjectController() {
           optionHintsCount: data.novelConfig.optionHintsCount ?? 3,
           optionHintsMaxChars: data.novelConfig.optionHintsMaxChars ?? 24,
           chapterEnding: data.novelConfig.chapterEnding === 'smooth' ? 'smooth' : 'cliffhanger',
+          extraExportMode: data.novelConfig.extraExportMode === 'inline' || data.novelConfig.extraExportMode === 'separate'
+            ? data.novelConfig.extraExportMode
+            : 'appendix',
         })
       }
 
@@ -277,6 +283,9 @@ export function registerProjectController() {
           optionHintsCount: data.novelConfig.optionHintsCount ?? 3,
           optionHintsMaxChars: data.novelConfig.optionHintsMaxChars ?? 24,
           chapterEnding: data.novelConfig.chapterEnding === 'smooth' ? 'smooth' : 'cliffhanger',
+          extraExportMode: data.novelConfig.extraExportMode === 'inline' || data.novelConfig.extraExportMode === 'separate'
+            ? data.novelConfig.extraExportMode
+            : 'appendix',
         })
       }
       return { success: true }

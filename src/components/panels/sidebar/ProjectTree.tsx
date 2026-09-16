@@ -25,6 +25,10 @@ import {
 } from './SidebarShared'
 import DraftBoxGroup from './DraftBoxGroup'
 import ManuscriptGroup from './ManuscriptGroup'
+import BranchGroup from './BranchGroup'
+import { useBranchStore } from '../../../stores/branch-store'
+import { isMainChapter } from '../../../shared/chapter-addressing'
+import type { DraftMeta } from '../../../stores/draft-store'
 
 export default function ProjectTree() {
   const { t } = useTranslation('panels')
@@ -38,6 +42,7 @@ export default function ProjectTree() {
   )
   // ✅ 精确订阅，避免 loadAllDrafts 执行后引用变化触发 useCallback/useEffect 循环
   const draftsByChapter = useDraftStore(s => s.draftsByChapter)
+  const branches = useBranchStore(s => s.branches)
 
   // 存储各架构文件是否有实际内容（已生成）
   const [archStatus, setArchStatus] = useState<Record<string, boolean>>({})
@@ -130,16 +135,20 @@ export default function ProjectTree() {
   }
 
   const p = currentProject.path
-  // 改为彻底的数据驱动：从内存的全部草稿中提取 status='finalized' 的草稿
-  const manuscriptFiles = Object.values(draftsByChapter)
+  const finalizedAll = Object.values(draftsByChapter)
     .map(drafts => drafts.find(d => d.status === 'finalized'))
-    .filter(Boolean)
-    .sort((a, b) => a!.chapterNumber - b!.chapterNumber)
+    .filter(Boolean) as DraftMeta[]
+  const manuscriptFiles = finalizedAll
+    .filter(d => isMainChapter(d.chapterNumber))
+    .sort((a, b) => a.chapterNumber - b.chapterNumber)
     .map(draft => ({
-      path: `vela://manuscript/${draft!.id}`, // 诸如 vela://manuscript/42
-      name: `chapter_${draft!.chapterNumber}.md`, // 提供格式化的伪文件名供组件适配解析
+      path: `vela://manuscript/${draft.id}`,
+      name: `chapter_${draft.chapterNumber}.md`,
       isDir: false,
-    })) as Array<{ path: string; name: string; isDir: boolean }>
+    }))
+  const mainDrafts = Object.fromEntries(
+    Object.entries(draftsByChapter).filter(([n]) => isMainChapter(Number(n))),
+  )
 
   // 小说配置是否已完成（核心大纲非空视为已完成）
   const nc = currentProject.novelConfig
@@ -237,10 +246,17 @@ export default function ProjectTree() {
       />
 
       {/* 4. 草稿箱 — 独立分区，按章节分组展示草稿 */}
-      <DraftBoxGroup draftsByChapter={draftsByChapter} />
+      <DraftBoxGroup draftsByChapter={mainDrafts} branches={[]} />
 
       {/* 5. 正文章节 — 仅显示已定稿 */}
-      <ManuscriptGroup files={manuscriptFiles} projectPath={p} />
+      <ManuscriptGroup files={manuscriptFiles} projectPath={p} branches={[]} />
+
+      <BranchGroup
+        branches={branches}
+        draftsByChapter={draftsByChapter}
+        finalized={finalizedAll}
+        projectPath={p}
+      />
     </div>
   )
 }

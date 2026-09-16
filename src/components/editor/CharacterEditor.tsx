@@ -13,6 +13,8 @@ import {
   ROLE_LABELS,
   type CharacterCurrentState,
 } from '../../stores/character-store'
+import { useBranchStore } from '../../stores/branch-store'
+import { displayChapterNameSafe } from '../../shared/chapter-addressing'
 import RelationshipGraph from './RelationshipGraph'
 import { EmptyState as BaseEmptyState } from '../ui/EmptyState'
 import { Button } from '../ui/Button'
@@ -28,6 +30,7 @@ import { NativeSelect } from '../ui/NativeSelect'
 export default function CharacterEditor() {
   const { t } = useTranslation('editors')
   const currentProject = useProjectStore(s => s.currentProject)
+  const branches = useBranchStore(s => s.branches)
   const addLog = useWorkflowStore(s => s.addLog)
   const characters = useCharacterStore(s => s.characters)
   const selectedName = useCharacterStore(s => s.selectedName)
@@ -243,7 +246,7 @@ export default function CharacterEditor() {
                 {t('characterEditor.currentStatusProfile')}
               </h3>
               <span className="text-xs text-[var(--color-text-secondary)]">
-                {t('characterEditor.lastUpdated', { chapter: selectedCard.currentState?.updatedAtChapter ?? 0 })}
+                {t('characterEditor.lastUpdated', { name: displayChapterNameSafe(selectedCard.currentState?.updatedAtChapter ?? 0, branches) })}
               </span>
             </div>
             <div className="space-y-3">

@@ -1,13 +1,15 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { Download, FileText, Files, Type, BookOpen } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { useProjectStore } from '../../stores/project-store'
 import { exportNovel, type ExportFormat } from '../../services/export-service'
+import { normalizeExtraExportMode, type ExtraExportMode } from '../../services/export-layout'
 import { ipc } from '../../services/ipc-client'
 import {
   Dialog, DialogContent, DialogHeader, DialogFooter, DialogTitle, DialogDescription,
 } from '../ui/Dialog'
 import { Button } from '../ui/Button'
+import { NativeSelect } from '../ui/NativeSelect'
 import { cn } from '../../lib/utils'
 
 interface Props {
@@ -22,8 +24,17 @@ export default function ExportDialog({ isOpen, onClose }: Props) {
   const [format, setFormat] = useState<ExportFormat>('merged-md')
   const [includeOutline, setIncludeOutline] = useState(true)
   const [author, setAuthor] = useState('')
+  const [extraMode, setExtraMode] = useState<ExtraExportMode>('appendix')
+  const [includeIf, setIncludeIf] = useState(true)
   const [exporting, setExporting] = useState(false)
   const [result, setResult] = useState<{ success: boolean; path?: string; error?: string } | null>(null)
+
+  useEffect(() => {
+    if (!isOpen) return
+    setExtraMode(normalizeExtraExportMode(currentProject?.novelConfig?.extraExportMode))
+    setIncludeIf(true)
+    setResult(null)
+  }, [isOpen, currentProject?.novelConfig?.extraExportMode])
 
   const handleExport = async () => {
     if (!currentProject) return
@@ -32,7 +43,7 @@ export default function ExportDialog({ isOpen, onClose }: Props) {
 
     setExporting(true)
     setResult(null)
-    const res = await exportNovel({ format, outputDir: dir, includeOutline, author })
+    const res = await exportNovel({ format, outputDir: dir, includeOutline, author, extraMode, includeIf })
     setResult(res)
     setExporting(false)
   }
@@ -56,7 +67,6 @@ export default function ExportDialog({ isOpen, onClose }: Props) {
         </DialogHeader>
 
         <div className="px-5 py-4 space-y-3">
-          {/* 格式选择 */}
           <div className="space-y-2">
             {FORMAT_OPTIONS.map((opt) => (
               <div
@@ -83,13 +93,28 @@ export default function ExportDialog({ isOpen, onClose }: Props) {
             ))}
           </div>
 
-          {/* 选项 */}
           <label className="flex items-center gap-2 text-xs cursor-pointer text-[var(--color-text-secondary)]">
             <input type="checkbox" checked={includeOutline} onChange={(e) => setIncludeOutline(e.target.checked)} />
             {t('export.includeOutline')}{format === 'epub' ? '（作为「内容简介」首章）' : ''}
           </label>
 
-          {/* 作者（仅 EPUB） */}
+          <div className="space-y-1">
+            <label className="text-xs text-[var(--color-text-secondary)]">{t('export.extraMode')}</label>
+            <NativeSelect
+              value={extraMode}
+              onChange={(e) => setExtraMode(e.target.value as ExtraExportMode)}
+            >
+              <option value="appendix">{t('export.extraModeAppendix')}</option>
+              <option value="inline">{t('export.extraModeInline')}</option>
+              <option value="separate">{t('export.extraModeSeparate')}</option>
+            </NativeSelect>
+          </div>
+
+          <label className="flex items-center gap-2 text-xs cursor-pointer text-[var(--color-text-secondary)]">
+            <input type="checkbox" checked={includeIf} onChange={(e) => setIncludeIf(e.target.checked)} />
+            {t('export.includeIf')}
+          </label>
+
           {format === 'epub' && (
             <div className="space-y-1">
               <label className="text-xs text-[var(--color-text-secondary)]">作者署名（写入 EPUB 元数据）</label>
@@ -103,7 +128,6 @@ export default function ExportDialog({ isOpen, onClose }: Props) {
             </div>
           )}
 
-          {/* 结果 */}
           {result && (
             <div className={cn(
               'p-3 rounded-lg text-xs',

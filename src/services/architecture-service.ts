@@ -81,8 +81,7 @@ export async function checkArchStatusWithWordCount(): Promise<{
  */
 export async function getBlueprintCount(): Promise<number> {
   try {
-    const blueprints = await ipc.invoke('db:blueprint-get-all')
-    return blueprints.length
+    return await ipc.invoke('db:blueprint-count')
   } catch {
     return 0
   }

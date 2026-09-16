@@ -24,6 +24,8 @@ export default defineConfig({
       'src/services/__tests__/setting-bible.test.ts',
       'src/services/__tests__/kb-allocate.test.ts',
       'src/services/__tests__/prose-clean.test.ts',
+      'src/shared/__tests__/chapter-addressing.test.ts',
+      'src/services/__tests__/export-layout.test.ts',
     ],
     globals: false,
   },

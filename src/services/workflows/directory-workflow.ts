@@ -73,6 +73,8 @@ export interface DirectoryWorkflowParams {
   count?: number
   /** 节奏/风格指导（可选） */
   pacingGuidance?: string
+  /** 0 / 省略 = 正文；>0 = 番外或 IF 线。startChapter / count 在有 branchId 时按线内序号理解 */
+  branchId?: number
 }
 
 // ==========================================
@@ -254,7 +256,7 @@ export function createDirectoryWorkflow(params: DirectoryWorkflowParams = { mode
           context.data.architecture = parts.join('\n\n---\n\n')
           // 注入节奏指导到 context，供 Command 读取
           if (params.pacingGuidance) context.data.pacingGuidance = params.pacingGuidance
-          if (params.mode === 'append') {
+          if (params.mode === 'append' || params.branchId) {
             const existing = await loadDirectoryBlueprints()
             context.data.existingBlueprints = existing
             callbacks.log(t('workflowDefs.dirLoadedBlueprints', { count: existing.length }))

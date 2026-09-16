@@ -316,6 +316,30 @@ export function validateSettingModuleInput(v: unknown, path = 'module') {
   }
 }
 
+export function validateBranchInput(v: unknown, path = 'branch') {
+  if (!isObject(v)) throw new ValidationError(path, 'expected object')
+  return {
+    id: checkOptional(v.id, `${path}.id`, (n, p) => checkNumberRange(n, p, { min: 0, max: 1e6, integer: true })),
+    name: checkStringLength(v.name, `${path}.name`, { min: 1, max: 60 }),
+    kind: checkEnum(v.kind ?? 'extra', `${path}.kind`, ['extra', 'if'] as const),
+    anchorKind: checkEnum(v.anchorKind ?? 'chapter', `${path}.anchorKind`, ['chapter', 'reference_stage'] as const),
+    anchorChapter: checkNumberRange(v.anchorChapter ?? 0, `${path}.anchorChapter`, { min: 0, max: 9999, integer: true }),
+    premise: checkStringLength(v.premise ?? '', `${path}.premise`, { max: 2000 }),
+    settingDiff: checkStringLength(v.settingDiff ?? '', `${path}.settingDiff`, { max: 8000 }),
+    sortOrder: checkNumberRange(v.sortOrder ?? 0, `${path}.sortOrder`, { min: 0, max: 1e6, integer: true }),
+  }
+}
+
+export function validateVisibility(v: unknown, path = 'visibility') {
+  if (!isObject(v)) throw new ValidationError(path, 'expected object')
+  return {
+    mainUpTo: checkNumberRange(v.mainUpTo, `${path}.mainUpTo`, { min: 0, max: 9999, integer: true }),
+    branchId: checkNumberRange(v.branchId, `${path}.branchId`, { min: 0, max: 1e6, integer: true }),
+    branchFrom: checkNumberRange(v.branchFrom, `${path}.branchFrom`, { min: 0, max: 1e10, integer: true }),
+    branchUpTo: checkNumberRange(v.branchUpTo, `${path}.branchUpTo`, { min: 0, max: 1e10, integer: true }),
+  }
+}
+
 /**
  * 安全调用 validator 包装器：捕获 ValidationError 并返回 { success, error }
  * 用于 ipcMain.handle 内部

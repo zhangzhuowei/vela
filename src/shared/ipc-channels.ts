@@ -235,6 +235,8 @@ export interface NovelConfig {
   scenePreludeMode?: 'off' | 'prev_ending' | 'chapter_summaries'
   /** 章末收束默认：cliffhanger = 必须卡悬念（缺省）；smooth = 平稳过渡 */
   chapterEnding?: 'cliffhanger' | 'smooth'
+  /** 番外导出位置：appendix = 正文末附录（缺省）；inline = 插在锚点章后；separate = 单独文件。IF 始终单独成文 */
+  extraExportMode?: 'appendix' | 'inline' | 'separate'
   /** 对话结束后是否给出下一轮控场选项（默认关） */
   optionHintsEnabled?: boolean
   /** 书级默认选项条数（3–5，默认 3） */
@@ -298,6 +300,8 @@ import type { PostProcessRunData, PostProcessStepData } from '../../electron/rep
 import type { ForeshadowingData } from '../../electron/repositories/foreshadowing-repository'
 import type { SceneData, SceneTurnData } from '../../electron/repositories/scene-repository'
 import type { SettingModuleData, SettingModuleInput } from '../../electron/repositories/setting-module-repository'
+import type { BranchData, BranchInput, BranchStats } from '../../electron/repositories/branch-repository'
+import type { ChapterVisibility } from './chapter-addressing'
 
 /** 章级角色进行中状态：{ 角色名: { 字段: 值 } } */
 export type WorkingState = Record<string, Record<string, string>>
@@ -340,6 +344,21 @@ export interface DatabaseChannels {
   'db:setting-module-upsert': { args: [data: SettingModuleInput]; return: { success: boolean; id?: number; error?: string } }
   'db:setting-module-delete': { args: [id: number]; return: { success: boolean; error?: string } }
   'db:setting-module-reorder': { args: [ids: number[]]; return: { success: boolean; error?: string } }
+
+  // 2d. 线（番外 / IF）
+  'db:branch-list': { args: []; return: BranchData[] }
+  'db:branch-get': { args: [id: number]; return: BranchData | null }
+  'db:branch-upsert': { args: [data: BranchInput]; return: { success: boolean; id?: number; error?: string } }
+  'db:branch-delete': { args: [id: number]; return: { success: boolean; error?: string } }
+  'db:branch-stats': { args: [id: number]; return: BranchStats }
+  'db:draft-get-max-finalized-in-range': { args: [from: number, to: number]; return: number }
+  'db:blueprint-count': { args: []; return: number }
+  'db:blueprint-count-range': { args: [from: number, to: number]; return: number }
+  'db:summary-snapshot-at': { args: [chapterNumber: number]; return: { characterStates: string; chapterNumber: number } | null }
+  'db:canon-timeline-get-visible': { args: [v: ChapterVisibility, includeFlashback?: boolean]; return: CanonTimelineEvent[] }
+  'db:canon-fact-list-visible': { args: [v: ChapterVisibility]; return: CanonFact[] }
+  'db:canon-summary-list-visible': { args: [v: ChapterVisibility, limit?: number]; return: CanonChapterSummary[] }
+  'db:canon-plot-list-visible': { args: [v: ChapterVisibility]; return: CanonPlotLine[] }
 
   // 3. characters
   'db:character-get-all': { args: []; return: CharacterData[] }

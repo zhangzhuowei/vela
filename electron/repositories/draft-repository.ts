@@ -6,6 +6,7 @@
  */
 import { getProjectDb } from '../database'
 import { ContentRepository } from './content-repository'
+import { BRANCH_BASE } from '../../src/shared/chapter-addressing'
 
 /** 草稿元数据（不含正文，适合列表查询） */
 export interface DraftMeta {
@@ -162,15 +163,26 @@ export class DraftRepository {
         return (row.maxVer ?? 0) + 1
     }
 
-    /** 获取最大的已定稿章节号，如果没有则返回 0 */
+    /** 正文已定稿最大章号（不含番外 / IF 线）；0 = 尚无定稿 */
     static getMaxFinalizedChapter(): number {
         const db = getProjectDb()
         if (!db) return 0
         const row = db.prepare(`
             SELECT MAX(chapter_number) as maxChapter
             FROM drafts
-            WHERE status = 'finalized'
+            WHERE status = 'finalized' AND chapter_number < ${BRANCH_BASE}
         `).get() as { maxChapter: number | null }
+        return row?.maxChapter ?? 0
+    }
+
+    static getMaxFinalizedInRange(from: number, to: number): number {
+        const db = getProjectDb()
+        if (!db) return 0
+        const row = db.prepare(`
+            SELECT MAX(chapter_number) as maxChapter
+            FROM drafts
+            WHERE status = 'finalized' AND chapter_number BETWEEN ? AND ?
+        `).get(from, to) as { maxChapter: number | null }
         return row?.maxChapter ?? 0
     }
 

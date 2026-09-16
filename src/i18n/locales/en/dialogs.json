@@ -144,7 +144,30 @@
     "rhythmPlaceholder": "e.g. \"Fast pace for the first 30 chapters, one highlight per chapter. Mid-section introduces foreshadowing and character growth.\"",
     "startGeneration": "Start Generation",
     "taskRunning": "A blueprint generation task is already running. Please wait.",
-    "submitted": "✨ Submitted: generating chapter blueprints..."
+    "submitted": "✨ Submitted: generating chapter blueprints...",
+    "targetBranch": "Target line",
+    "mainLine": "Main text"
+  },
+  "batchGenerate": {
+    "targetBranch": "Target line"
+  },
+  "branch": {
+    "createTitle": "New line",
+    "editTitle": "Edit line",
+    "name": "Name",
+    "kind": "Type",
+    "kindExtra": "Extra",
+    "kindIf": "IF line",
+    "anchor": "Anchor chapter",
+    "anchorPrequel": "Prequel: no main-text chapters are visible",
+    "anchorHint": "Extras happen after this chapter; IF forks here. 0 = prequel",
+    "premise": "Premise",
+    "premisePlaceholder": "Premise relative to canon; injected when writing",
+    "settingDiff": "Setting differences",
+    "settingDiffPlaceholder": "How this line differs from canon (recommended for IF)",
+    "anchorLockedHint": "This line already has finalized chapters; the anchor cannot change",
+    "save": "Save",
+    "cancel": "Cancel"
   },
   "export": {
     "title": "Export Project",
@@ -166,7 +189,12 @@
     "noFinalizedChapters": "No chapters to export (no finalized chapters)",
     "foundChapters": "Found {{count}} finalized chapter(s)",
     "exportComplete": "✅ Export complete: {{path}}",
-    "exportFailed": "❌ Export failed: {{error}}"
+    "exportFailed": "❌ Export failed: {{error}}",
+    "extraMode": "Extra placement",
+    "extraModeAppendix": "Appendix after the main text",
+    "extraModeInline": "Insert after the anchor chapter",
+    "extraModeSeparate": "One file per extra line",
+    "includeIf": "Include IF lines"
   },
   "versionService": {
     "chapterFallback": "Chapter {{number}}",

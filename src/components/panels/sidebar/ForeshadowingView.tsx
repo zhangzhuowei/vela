@@ -21,6 +21,22 @@ import { Label } from '../../ui/Label'
 import { Textarea } from '../../ui/Textarea'
 import { NativeSelect } from '../../ui/NativeSelect'
 import type { ForeshadowingData } from '../../../../electron/repositories/foreshadowing-repository'
+import { useBranchStore } from '../../../stores/branch-store'
+import { branchIdOf, BRANCH_BASE, branchOf, displayChapterNameSafe, isMainChapter, type BranchLike } from '../../../shared/chapter-addressing'
+
+function LineBadge({ n, branches }: { n: number; branches: BranchLike[] }) {
+  if (isMainChapter(n) || n <= 0) return null
+  let b
+  try { b = branchOf(n, branches) } catch { return null }
+  if (!b) return null
+  const color = b.kind === 'if' ? 'var(--color-warning, #eab308)' : 'var(--color-success)'
+  const label = b.kind === 'if' ? `IF·${b.name}` : `番外·${b.name}`
+  return (
+    <span className="text-[0.6rem] px-1 py-px rounded flex-shrink-0" style={{ color, border: `1px solid ${color}` }}>
+      {label}
+    </span>
+  )
+}
 
 type EditState = {
   id: number | null // null = 新建
@@ -40,6 +56,7 @@ const STATUS_COLOR: Record<string, string> = {
 
 export default function ForeshadowingView() {
   const currentProject = useProjectStore(s => s.currentProject)
+  const branches = useBranchStore(s => s.branches)
   const [items, setItems] = useState<ForeshadowingData[]>([])
   const [loading, setLoading] = useState(false)
   const [edit, setEdit] = useState<EditState | null>(null)
@@ -70,11 +87,18 @@ export default function ForeshadowingView() {
   const markPaid = async (item: ForeshadowingData) => {
     let paidChapter = item.plantedChapter
     try {
-      const maxFinalized = await ipc.invoke('db:draft-get-max-finalized-chapter')
+      const plantedBranch = branchIdOf(item.plantedChapter)
+      const maxFinalized = plantedBranch === 0
+        ? await ipc.invoke('db:draft-get-max-finalized-chapter')
+        : await ipc.invoke(
+          'db:draft-get-max-finalized-in-range',
+          plantedBranch * BRANCH_BASE + 1,
+          (plantedBranch + 1) * BRANCH_BASE - 1,
+        )
       if (maxFinalized && maxFinalized >= item.plantedChapter) paidChapter = maxFinalized
     } catch { /* 忽略 */ }
     await ipc.invoke('db:foreshadow-mark-paid', item.id, paidChapter)
-    toast.success(`已标记回收（第${paidChapter}章）`)
+    toast.success(`已标记回收（${displayChapterNameSafe(paidChapter, branches)}）`)
     load()
   }
 
@@ -145,12 +169,15 @@ export default function ForeshadowingView() {
           title={STATUS_LABEL[item.status]}
         />
         <div className="flex-1 min-w-0">
-          <div className="text-[var(--color-text)] leading-snug">{item.content || '（无描述）'}</div>
+          <div className="text-[var(--color-text)] leading-snug flex items-start gap-1">
+            <span className="flex-1 min-w-0">{item.content || '（无描述）'}</span>
+            <LineBadge n={item.plantedChapter} branches={branches} />
+          </div>
           <div className="text-[0.65rem] mt-0.5 opacity-60">
-            第{item.plantedChapter}章埋
+            {displayChapterNameSafe(item.plantedChapter, branches)}埋下
             {item.status === 'open'
-              ? (item.expectedChapter ? ` · 预期第${item.expectedChapter}章回收` : ' · 回收章未定')
-              : (item.paidChapter ? ` · 已在第${item.paidChapter}章回收` : ` · ${STATUS_LABEL[item.status]}`)}
+              ? (item.expectedChapter ? ` · 预期${displayChapterNameSafe(item.expectedChapter, branches)}回收` : ' · 回收章未定')
+              : (item.paidChapter ? ` · 已在${displayChapterNameSafe(item.paidChapter, branches)}回收` : ` · ${STATUS_LABEL[item.status]}`)}
           </div>
           {/* 操作行（hover 显示） */}
           <div className="flex items-center gap-1 mt-1 opacity-0 group-hover:opacity-100 transition-opacity">

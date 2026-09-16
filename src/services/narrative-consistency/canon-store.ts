@@ -11,6 +11,7 @@
  *   - 读取失败时返回安全默认值（空数组/null），让生成流程不被打断
  */
 import { ipc } from '../ipc-client'
+import type { ChapterVisibility } from '../../shared/chapter-addressing'
 import type {
   TimelineEvent,
   CharacterStateSnapshot,
@@ -36,6 +37,15 @@ export class CanonStore {
       return (await this.ipcClient.invoke('db:canon-timeline-get', maxChapter, includeFlashback) as TimelineEvent[]) || []
     } catch (err) {
       console.warn('[CanonStore] getTimeline 失败:', err)
+      return []
+    }
+  }
+
+  async getTimelineVisible(v: ChapterVisibility, includeFlashback = true): Promise<TimelineEvent[]> {
+    try {
+      return (await this.ipcClient.invoke('db:canon-timeline-get-visible', v, includeFlashback) as TimelineEvent[]) || []
+    } catch (err) {
+      console.warn('[CanonStore] getTimelineVisible 失败:', err)
       return []
     }
   }
@@ -112,6 +122,15 @@ export class CanonStore {
     return this.getPlotLines('active')
   }
 
+  async getActivePlotLinesVisible(v: ChapterVisibility): Promise<PlotLine[]> {
+    try {
+      return (await this.ipcClient.invoke('db:canon-plot-list-visible', v) as PlotLine[]) || []
+    } catch (err) {
+      console.warn('[CanonStore] getActivePlotLinesVisible 失败:', err)
+      return []
+    }
+  }
+
   async addPlotLine(line: Omit<PlotLine, 'id'>): Promise<number | null> {
     try {
       const r = await this.ipcClient.invoke('db:canon-plot-add', line) as { success?: boolean; id?: number } | undefined
@@ -143,6 +162,15 @@ export class CanonStore {
     }
   }
 
+  async getFactsVisible(v: ChapterVisibility): Promise<Fact[]> {
+    try {
+      return (await this.ipcClient.invoke('db:canon-fact-list-visible', v) as Fact[]) || []
+    } catch (err) {
+      console.warn('[CanonStore] getFactsVisible 失败:', err)
+      return []
+    }
+  }
+
   async addFact(fact: Omit<Fact, 'id'>): Promise<number | null> {
     try {
       const r = await this.ipcClient.invoke('db:canon-fact-add', fact) as { success?: boolean; id?: number } | undefined
@@ -166,6 +194,15 @@ export class CanonStore {
       return (await this.ipcClient.invoke('db:canon-summary-list-recent', limit) as ChapterSummary[]) || []
     } catch (err) {
       console.warn('[CanonStore] getRecentSummaries 失败:', err)
+      return []
+    }
+  }
+
+  async getRecentSummariesVisible(v: ChapterVisibility, limit = 5): Promise<ChapterSummary[]> {
+    try {
+      return (await this.ipcClient.invoke('db:canon-summary-list-visible', v, limit) as ChapterSummary[]) || []
+    } catch (err) {
+      console.warn('[CanonStore] getRecentSummariesVisible 失败:', err)
       return []
     }
   }

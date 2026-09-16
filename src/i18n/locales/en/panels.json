@@ -351,7 +351,7 @@
     "importOk": "Imported {{count}} character card(s)",
     "newCharacterBtn": "New character",
     "unnamed": "Unnamed",
-    "chapterUpdate": "Updated in chapter {{chapter}}",
+    "chapterUpdate": "{{name}} updated",
     "noCharacters": "No characters yet"
   },
   "manuscripts": {
@@ -473,6 +473,16 @@
     "title": "Draft Box",
     "tooltip": "Draft Box: AI-generated chapter drafts are managed here. Finalized drafts move to manuscript chapters.",
     "noDrafts": "No drafts yet (click 'Write this chapter' from the blueprint to start)"
+  },
+  "branch": {
+    "groupTitle": "Extras / IF lines",
+    "create": "New line",
+    "edit": "Edit",
+    "delete": "Delete",
+    "notEmpty": "Delete chapters in this line first",
+    "anchorAfter": "after chapter {{chapter}}",
+    "forkAt": "forks at chapter {{chapter}}",
+    "prequel": "Prequel"
   },
   "toolCall": {
     "completed": "Completed",

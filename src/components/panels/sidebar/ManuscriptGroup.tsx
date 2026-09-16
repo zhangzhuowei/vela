@@ -7,10 +7,9 @@ import { ChevronRight, ChevronDown, FileText, FolderOpen, Copy, PenTool } from '
 import { useTranslation } from 'react-i18next'
 import type { FileNode } from '../../../shared/ipc-channels'
 import { ipc } from '../../../services/ipc-client'
-import i18n from '../../../i18n'
-
 import { showSidebarMenu, openChapterFile } from './SidebarShared'
 import WindowedList from '../../ui/WindowedList'
+import { displayChapterNameSafe, type BranchLike } from '../../../shared/chapter-addressing'
 
 // ===== 章节标题缓存 =====
 
@@ -50,7 +49,7 @@ async function readTitleFromContent(filePath: string, fallback: string): Promise
 
 // ===== 正文章节组件 =====
 
-export default function ManuscriptGroup({ files }: { files: FileNode[]; projectPath: string }) {
+export default function ManuscriptGroup({ files, branches = [] }: { files: FileNode[]; projectPath: string; branches?: BranchLike[] }) {
   const { t } = useTranslation('panels')
   const [open, setOpen] = useState(true)
   // 文件路径 → 显示名称的映射（异步加载）
@@ -62,12 +61,14 @@ export default function ManuscriptGroup({ files }: { files: FileNode[]; projectP
   // 依赖只挂路径指纹：files 数组在父组件每次渲染都是新引用，titleMap
   // 进依赖会导致每次写入 state 后 effect 立即重跑（流式期间反复空转）
   const filesDep = files.map(f => f.path).join(',')
+  const branchesKey = branches.map(b => `${b.id}:${b.name}:${b.kind}`).join(',')
   useEffect(() => {
     if (files.length === 0) return
     let cancelled = false
     const load = async () => {
       const chapterFiles = files.filter(f => !f.name.includes('_notes'))
-      const missing = chapterFiles.filter(f => !chapterTitleCache.has(f.path))
+      for (const f of chapterFiles) chapterTitleCache.delete(f.path)
+      const missing = chapterFiles
       const entries: Record<string, string> = {}
 
       if (missing.length > 0) {
@@ -75,9 +76,9 @@ export default function ManuscriptGroup({ files }: { files: FileNode[]; projectP
         try {
           const bps = await ipc.invoke('db:blueprint-get-all')
           bpTitleByChapter = new Map(
-            (bps || []).filter(b => b?.title).map(b => [
+            (bps || []).filter(b => b?.title || b?.chapterNumber).map(b => [
               b.chapterNumber,
-              i18n.t('manuscript.chapterFormatWithTitle', { number: b.chapterNumber, title: b.title, ns: 'panels' }),
+              displayChapterNameSafe(b.chapterNumber, branches, b.title || ''),
             ])
           )
         } catch { /* 蓝图读取失败时全部走正文首行兜底 */ }
@@ -87,7 +88,7 @@ export default function ManuscriptGroup({ files }: { files: FileNode[]; projectP
             const rawName = f.name.replace(/\.[^.]+$/, '')
             const chMatch = rawName.match(/^chapter_(\d+)$/)
             const chNum = chMatch ? parseInt(chMatch[1], 10) : undefined
-            const fallback = chNum != null ? i18n.t('manuscript.chapterFormat', { number: chNum, ns: 'panels' }) : rawName
+            const fallback = chNum != null ? displayChapterNameSafe(chNum, branches, '') : rawName
             const fromBp = chNum != null ? bpTitleByChapter.get(chNum) : undefined
             if (fromBp) {
               chapterTitleCache.set(f.path, fromBp)
@@ -113,13 +114,13 @@ export default function ManuscriptGroup({ files }: { files: FileNode[]; projectP
     load()
     return () => { cancelled = true }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [filesDep])
+  }, [filesDep, branchesKey])
 
   const getDisplay = (f: FileNode) => {
     if (titleMap[f.path]) return titleMap[f.path]
     const rawName = f.name.replace(/\.[^.]+$/, '')
     const chMatch = rawName.match(/^chapter_(\d+)$/)
-    return chMatch ? i18n.t('manuscript.chapterFormat', { number: parseInt(chMatch[1], 10), ns: 'panels' }) : rawName
+    return chMatch ? displayChapterNameSafe(parseInt(chMatch[1], 10), branches, '') : rawName
   }
 
   // 只显示正文章节（过滤掉旧的 _notes 文件）

@@ -4,6 +4,7 @@ import { getPromptTemplate } from '../../prompt-templates'
 import { DirectoryPromptBuilder } from '../../prompts/prompt-builder'
 import { DirectoryWorkflowParams, ChapterBlueprint, parseTextBlueprints, planDirectoryPrompt, saveAllBlueprints } from '../directory-workflow'
 import i18n from '../../../i18n'
+import { ipc } from '../../ipc-client'
 
 export class GenerateDirectoryCommand extends BaseWorkflowCommand<ChapterBlueprint[]> {
   constructor(private params: DirectoryWorkflowParams) {
@@ -18,19 +19,33 @@ export class GenerateDirectoryCommand extends BaseWorkflowCommand<ChapterBluepri
     const existingBlueprints = (context.data.existingBlueprints || []) as ChapterBlueprint[]
 
     const totalChapters = project.novelConfig.totalChapters
-    const globalGuidance = project.novelConfig.globalGuidance || ''
     const genre = project.novelConfig.genre || ''
+    const { toChapterNumber, localIndexOf, branchIdOf, BRANCH_BASE, isMainChapter } = await import('../../../shared/chapter-addressing')
+    const { branchGuidanceBlock } = await import('../../branches/branch-service')
+    const branchId = this.params.branchId ?? 0
+    const branch = branchId ? await ipc.invoke('db:branch-get', branchId) : null
+    const globalGuidance = [branchGuidanceBlock(branch), project.novelConfig.globalGuidance || ''].filter(Boolean).join('\n\n')
+    const inMyBranch = existingBlueprints.filter((b) => branchIdOf(b.chapterNumber) === branchId)
+    const loc = (n: number) => (branchId === 0 ? n : localIndexOf(n))
 
     let startChapter = 1
     let endChapter = totalChapters
 
-    if (this.params.mode === 'append') {
-      startChapter = this.params.startChapter || (existingBlueprints.length + 1)
-      if (this.params.count && this.params.count > 0) {
-        endChapter = startChapter + this.params.count - 1
+    if (branchId === 0) {
+      if (this.params.mode === 'append') {
+        startChapter = this.params.startChapter || (inMyBranch.length + 1)
+        if (this.params.count && this.params.count > 0) {
+          endChapter = startChapter + this.params.count - 1
+        }
+      } else if (this.params.count && this.params.count > 0) {
+        endChapter = Math.min(this.params.count, totalChapters)
       }
-    } else if (this.params.count && this.params.count > 0) {
-      endChapter = Math.min(this.params.count, totalChapters)
+    } else {
+      const localStart = this.params.startChapter || (inMyBranch.length + 1)
+      const localCount = this.params.count && this.params.count > 0 ? this.params.count : 50
+      const localEnd = Math.min(localStart + localCount - 1, BRANCH_BASE - 1)
+      startChapter = toChapterNumber(branchId, localStart)
+      endChapter = toChapterNumber(branchId, localEnd)
     }
 
     callbacks.log(i18n.t('directory.generatingBlueprintsRange', { ns: 'commands', from: startChapter, to: endChapter }))
@@ -55,10 +70,10 @@ export class GenerateDirectoryCommand extends BaseWorkflowCommand<ChapterBluepri
 
       const plan = planDirectoryPrompt({
         mode: this.params.mode,
-        cursor,
-        batchEnd,
-        endChapter,
-        totalChapters,
+        cursor: loc(cursor),
+        batchEnd: loc(batchEnd),
+        endChapter: loc(endChapter),
+        totalChapters: branchId === 0 ? totalChapters : loc(endChapter),
       })
       const template = getPromptTemplate(plan.templateKey)
       if (!template) throw new Error(i18n.t('common.templateMissing', { ns: 'commands' }))
@@ -73,8 +88,14 @@ export class GenerateDirectoryCommand extends BaseWorkflowCommand<ChapterBluepri
           .withPacingGuidance((context.data.pacingGuidance as string) || '')
           .build()
       } else {
-        const prevAll = [...existingBlueprints, ...newBlueprints]
-        const chapterList = prevAll.slice(-100).map(c => `${i18n.t('generateDraft.chapterNumberTitle', { ns: 'commands', chapter: c.chapterNumber, title: c.title })}：${c.keyEvents}`).join('\n')
+        const prevAll = [...inMyBranch, ...newBlueprints]
+        let chapterList = prevAll.slice(-100).map(c => `${i18n.t('generateDraft.chapterNumberTitle', { ns: 'commands', chapter: loc(c.chapterNumber), title: c.title })}：${c.keyEvents}`).join('\n')
+        if (!chapterList && branch) {
+          const mains = existingBlueprints
+            .filter((b) => isMainChapter(b.chapterNumber) && b.chapterNumber <= branch.anchorChapter)
+            .slice(-5)
+          chapterList = mains.map((b) => `${i18n.t('generateDraft.chapterNumberTitle', { ns: 'commands', chapter: b.chapterNumber, title: b.title })}：${(b.notes || b.keyEvents || '').trim()}`).join('\n')
+        }
 
         prompt = new DirectoryPromptBuilder(template)
           .withNovelArchitecture(architecture)
@@ -96,7 +117,11 @@ export class GenerateDirectoryCommand extends BaseWorkflowCommand<ChapterBluepri
 
       // ★ 关键修复：接受 AI 返回的从 cursor 到 endChapter 范围内的所有有效章节
       // AI 可能一次性返回超出本批次（batchEnd）的章节，全部保留，避免浪费和重复 LLM 请求
-      const parsed = parseTextBlueprints(resultText, cursor, endChapter)
+      const parsedLocal = parseTextBlueprints(resultText, loc(cursor), loc(endChapter))
+      const parsed = parsedLocal.map((p) => ({
+        ...p,
+        chapterNumber: branchId === 0 ? p.chapterNumber : toChapterNumber(branchId, p.chapterNumber),
+      }))
       newBlueprints.push(...parsed)
 
       // ==== 批次入库 ====

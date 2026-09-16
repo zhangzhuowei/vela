@@ -46,7 +46,10 @@ export class GenerateDraftCommand extends BaseWorkflowCommand {
     const core = await ipc.invoke('db:project-core-get')
     const architecture = this.assembleArchitecture(core)
     const projectPrompts = await this.readProjectPrompts(project.path)
-    const mergedGuidance = [project.novelConfig.globalGuidance || '', projectPrompts].filter(Boolean).join('\n\n')
+    const { resolveBranch, resolvePreviousChapter, resolveDisplayName, branchGuidanceBlock } = await import('../../branches/branch-service')
+    const branch = await resolveBranch(this.chapterInfo.chapterNumber)
+    const previousChapter = await resolvePreviousChapter(this.chapterInfo.chapterNumber)
+    const mergedGuidance = [branchGuidanceBlock(branch), project.novelConfig.globalGuidance || '', projectPrompts].filter(Boolean).join('\n\n')
 
     const allCharacters: CharacterData[] = await ipc.invoke('db:character-get-all').catch(() => [])
     const characterState = this.formatCharacterStateArchive(allCharacters)
@@ -54,8 +57,10 @@ export class GenerateDraftCommand extends BaseWorkflowCommand {
     try {
       const { loadDirectoryBlueprints } = await import('../directory-workflow')
       const allBlueprints = await loadDirectoryBlueprints()
+      const { branchIdOf } = await import('../../../shared/chapter-addressing')
+      const me = this.chapterInfo.chapterNumber
       const futureBlueprintsArr = allBlueprints.filter(
-        b => b.chapterNumber > this.chapterInfo.chapterNumber && b.chapterNumber <= this.chapterInfo.chapterNumber + 5
+        b => branchIdOf(b.chapterNumber) === branchIdOf(me) && b.chapterNumber > me && b.chapterNumber <= me + 5
       )
       if (futureBlueprintsArr.length > 0) {
         futureBlueprintsStr = futureBlueprintsArr.map(b => i18n.t('generateDraft.futureBlueprintLine', { ns: 'commands', chapter: b.chapterNumber, title: b.title, events: b.keyEvents })).join('\n')
@@ -96,7 +101,7 @@ export class GenerateDraftCommand extends BaseWorkflowCommand {
     const targetWords = Number(this.chapterInfo.wordsTarget) || Number(project.novelConfig.wordsPerChapter) || 0
     callbacks.log(`  📏 本章目标字数：${targetWords || '未设置'}${this.chapterInfo.wordsTarget ? '（本章覆盖）' : '（全局配置）'}`)
 
-    const isFirstChapter = this.chapterInfo.chapterNumber === 1
+    const isFirstChapter = previousChapter === null
     const templateKey = isFirstChapter ? 'first_chapter_draft' : 'next_chapter_draft'
     const template = getPromptTemplate(templateKey)
     if (!template) throw new Error(i18n.t('common.templateNotFound', { ns: 'commands', key: templateKey }))
@@ -148,7 +153,9 @@ export class GenerateDraftCommand extends BaseWorkflowCommand {
       // 近 3 章定稿正文一次并行读回：上一章结尾与反雷同速览共用同一份数据
       //（原实现串行逐章读，且上一章全文要读两遍）
       const recentContents = await this.readRecentFinalizedContents(this.chapterInfo.chapterNumber, 3)
-      const previousEnding = stripEditorialMarkers(recentContents.get(this.chapterInfo.chapterNumber - 1) || '').slice(-1000)
+      const previousEnding = previousChapter !== null
+        ? stripEditorialMarkers(recentContents.get(previousChapter) || '').slice(-1000)
+        : ''
 
       let filteredContext = ''
       try {
@@ -297,7 +304,7 @@ export class GenerateDraftCommand extends BaseWorkflowCommand {
         const { useEditorStore } = await import('../../../stores/editor-store')
         useEditorStore.getState().openFile({
           id: pseudoPath,
-          name: `第${this.chapterInfo.chapterNumber}章 ${this.chapterInfo.title} v${nextVersion}`,
+          name: `${await resolveDisplayName(this.chapterInfo.chapterNumber, this.chapterInfo.title)} v${nextVersion}`,
           type: 'chapter',
           filePath: pseudoPath,
           content: finalDraft,
@@ -399,8 +406,9 @@ ${result}
   private async buildForeshadowingContext(currentChapter: number): Promise<string> {
     try {
       const { formatOpenForeshadowings } = await import('../workflow-utils')
+      const { resolveVisibility } = await import('../../branches/branch-service')
       const open = await ipc.invoke('db:foreshadow-get-open')
-      return formatOpenForeshadowings(open, currentChapter)
+      return formatOpenForeshadowings(open, currentChapter, 12, await resolveVisibility(currentChapter))
     } catch {
       return '（暂无未回收伏笔）'
     }
@@ -411,9 +419,15 @@ ${result}
    * 上一章结尾与反雷同速览共用这份数据，避免同一章正文经 IPC 读两遍。
    */
   private async readRecentFinalizedContents(currentChapter: number, windowSize: number): Promise<Map<number, string>> {
-    const result = new Map<number, string>()
+    const { resolvePreviousChapter } = await import('../../branches/branch-service')
     const nums: number[] = []
-    for (let i = Math.max(1, currentChapter - windowSize); i < currentChapter; i++) nums.push(i)
+    let cursor: number | null = currentChapter
+    while (nums.length < windowSize) {
+      cursor = await resolvePreviousChapter(cursor)
+      if (cursor === null) break
+      nums.push(cursor)
+    }
+    const result = new Map<number, string>()
     await Promise.all(nums.map(async (n) => {
       try {
         const meta = await ipc.invoke('db:draft-get-finalized', n)

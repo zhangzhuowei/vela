@@ -32,6 +32,7 @@ export type ProjectSeed = {
   optionHintsCount: number
   optionHintsMaxChars: number
   chapterEnding: string
+  extraExportMode: 'appendix' | 'inline' | 'separate'
 }
 
 export function pickProjectSeed(core: Partial<ProjectSeed> & { characterStates?: string; projectName?: string }): ProjectSeed {
@@ -64,6 +65,9 @@ export function pickProjectSeed(core: Partial<ProjectSeed> & { characterStates?:
     optionHintsCount: core.optionHintsCount ?? 3,
     optionHintsMaxChars: core.optionHintsMaxChars ?? 24,
     chapterEnding: core.chapterEnding === 'smooth' ? 'smooth' : 'cliffhanger',
+    extraExportMode: core.extraExportMode === 'inline' || core.extraExportMode === 'separate'
+      ? core.extraExportMode
+      : 'appendix',
   }
 }
 

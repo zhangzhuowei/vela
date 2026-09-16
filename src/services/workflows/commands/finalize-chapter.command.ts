@@ -17,6 +17,7 @@ import {
 import type { ChapterInfo } from '../chapter-workflow'
 import { extractAndWriteback, runConsistencyGate, buildCanonContext } from '../../narrative-consistency'
 import { parseJSONWithRepair } from '../json-repair'
+import { isMainChapter, branchIdOf } from '../../../shared/chapter-addressing'
 
 export interface FinalizeChapterParams {
   draftPath: string
@@ -97,8 +98,10 @@ export function buildFinalizePostProcessSteps(
   draftContent: string,
 ): PostProcessStep[] {
   const steps: PostProcessStep[] = []
+  const isBranch = !isMainChapter(chapterNumber)
 
   // ─── 步骤 1: 导入知识库 ───────────────────────────────────────────
+  if (!isBranch) {
   steps.push({
     key: 'kb_import',
     label: t('finalize.kbImport'),
@@ -115,6 +118,7 @@ export function buildFinalizePostProcessSteps(
       }
     },
   })
+  }
 
   // ─── 步骤 2: 本章剧情要点提取 ─────────────────────────────────────
   const notesTemplate = getPromptTemplate('generate_chapter_notes')
@@ -180,7 +184,7 @@ export function buildFinalizePostProcessSteps(
             suspenseHook: blueprint.suspenseHook,
           } : undefined,
           existingNotes,
-        })
+        }, isBranch ? { branchMode: true } : undefined)
         if (result.ok) {
           callbacks.log(t('finalize.canonWritebackSuccess', { events: (blueprint as unknown as { keyEvents?: string })?.keyEvents ? '已抽取' : '见正文' }))
         } else if (result.errors.length > 0) {
@@ -193,7 +197,7 @@ export function buildFinalizePostProcessSteps(
   })
 
     // ─── 步骤 2.6: [Compression v3] 长期记忆压缩（每5章执行一次）──────────
-  if (chapterNumber % 5 === 0) {
+  if (!isBranch && chapterNumber % 5 === 0) {
     steps.push({
       key: 'canon_compression',
       label: t('finalize.compression'),
@@ -228,7 +232,7 @@ export function buildFinalizePostProcessSteps(
 
 // ─── 步骤 3: 角色状态更新 ────────────────────────────────────────
   const cardTemplate = getPromptTemplate('update_character_cards')
-  if (cardTemplate) {
+  if (!isBranch && cardTemplate) {
     steps.push({
       key: 'character_cards',
       label: t('finalize.charStateUpdate'),
@@ -318,6 +322,11 @@ export function buildFinalizePostProcessSteps(
             callbacks.log(t('finalize.newCharsRegistered', { count: newCharCount }))
           }
         }
+
+        const refreshed = await ipc.invoke('db:character-get-all').catch(() => [])
+        const snapshot = refreshed.map((c) => ({ name: c.name, role: c.role, currentState: c.currentState }))
+        await ipc.invoke('db:save-summary-snapshot', chapterNumber, JSON.stringify(snapshot))
+        callbacks.log(`  📸 已保存第 ${chapterNumber} 章角色状态快照（供番外 / IF 线读取）`)
       },
     })
   }
@@ -362,9 +371,15 @@ export function buildFinalizePostProcessSteps(
         }
         let paidCount = 0
         if (Array.isArray(result.paidIds)) {
-          const openIds = new Set(openSlim.map((f) => f.id))
+          const myBranch = branchIdOf(chapterNumber)
+          const openById = new Map(openSlim.map((f) => [f.id, f]))
           for (const id of result.paidIds) {
-            if (!openIds.has(id)) continue
+            const f = openById.get(id)
+            if (!f) continue
+            if (branchIdOf(f.plantedChapter) !== myBranch) {
+              callbacks.log(`  ↪ 伏笔 #${id} 属于另一条线，本线不可回收，跳过`)
+              continue
+            }
             await ipc.invoke('db:foreshadow-mark-paid', id, chapterNumber)
             paidCount++
           }
@@ -375,7 +390,7 @@ export function buildFinalizePostProcessSteps(
   }
 
   // ─── 步骤 4: 文风自动学习（每5章触发一次）─────────────────────────
-  if (chapterNumber % 5 === 0) {
+  if (!isBranch && chapterNumber % 5 === 0) {
     steps.push({
       key: 'style_analysis',
       label: t('finalize.styleLearning'),
@@ -480,17 +495,18 @@ export class FinalizeChapterCommand extends BaseWorkflowCommand<void> {
     await ipc.invoke('db:draft-update-status', dbDraft.id, 'finalized', gatedContent.length)
 
     // 【重要】：除了写入 DB，对于已定稿的章节需要实体化为物理文件放在根目录，供外部系统读取或备份
-    const safeTitle = this.params.chapterInfo.title ? ` ${this.params.chapterInfo.title.replace(/[/\\]/g, '_')}` : ''
-    const physicalPath = `${project.path}/第${this.params.chapterNumber}章${safeTitle}.txt`
+    const { resolveFileName, resolveDisplayName } = await import('../../branches/branch-service')
+    const fileName = await resolveFileName(this.params.chapterNumber, this.params.chapterInfo.title || '')
+    const physicalPath = `${project.path}/${fileName}`
+    const heading = await resolveDisplayName(this.params.chapterNumber, this.params.chapterInfo.title || '')
     try {
-      const titleLine = this.params.chapterInfo.title ? `第${this.params.chapterNumber}章 ${this.params.chapterInfo.title}\n\n` : `第${this.params.chapterNumber}章\n\n`
-      const contentToWrite = titleLine + gatedContent.replace(/^#+ .*\n*/, '')
+      const contentToWrite = `${heading}\n\n` + gatedContent.replace(/^#+ .*\n*/, '')
       await ipc.invoke('fs:write-file', physicalPath, contentToWrite)
     } catch (e) {
       callbacks.log(t('finalize.fileWriteFailed', { error: String(e) }))
     }
 
-    callbacks.log(t('finalize.finalizedSaved', { chapter: this.params.chapterNumber, title: safeTitle }))
+    callbacks.log(t('finalize.finalizedSaved', { chapter: this.params.chapterNumber, title: heading }))
 
     // 3. 通过 PostProcessPipeline 执行后处理（状态持久化 + 支持重试）
     callbacks.log(t('finalize.launchingPostProcess'))

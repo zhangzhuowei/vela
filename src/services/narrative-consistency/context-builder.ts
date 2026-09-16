@@ -18,6 +18,7 @@
 import type { CanonContext, TimelineEvent, CharacterStateSnapshot, PlotLine, Fact, ChapterSummary } from './types'
 import { canonStore } from './canon-store'
 import { isActualDeathMention } from './validator'
+import { ipc } from '../ipc-client'
 
 /** 构建入参 */
 export interface BuildCanonContextParams {
@@ -192,19 +193,39 @@ export async function buildCanonContext(params: BuildCanonContextParams): Promis
   const renderTimelineWindow = params.timelineWindow ?? DEFAULT_RENDER_TIMELINE_WINDOW
   const recentSummaryCount = params.recentSummaryCount ?? 3
 
-  // 并行读取所有 Canon Store 数据 + 角色卡（角色卡从参数传入，避免重复 IPC）。
-  // 时间线与事实取全量：校验器需要完整历史（如"第 20 章已死的角色不得在
-  // 第 150 章复活"）；prompt 膨胀在渲染侧用窗口控制，不在取数侧截断
+  const { resolveVisibility, resolveBranch } = await import('../branches/branch-service')
+  const visibility = await resolveVisibility(params.chapterNumber)
+  const branch = await resolveBranch(params.chapterNumber)
+
   const [timeline, summaries, plotLines, facts, canonCharStates] = await Promise.all([
-    canonStore.getTimeline(Math.max(0, params.chapterNumber - 1)),
-    canonStore.getRecentSummaries(recentSummaryCount),
-    canonStore.getActivePlotLines(),
-    canonStore.getFacts(),
-    canonStore.getAllCharacterStates(),
+    canonStore.getTimelineVisible(visibility),
+    canonStore.getRecentSummariesVisible(visibility, recentSummaryCount),
+    canonStore.getActivePlotLinesVisible(visibility),
+    canonStore.getFactsVisible(visibility),
+    branch ? Promise.resolve([] as CharacterStateSnapshot[]) : canonStore.getAllCharacterStates(),
   ])
 
-  // 角色当前状态：合并 canon 表与角色卡 currentState，canon 表优先
-  const mergedStates = mergeCharacterStates(canonCharStates, params.characters)
+  // 线内角色状态：取锚点章定稿时的角色卡快照；无快照（老项目）退回当前角色卡并记入 meta
+  let characterInputs = params.characters
+  let snapshotChapter: number | null = null
+  if (branch) {
+    if (branch.anchorChapter > 0) {
+      const snap = await ipc.invoke('db:summary-snapshot-at', branch.anchorChapter).catch(() => null)
+      if (snap?.characterStates) {
+        try {
+          const parsed = JSON.parse(snap.characterStates) as Array<{ name: string; role: string; currentState?: unknown }>
+          if (Array.isArray(parsed) && parsed.length > 0) {
+            characterInputs = parsed as typeof params.characters
+            snapshotChapter = snap.chapterNumber
+          }
+        } catch { /* 快照损坏时退回当前角色卡 */ }
+      }
+    } else {
+      // 前传看不到正史后期状态，只保留人设、去掉 currentState
+      characterInputs = params.characters.map((c) => ({ name: c.name, role: c.role }))
+    }
+  }
+  const mergedStates = mergeCharacterStates(canonCharStates, characterInputs)
 
   // 拼装 world rules = premise + worldbuilding + charactersArch + synopsis
   const worldRules = [
@@ -236,6 +257,8 @@ export async function buildCanonContext(params: BuildCanonContextParams): Promis
       builtAt: new Date().toISOString(),
       ragSources: countRagSources(params.ragContext),
       renderTimelineWindow,
+      visibility,
+      characterSnapshotChapter: snapshotChapter,
     },
   }
 }

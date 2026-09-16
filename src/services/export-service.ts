@@ -5,14 +5,21 @@
  * - 合并 Markdown（全书合并为单个 .md）
  * - 分章 Markdown（每章一个 .md）
  * - 纯文本 TXT
+ * - EPUB
+ *
+ * 番外按 extraMode 分流；IF 线始终单独成文。
  */
 import { ipc } from './ipc-client'
 import { useProjectStore } from '../stores/project-store'
 import { useWorkflowStore } from '../stores/workflow-store'
 import i18n from '../i18n'
+import {
+  layoutExportDocuments, normalizeExtraExportMode,
+  type ExtraExportMode, type ExportDocument, type LaidOutChapter, type LayoutChapter,
+} from './export-layout'
+import type { BranchData } from '../../electron/repositories/branch-repository'
 
 const t = (key: string, opts?: Record<string, unknown>) => i18n.t(key, { ns: 'dialogs', ...opts })
-
 
 export type ExportFormat = 'merged-md' | 'split-md' | 'txt' | 'epub'
 
@@ -23,6 +30,80 @@ interface ExportOptions {
   includeCharacters?: boolean
   /** EPUB 作者（仅 epub 使用；为空则记为「佚名」） */
   author?: string
+  extraMode?: ExtraExportMode
+  includeIf?: boolean
+}
+
+function withSection(ch: LaidOutChapter, asMarkdown: boolean): string {
+  if (!ch.section) return ch.content
+  if (asMarkdown) return `## ${ch.section}\n\n${ch.content}`
+  return `${ch.section}\n${'='.repeat(Math.max(4, ch.section.length * 2))}\n\n${ch.content}`
+}
+
+function toPlainText(content: string): string {
+  return content
+    .replace(/^#{1,6}\s+/gm, '')
+    .replace(/\*\*(.*?)\*\*/g, '$1')
+    .replace(/\*(.*?)\*/g, '$1')
+    .replace(/`(.*?)`/g, '$1')
+    .replace(/---+/g, '\n')
+    .trim()
+}
+
+async function writeMergedMd(doc: ExportDocument, outputDir: string, header: string): Promise<string> {
+  let content = header
+  for (const ch of doc.chapters) {
+    content += withSection(ch, true) + '\n\n---\n\n'
+  }
+  const outputPath = `${outputDir}/${doc.fileStem}.md`
+  await ipc.invoke('fs:write-file', outputPath, content)
+  return outputPath
+}
+
+async function writeSplitMd(doc: ExportDocument, outputDir: string): Promise<string> {
+  const splitDir = `${outputDir}/${doc.fileStem}`
+  await ipc.invoke('fs:mkdir', splitDir)
+  for (const ch of doc.chapters) {
+    const safe = ch.title.replace(/[/\\:*?"<>|]/g, '_')
+    await ipc.invoke('fs:write-file', `${splitDir}/${safe}.md`, withSection(ch, true))
+  }
+  return splitDir
+}
+
+async function writeTxt(doc: ExportDocument, outputDir: string, header: string): Promise<string> {
+  let content = header
+  for (const ch of doc.chapters) {
+    content += toPlainText(withSection(ch, false)) + '\n\n'
+  }
+  const outputPath = `${outputDir}/${doc.fileStem}.txt`
+  await ipc.invoke('fs:write-file', outputPath, content)
+  return outputPath
+}
+
+async function writeEpub(
+  doc: ExportDocument,
+  outputDir: string,
+  opts: { author: string; outline?: string },
+): Promise<{ path: string; error?: string }> {
+  const chapters: Array<{ title: string; content: string }> = []
+  if (opts.outline?.trim()) {
+    chapters.push({ title: '内容简介', content: opts.outline.trim() })
+  }
+  for (const ch of doc.chapters) {
+    chapters.push({
+      title: ch.section ? `${ch.section} · ${ch.title}` : ch.title,
+      content: withSection(ch, true),
+    })
+  }
+  const outputPath = `${outputDir}/${doc.fileStem}.epub`
+  const res = await ipc.invoke('export:epub', {
+    title: doc.fileStem,
+    author: opts.author,
+    language: 'zh-CN',
+    outputPath,
+    chapters,
+  })
+  return { path: outputPath, error: res.success ? undefined : (res.error || 'EPUB 生成失败') }
 }
 
 /** 导出全书 */
@@ -34,8 +115,7 @@ export async function exportNovel(options: ExportOptions): Promise<{ success: bo
   addLog('info', `📦 开始导出（${formatLabel(options.format)}）...`)
 
   try {
-    // 遍历所有章节蓝图，取定稿内容
-    const chapterContents: Array<{ name: string; title: string; chapterNumber: number; content: string }> = []
+    const chapterContents: LayoutChapter[] = []
     const blueprints = (await ipc.invoke('db:blueprint-get-all')) as unknown as Array<Record<string, unknown>>
     const sortedBps = blueprints ? blueprints.sort((a, b) => (a.chapterNumber as number) - (b.chapterNumber as number)) : []
 
@@ -45,8 +125,7 @@ export async function exportNovel(options: ExportOptions): Promise<{ success: bo
         const full = await ipc.invoke('db:draft-get-full', (meta as { id: number }).id)
         if (full && (full as { content?: string }).content) {
           chapterContents.push({
-            name: `chapter_${bp.chapterNumber}.md`,
-            title: (bp.title as string) || `第${bp.chapterNumber}章`,
+            title: (bp.title as string) || '',
             chapterNumber: bp.chapterNumber as number,
             content: (full as { content: string }).content,
           })
@@ -58,106 +137,57 @@ export async function exportNovel(options: ExportOptions): Promise<{ success: bo
       return { success: false, error: t('export.noFinalizedChapters') }
     }
 
+    const core = await ipc.invoke('db:project-core-get')
+    const branches = (await ipc.invoke('db:branch-list').catch(() => [] as BranchData[])) as BranchData[]
+    const extraMode = options.extraMode ?? normalizeExtraExportMode(core?.extraExportMode ?? project.novelConfig.extraExportMode)
+    const includeIf = options.includeIf !== false
+    const documents = layoutExportDocuments(project.name, chapterContents, branches, extraMode, includeIf)
+
+    if (documents.length === 0) {
+      return { success: false, error: t('export.noFinalizedChapters') }
+    }
+
     addLog('info', t('export.foundChapters', { count: chapterContents.length }))
 
-    // 确保输出目录存在
     await ipc.invoke('fs:mkdir', options.outputDir)
 
-    let outputPath = ''
+    const paths: string[] = []
+    const outline = options.includeOutline ? (core?.synopsis || '') : ''
+    const mdHeader = (stem: string) => {
+      let h = `# ${stem}\n\n`
+      h += `> ${project.novelConfig.genre} · ${project.novelConfig.targetAudience}\n\n---\n\n`
+      return h
+    }
+    const txtHeader = (stem: string) => `${stem}\n${'='.repeat(Math.max(4, stem.length * 2))}\n\n`
 
-    switch (options.format) {
-      case 'merged-md': {
-        // 合并为单个 Markdown
-        let content = `# ${project.name}\n\n`
-        content += `> ${project.novelConfig.genre} · ${project.novelConfig.targetAudience}\n\n---\n\n`
+    for (let i = 0; i < documents.length; i++) {
+      const doc = documents[i]
+      const isMain = !doc.fileStem.includes('·IF·') && !doc.fileStem.includes('·番外·')
+      const outlineBlock = isMain && outline ? `${outline}\n\n---\n\n` : ''
 
-        // 可选：包含大纲
-        if (options.includeOutline) {
-          const core = await ipc.invoke('db:project-core-get')
-          if (core?.synopsis) {
-            content += core.synopsis + '\n\n---\n\n'
-          }
-        }
-
-        // 章节内容
-        for (const ch of chapterContents) {
-          content += ch.content + '\n\n---\n\n'
-        }
-
-        outputPath = `${options.outputDir}/${project.name}.md`
-        await ipc.invoke('fs:write-file', outputPath, content)
-        break
-      }
-
-      case 'split-md': {
-        // 每章一个 Markdown
-        const splitDir = `${options.outputDir}/${project.name}`
-        await ipc.invoke('fs:mkdir', splitDir)
-
-        for (const ch of chapterContents) {
-          await ipc.invoke('fs:write-file', `${splitDir}/${ch.name}`, ch.content)
-        }
-
-        outputPath = splitDir
-        break
-      }
-
-      case 'txt': {
-        // 纯文本（去除 Markdown 格式）
-        let content = `${project.name}\n${'='.repeat(project.name.length * 2)}\n\n`
-
-        for (const ch of chapterContents) {
-          // 简单去除 Markdown 标记
-          const plainText = ch.content
-            .replace(/^#{1,6}\s+/gm, '')  // 去掉标题标记
-            .replace(/\*\*(.*?)\*\*/g, '$1')  // 去掉加粗
-            .replace(/\*(.*?)\*/g, '$1')  // 去掉斜体
-            .replace(/`(.*?)`/g, '$1')  // 去掉代码标记
-            .replace(/---+/g, '\n')  // 分隔线
-            .trim()
-
-          content += plainText + '\n\n'
-        }
-
-        outputPath = `${options.outputDir}/${project.name}.txt`
-        await ipc.invoke('fs:write-file', outputPath, content)
-        break
-      }
-
-      case 'epub': {
-        // 组装章节（标题 = 「第N章 蓝图标题」）
-        const chapters: Array<{ title: string; content: string }> = []
-
-        // 可选：把故事简介作为首章
-        if (options.includeOutline) {
-          const core = await ipc.invoke('db:project-core-get')
-          if (core?.synopsis?.trim()) {
-            chapters.push({ title: '内容简介', content: core.synopsis.trim() })
-          }
-        }
-
-        for (const ch of chapterContents) {
-          chapters.push({
-            title: `第${ch.chapterNumber}章 ${ch.title}`.trim(),
-            content: ch.content,
+      switch (options.format) {
+        case 'merged-md':
+          paths.push(await writeMergedMd(doc, options.outputDir, mdHeader(doc.fileStem) + outlineBlock))
+          break
+        case 'split-md':
+          paths.push(await writeSplitMd(doc, options.outputDir))
+          break
+        case 'txt':
+          paths.push(await writeTxt(doc, options.outputDir, txtHeader(doc.fileStem) + (isMain && outline ? `${toPlainText(outline)}\n\n` : '')))
+          break
+        case 'epub': {
+          const res = await writeEpub(doc, options.outputDir, {
+            author: options.author?.trim() || '佚名',
+            outline: isMain ? outline : '',
           })
+          if (res.error) return { success: false, error: res.error }
+          paths.push(res.path)
+          break
         }
-
-        outputPath = `${options.outputDir}/${project.name}.epub`
-        const res = await ipc.invoke('export:epub', {
-          title: project.name,
-          author: options.author?.trim() || '佚名',
-          language: 'zh-CN',
-          outputPath,
-          chapters,
-        })
-        if (!res.success) {
-          return { success: false, error: res.error || 'EPUB 生成失败' }
-        }
-        break
       }
     }
 
+    const outputPath = paths.length === 1 ? paths[0] : options.outputDir
     addLog('info', t('export.exportComplete', { path: outputPath }))
     return { success: true, path: outputPath }
   } catch (error) {

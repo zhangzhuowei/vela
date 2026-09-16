@@ -12,10 +12,13 @@ import { EmptyState } from '../../ui/EmptyState'
 import { toast } from '../../ui/Toast'
 import { cn } from '../../../lib/utils'
 import { useTranslation } from 'react-i18next'
+import { useBranchStore } from '../../../stores/branch-store'
+import { displayChapterNameSafe } from '../../../shared/chapter-addressing'
 
 export default function CharactersView() {
   const { t } = useTranslation('panels')
   const currentProject = useProjectStore(s => s.currentProject)
+  const branches = useBranchStore(s => s.branches)
   const characters = useCharacterStore(s => s.characters)
   const selectedName = useCharacterStore(s => s.selectedName)
   const load = useCharacterStore(s => s.load)
@@ -123,7 +126,7 @@ export default function CharactersView() {
             <div className="text-[0.7rem] mt-0.5 opacity-60">{ROLE_LABELS[c.role]}</div>
             {c.currentState && (
               <div className="text-[0.65rem] mt-0.5 opacity-50">
-                {t('characters.chapterUpdate', { chapter: c.currentState.updatedAtChapter })}
+                {t('characters.chapterUpdate', { name: displayChapterNameSafe(c.currentState.updatedAtChapter, branches) })}
               </div>
             )}
           </div>

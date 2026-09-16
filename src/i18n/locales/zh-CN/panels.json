@@ -351,7 +351,7 @@
     "importOk": "已导入 {{count}} 张角色卡",
     "newCharacterBtn": "新建角色",
     "unnamed": "未命名",
-    "chapterUpdate": "第{{chapter}}章更新",
+    "chapterUpdate": "{{name}}更新",
     "noCharacters": "暂无角色"
   },
   "manuscripts": {
@@ -473,6 +473,16 @@
     "title": "草稿箱",
     "tooltip": "草稿箱：AI 生成后的章节草稿在此管理，定稿后进入正文章节",
     "noDrafts": "暂无草稿（从章节蓝图点击「写作此章」创作）"
+  },
+  "branch": {
+    "groupTitle": "番外 / IF 线",
+    "create": "新建线",
+    "edit": "编辑",
+    "delete": "删除",
+    "notEmpty": "先删除线内章节",
+    "anchorAfter": "第 {{chapter}} 章后",
+    "forkAt": "第 {{chapter}} 章分叉",
+    "prequel": "前传"
   },
   "toolCall": {
     "completed": "完成",

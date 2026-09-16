@@ -3,6 +3,7 @@ import type { DraftMeta } from '../draft-index'
 import i18n from '../../i18n'
 
 import type { DraftStatus } from '../../shared/draft-status'
+import { displayChapterNameSafe, type BranchLike } from '../../shared/chapter-addressing'
 
 const t = (key: string, opts?: Record<string, unknown>) => i18n.t(key, { ns: 'commands', ...opts })
 
@@ -442,6 +443,8 @@ export interface BatchGenerateWorkflowParams {
   rollingBlueprint?: boolean
   /** 按任务派模型（为空走默认模型）：蓝图刷新/写稿/审校/去AI味 */
   models?: { blueprint?: string; write?: string; review?: string; deaify?: string }
+  /** 用于步骤名显示；缺省按正文格式化 */
+  branches?: BranchLike[]
 }
 
 /**
@@ -457,9 +460,10 @@ export function createBatchGenerateWorkflow(params: BatchGenerateWorkflowParams)
   const stepSuffix = `${params.autoReview ? '→审校闭环' : ''}${params.deaify ? '→去AI味' : ''}`
 
   const steps: WorkflowDefinition['steps'] = []
+  const branches = params.branches ?? []
   for (let n = start; n <= end; n++) {
     steps.push({
-      name: `第${n}章`,
+      name: displayChapterNameSafe(n, branches, ''),
       description: `${stepPrefix}写稿${stepSuffix}→定稿`,
       executor: async (step, context, callbacks) => {
         const { BatchChapterCommand } = await import('./commands/batch-chapter.command')
@@ -480,10 +484,11 @@ export function createBatchGenerateWorkflow(params: BatchGenerateWorkflowParams)
     })
   }
 
+  const rangeLabel = `${displayChapterNameSafe(start, branches)} – ${displayChapterNameSafe(end, branches)}`
   return {
     type: 'batch_generate',
-    title: `📚 批量生成 第${start}-${end}章`,
+    title: `📚 批量生成 ${rangeLabel}`,
     steps,
-    onComplete: { mode: 'open', message: `📚 批量生成结束（第${start}-${end}章）` },
+    onComplete: { mode: 'open', message: `📚 批量生成结束（${rangeLabel}）` },
   }
 }

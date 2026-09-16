@@ -18,6 +18,7 @@ import { DRAFT_STATUS_LABEL, DRAFT_STATUS_COLOR } from '../../../shared/draft-st
 import { showSidebarMenu } from './SidebarShared'
 import { ipc } from '../../../services/ipc-client'
 import WindowedList from '../../ui/WindowedList'
+import { displayChapterNameSafe, type BranchLike } from '../../../shared/chapter-addressing'
 
 // ===== 拍平后的行描述 =====
 
@@ -37,8 +38,10 @@ const ROW_HEIGHT: Record<DraftRow['kind'], number> = {
 
 export default function DraftBoxGroup({
   draftsByChapter,
+  branches = [],
 }: {
   draftsByChapter: Record<number, DraftMeta[]>
+  branches?: BranchLike[]
 }) {
   const { t } = useTranslation('panels')
   const [open, setOpen] = useState(true)
@@ -73,10 +76,8 @@ export default function DraftBoxGroup({
 
   /** 章节显示名（蓝图标题优先，其次草稿携带的章节标题；前缀走 i18n） */
   const displayTitleOf = (chapterNumber: number, drafts: DraftMeta[]): string => {
-    const chapterPrefix = t('manuscript.chapterFormat', { number: chapterNumber })
     const baseTitle = bpTitles[chapterNumber] || drafts[0]?.chapterTitle || ''
-    if (!baseTitle) return chapterPrefix
-    return baseTitle.startsWith(chapterPrefix) ? baseTitle : `${chapterPrefix} ${baseTitle}`
+    return displayChapterNameSafe(chapterNumber, branches, baseTitle)
   }
 
   // 拍平：章节行 + （展开时）活跃草稿行 + 归档切换行 + （显示时）归档草稿行
@@ -114,7 +115,7 @@ export default function DraftBoxGroup({
     }
     return list
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [draftsByChapter, closedChapters, shownArchived, bpTitles])
+  }, [draftsByChapter, closedChapters, shownArchived, bpTitles, branches])
 
   const toggleChapter = (chapterNumber: number) => {
     setClosedChapters(prev => {

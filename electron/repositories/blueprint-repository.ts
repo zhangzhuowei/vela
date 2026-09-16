@@ -4,6 +4,7 @@
  * 取代旧的 chapter-repository.ts，管理章节的规划元数据。
  */
 import { getProjectDb } from '../database'
+import { BRANCH_BASE } from '../../src/shared/chapter-addressing'
 
 /** 蓝图行类型（DB 蛇形命名） */
 export interface BlueprintRow {
@@ -96,16 +97,34 @@ export class BlueprintRepository {
         return row ? rowToData(row) : null
     }
 
-    /** 获取蓝图总数 */
+    /** 正文章节卡数量 */
     static count(): number {
         const db = getProjectDb()
         if (!db) return 0
 
         const row = db.prepare(
-            'SELECT COUNT(*) as cnt FROM blueprints'
+            `SELECT COUNT(*) as cnt FROM blueprints WHERE chapter_number < ${BRANCH_BASE}`
         ).get() as { cnt: number }
 
         return row.cnt
+    }
+
+    static countInRange(from: number, to: number): number {
+        const db = getProjectDb()
+        if (!db) return 0
+        const row = db.prepare(
+            'SELECT COUNT(*) as cnt FROM blueprints WHERE chapter_number BETWEEN ? AND ?'
+        ).get(from, to) as { cnt: number }
+        return row.cnt
+    }
+
+    static listInRange(from: number, to: number): BlueprintData[] {
+        const db = getProjectDb()
+        if (!db) return []
+        const rows = db.prepare(
+            'SELECT * FROM blueprints WHERE chapter_number BETWEEN ? AND ? ORDER BY chapter_number ASC'
+        ).all(from, to) as BlueprintRow[]
+        return rows.map(rowToData)
     }
 
     /** 插入或更新蓝图 */

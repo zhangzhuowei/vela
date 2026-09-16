@@ -272,6 +272,20 @@ export default function NovelConfigEditor() {
                   <option value="smooth">{t('novelConfig.chapterEndingOptions.smooth')}</option>
                 </NativeSelect>
               </Field>
+              <Field label={t('novelConfig.extraExportMode')} tipItems={[
+                t('novelConfig.extraExportModeTips.appendix'),
+                t('novelConfig.extraExportModeTips.inline'),
+                t('novelConfig.extraExportModeTips.separate'),
+              ]}>
+                <NativeSelect
+                  value={config.extraExportMode || 'appendix'}
+                  onChange={(e) => update('extraExportMode', e.target.value as NovelConfig['extraExportMode'])}
+                >
+                  <option value="appendix">{t('novelConfig.extraExportModeOptions.appendix')}</option>
+                  <option value="inline">{t('novelConfig.extraExportModeOptions.inline')}</option>
+                  <option value="separate">{t('novelConfig.extraExportModeOptions.separate')}</option>
+                </NativeSelect>
+              </Field>
               <Field label={t('novelConfig.creationMode')} tipItems={[
                 t('novelConfig.creationModeTips.pipeline'),
                 t('novelConfig.creationModeTips.dialogue'),

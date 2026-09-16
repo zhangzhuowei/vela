@@ -13,6 +13,7 @@ import type { CharacterData } from '../../../electron/repositories/character-rep
 import { ipc } from '../ipc-client'
 import { stripEditorialMarkers, stripThinkingTags } from '../prose-clean'
 import i18n from '../../i18n'
+import { isVisible, type ChapterVisibility } from '../../shared/chapter-addressing'
 
 export { stripEditorialMarkers, stripThinkingTags }
 
@@ -81,8 +82,10 @@ export function formatOpenForeshadowings(
   open: OpenForeshadowing[] | null | undefined,
   currentChapter: number,
   maxItems = 12,
+  visibility?: ChapterVisibility,
 ): string {
-  if (!open || open.length === 0) return '（暂无未回收伏笔）'
+  const pool = (open ?? []).filter((f) => !visibility || isVisible(f.plantedChapter, visibility))
+  if (pool.length === 0) return '（暂无未回收伏笔）'
 
   const priorityOf = (f: OpenForeshadowing): number => {
     if (f.expectedChapter != null && f.expectedChapter <= currentChapter) return 0 // 已到期
@@ -90,7 +93,7 @@ export function formatOpenForeshadowings(
     return 2 // 无预期
   }
 
-  const sorted = [...open].sort((a, b) => {
+  const sorted = [...pool].sort((a, b) => {
     const pa = priorityOf(a), pb = priorityOf(b)
     if (pa !== pb) return pa - pb
     // 有预期：按预期回收章升序（越急越前）；无预期：按埋设章降序（越新越前）
@@ -417,21 +420,19 @@ export async function readChapterNotesTimeline(
   maxChars = 3000,
 ): Promise<string> {
   try {
+    const { resolveVisibility, getBranches } = await import('../branches/branch-service')
+    const { isVisible: vis, displayChapterNameSafe, isMainChapter } = await import('../../shared/chapter-addressing')
+    const visibility = await resolveVisibility(currentChapter)
+    const branches = isMainChapter(currentChapter) ? [] : await getBranches()
     const all = await ipc.invoke('db:blueprint-get-all')
-    const byChapter = new Map((all || []).map(b => [b.chapterNumber, b]))
-
-    const lines: string[] = []
-    for (let i = 1; i < currentChapter; i++) {
-      const bp = byChapter.get(i)
-      if (!bp) continue
-      const isRecent = i >= currentChapter - fullWindow
-      if (isRecent && bp.notes?.trim()) {
-        lines.push(`【第${i}章 ${bp.title || ''}】\n${bp.notes.trim()}`)
-      } else {
-        lines.push(`【第${i}章 ${bp.title || ''}】`)
-      }
-    }
-
+    const visible = (all || [])
+      .filter((b) => vis(b.chapterNumber, visibility))
+      .sort((a, b) => a.chapterNumber - b.chapterNumber)
+    const recentCut = visible.length - fullWindow
+    const lines = visible.map((bp, idx) => {
+      const label = `【${displayChapterNameSafe(bp.chapterNumber, branches, bp.title || '')}】`
+      return idx >= recentCut && bp.notes?.trim() ? `${label}\n${bp.notes.trim()}` : label
+    })
     let result = lines.join('\n\n')
     if (result.length > maxChars) result = result.slice(-maxChars)
     return result || '（无章节要点）'
@@ -442,9 +443,11 @@ export async function readChapterNotesTimeline(
 
 /** 读取上一章定稿正文的结尾片段（本章须从此自然接续） */
 export async function readPreviousEnding(currentChapter: number, maxChars = 1000): Promise<string> {
-  if (currentChapter <= 1) return '（无前文，本章为开篇）'
+  const { resolvePreviousChapter } = await import('../branches/branch-service')
+  const prev = await resolvePreviousChapter(currentChapter)
+  if (prev === null) return '（无前文，本章为开篇）'
   try {
-    const meta = await ipc.invoke('db:draft-get-finalized', currentChapter - 1)
+    const meta = await ipc.invoke('db:draft-get-finalized', prev)
     if (!meta) return '（上一章尚未定稿）'
     const full = await ipc.invoke('db:draft-get-full', meta.id)
     const content = full?.content?.trim()
@@ -456,8 +459,16 @@ export async function readPreviousEnding(currentChapter: number, maxChars = 1000
 
 /** 跨章反雷同：最近数章的开场句与断章句速览 */
 export async function buildAntiRepetitionText(currentChapter: number, windowSize = 3): Promise<string> {
+  const { resolvePreviousChapter } = await import('../branches/branch-service')
+  const nums: number[] = []
+  let cursor: number | null = currentChapter
+  while (nums.length < windowSize) {
+    cursor = await resolvePreviousChapter(cursor)
+    if (cursor === null) break
+    nums.push(cursor)
+  }
   const lines: string[] = []
-  for (let i = currentChapter - 1; i >= Math.max(1, currentChapter - windowSize); i--) {
+  for (const i of nums.slice().reverse()) {
     try {
       const meta = await ipc.invoke('db:draft-get-finalized', i)
       if (!meta) continue
@@ -470,14 +481,15 @@ export async function buildAntiRepetitionText(currentChapter: number, windowSize
     } catch { /* 忽略单章读取失败 */ }
   }
   if (lines.length === 0) return '（暂无往期章节可参考）'
-  return lines.reverse().join('\n')
+  return lines.join('\n')
 }
 
 /** 未回收伏笔上下文（含到期提醒） */
 export async function buildOpenForeshadowingText(currentChapter: number): Promise<string> {
   try {
+    const { resolveVisibility } = await import('../branches/branch-service')
     const open = await ipc.invoke('db:foreshadow-get-open')
-    return formatOpenForeshadowings(open, currentChapter)
+    return formatOpenForeshadowings(open, currentChapter, 12, await resolveVisibility(currentChapter))
   } catch {
     return '（暂无未回收伏笔）'
   }
@@ -486,9 +498,11 @@ export async function buildOpenForeshadowingText(currentChapter: number): Promis
 /** 后续若干章蓝图速览（用于约束本章不抢戏、不提前消耗关键节点） */
 export async function buildFutureBlueprintsText(currentChapter: number, span = 5): Promise<string> {
   try {
+    const { branchIdOf } = await import('../../shared/chapter-addressing')
     const all = await ipc.invoke('db:blueprint-get-all')
+    const me = currentChapter
     const future = (all || []).filter(
-      (b) => b.chapterNumber > currentChapter && b.chapterNumber <= currentChapter + span
+      (b) => branchIdOf(b.chapterNumber) === branchIdOf(me) && b.chapterNumber > me && b.chapterNumber <= me + span
     )
     if (future.length === 0) return '（无后续蓝图）'
     return future

@@ -13,6 +13,7 @@ import { PostProcessRepository } from '../repositories/post-process-repository'
 import { ForeshadowingRepository, ForeshadowingData } from '../repositories/foreshadowing-repository'
 import { SceneRepository } from '../repositories/scene-repository'
 import { SettingModuleRepository } from '../repositories/setting-module-repository'
+import { BranchRepository } from '../repositories/branch-repository'
 import { ChapterImageRepository } from '../repositories/chapter-image-repository'
 
 // 沿用的旧表
@@ -28,6 +29,8 @@ import {
   validateCanonChapterSummary,
   validateCanonWritebackPayload,
   validateSettingModuleInput,
+  validateBranchInput,
+  validateVisibility,
 } from '../ipc-validation'
 import type {
   TimelineEvent,
@@ -266,6 +269,46 @@ export function registerDatabaseController() {
     } catch (err) {
       return { success: false, error: String(err) }
     }
+  })
+
+  // ============================================================
+  // 2d. 线（番外 / IF）
+  // ============================================================
+  ipcMain.handle('db:branch-list', async () => BranchRepository.list())
+  ipcMain.handle('db:branch-get', async (_e, id: number) => BranchRepository.get(id))
+  ipcMain.handle('db:branch-upsert', async (_e, raw: unknown) => {
+    const v = safeValidate(validateBranchInput, raw)
+    if (!v.ok) return { success: false, error: v.error }
+    try { return { success: true, id: BranchRepository.upsert(v.data) } } catch (e) { return { success: false, error: String(e) } }
+  })
+  ipcMain.handle('db:branch-delete', async (_e, id: number) => {
+    try {
+      const ok = BranchRepository.deleteIfEmpty(id)
+      return ok ? { success: true } : { success: false, error: 'BRANCH_NOT_EMPTY' }
+    } catch (e) { return { success: false, error: String(e) } }
+  })
+  ipcMain.handle('db:branch-stats', async (_e, id: number) => BranchRepository.stats(id))
+
+  ipcMain.handle('db:draft-get-max-finalized-in-range', async (_e, from: number, to: number) => DraftRepository.getMaxFinalizedInRange(from, to))
+  ipcMain.handle('db:blueprint-count', async () => BlueprintRepository.count())
+  ipcMain.handle('db:blueprint-count-range', async (_e, from: number, to: number) => BlueprintRepository.countInRange(from, to))
+  ipcMain.handle('db:summary-snapshot-at', async (_e, chapterNumber: number) => SummaryRepository.getSnapshotAtOrBefore(chapterNumber))
+
+  ipcMain.handle('db:canon-timeline-get-visible', async (_e, raw: unknown, includeFlashback = true) => {
+    const v = safeValidate(validateVisibility, raw)
+    return v.ok ? CanonRepository.getTimelineVisible(v.data, includeFlashback) : []
+  })
+  ipcMain.handle('db:canon-fact-list-visible', async (_e, raw: unknown) => {
+    const v = safeValidate(validateVisibility, raw)
+    return v.ok ? CanonRepository.getFactsVisible(v.data) : []
+  })
+  ipcMain.handle('db:canon-summary-list-visible', async (_e, raw: unknown, limit = 5) => {
+    const v = safeValidate(validateVisibility, raw)
+    return v.ok ? CanonRepository.getRecentSummariesVisible(v.data, limit) : []
+  })
+  ipcMain.handle('db:canon-plot-list-visible', async (_e, raw: unknown) => {
+    const v = safeValidate(validateVisibility, raw)
+    return v.ok ? CanonRepository.getActivePlotLinesVisible(v.data) : []
   })
 
   // ============================================================

@@ -13,6 +13,7 @@ import { ipc } from './ipc-client'
 import i18n from '../i18n'
 
 import { readPostProcessStatus, getChapterFinalizeScope, getFailedStepLabels } from './workflows/workflow-utils'
+import { BRANCH_BASE, branchIdOf, isMainChapter, previousChapterNumber, requiredPreviousChapter } from '../shared/chapter-addressing'
 
 const t = (key: string, opts?: Record<string, unknown>) => i18n.t(key, { ns: 'stores', ...opts })
 
@@ -139,9 +140,23 @@ export async function guardChapterWriting(targetChapterNumber?: number): Promise
     }
   }
 
-  // 如果指定了且不是第一章，则必须保证前一章已经存在正文库（定稿状态）
-  if (targetChapterNumber && targetChapterNumber > 1) {
-    const prevChapter = targetChapterNumber - 1
+  // 如果指定了章节号，前一章（正文 n-1 / 线内上一章 / 锚点章）必须已定稿
+  if (targetChapterNumber && targetChapterNumber > 0) {
+    let prevChapter: number | null
+    if (isMainChapter(targetChapterNumber)) {
+      prevChapter = requiredPreviousChapter(targetChapterNumber, [])
+    } else {
+      const branches = await ipc.invoke('db:branch-list').catch(() => [])
+      try {
+        prevChapter = previousChapterNumber(targetChapterNumber, branches)
+      } catch {
+        return {
+          ok: false,
+          message: t('guard.prevChapterNotFinalized', { chapter: targetChapterNumber }),
+        }
+      }
+    }
+    if (prevChapter == null) return { ok: true }
     const prevDraftMeta = await ipc.invoke('db:draft-get-finalized', prevChapter)
     if (!prevDraftMeta) {
       return {
@@ -203,8 +218,13 @@ export async function guardRepairPostProcess(chapterNumber: number): Promise<Gua
     return { ok: false, message: t('guard.openProjectFirst') }
   }
 
-  // 从数据库获取最大的定稿章节号
-  const maxFinalized = await ipc.invoke('db:draft-get-max-finalized-chapter')
+  const maxFinalized = isMainChapter(chapterNumber)
+    ? await ipc.invoke('db:draft-get-max-finalized-chapter')
+    : await ipc.invoke(
+      'db:draft-get-max-finalized-in-range',
+      branchIdOf(chapterNumber) * BRANCH_BASE + 1,
+      (branchIdOf(chapterNumber) + 1) * BRANCH_BASE - 1,
+    )
 
   if (maxFinalized === 0) {
     return { ok: false, message: t('guard.noFinalizedChapters') }
