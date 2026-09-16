@@ -28,6 +28,7 @@ export default defineConfig({
       'src/shared/__tests__/chapter-addressing.test.ts',
       'src/services/__tests__/export-layout.test.ts',
       'src/services/reference/__tests__/cost-estimate.test.ts',
+      'src/services/reference/__tests__/analyzed-range.test.ts',
     ],
     globals: false,
   },

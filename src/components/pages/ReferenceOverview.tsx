@@ -6,6 +6,8 @@ import { useReferenceStore } from '../../stores/reference-store'
 import { useLLMStore } from '../../stores/llm-store'
 import { useWorkflowStore } from '../../stores/workflow-store'
 import { createReferenceDigestWorkflow } from '../../services/workflows/reference-workflow'
+import { nextDigestRange } from '../../services/reference/analyzed-range'
+import { ipc } from '../../services/ipc-client'
 import { globalEventBus } from '../../shared/event-bus'
 import { Button } from '../ui/Button'
 import { EmptyState } from '../ui/EmptyState'
@@ -22,8 +24,9 @@ export default function ReferenceOverview() {
 
   const work = works.find((w) => w.id === selectedWorkId) ?? null
   const failed = digests.filter((d) => d.status === 'failed')
-  const nextFrom = work ? work.analyzedTo + 1 : 1
-  const canContinue = !!work && work.status !== 'running' && nextFrom <= work.totalChapters
+  const okNums = new Set(digests.filter((d) => d.status === 'ok').map((d) => d.chapterNumber))
+  const pendingNums = chapters.map((c) => c.number).filter((n) => !okNums.has(n)).sort((a, b) => a - b)
+  const canContinue = !!work && work.status !== 'running' && pendingNums.length > 0
   const modelLabel = (id: string) => {
     if (!id) return t('reference.header.defaultModel')
     return models.find((m) => m.id === id)?.name || id
@@ -46,9 +49,11 @@ export default function ReferenceOverview() {
 
   const handleContinue = async () => {
     if (!work) return
-    const to = Math.min(work.totalChapters, nextFrom + 199)
+    const pending = await ipc.invoke('db:ref-chapter-pending', work.id, 1, work.totalChapters)
+    const range = nextDigestRange(pending, work.totalChapters)
+    if (!range) return
     await startWorkflow(createReferenceDigestWorkflow({
-      workId: work.id, workName: work.name, from: nextFrom, to,
+      workId: work.id, workName: work.name, from: range.from, to: range.to,
     }), false)
   }
 

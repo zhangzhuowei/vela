@@ -8,6 +8,7 @@ import { getPromptTemplate } from '../../prompt-templates'
 import { BasePromptBuilder } from '../../prompts/prompt-builder'
 import { ipc } from '../../ipc-client'
 import { DIGEST_MAX_CHARS, DIGEST_CONCURRENCY } from '../../reference/cost-estimate'
+import { contiguousAnalyzedTo } from '../../reference/analyzed-range'
 import type { RefDigestInput, RefCharacterState, RefIntroduced, RefLineData } from '../../../../electron/repositories/reference-repository'
 import i18n from '../../../i18n'
 
@@ -143,8 +144,11 @@ export class RefDigestChaptersCommand extends BaseWorkflowCommand<void> {
 
     await runWithConcurrency(tasks, DIGEST_CONCURRENCY, () => context.cancelled)
 
-    const analyzedFrom = work.analyzedFrom > 0 ? Math.min(work.analyzedFrom, this.from) : this.from
-    const analyzedTo = Math.max(work.analyzedTo, this.to)
+    const okNums = (await ipc.invoke('db:ref-digest-list', this.workId))
+      .filter((d) => d.status === 'ok')
+      .map((d) => d.chapterNumber)
+    const analyzedTo = contiguousAnalyzedTo(okNums)
+    const analyzedFrom = analyzedTo > 0 ? 1 : 0
     await ipc.invoke('db:ref-work-upsert', {
       ...work,
       analyzedFrom,
