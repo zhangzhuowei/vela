@@ -17,3 +17,9 @@ export function nextDigestRange(
   if (to < from) return null
   return { from, to }
 }
+
+/** 指定 force 时重跑这些章（即使已成功）；否则只跑尚未 ok 的 pending。 */
+export function chapterRunQueue(pending: number[], forceChapters?: number[]): number[] {
+  if (forceChapters && forceChapters.length > 0) return [...new Set(forceChapters)]
+  return pending
+}

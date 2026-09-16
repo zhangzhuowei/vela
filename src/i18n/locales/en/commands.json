@@ -232,7 +232,14 @@
     "digestStart": "Digesting {{count}} chapters ({{from}}–{{to}})",
     "digestFailed": "Chapter {{chapter}} digest failed: {{error}}",
     "digestProgress": "Done {{done}}, failed {{failed}}, total {{total}}",
-    "digestSummary": "Digest finished: {{done}} ok, {{failed}} failed"
+    "digestSummary": "Digest finished: {{done}} ok, {{failed}} failed",
+    "stageBatchDone": "Stage batch {{index}}/{{total}}: {{count}} segments",
+    "stagesSaved": "Stage axis saved: {{count}} segments",
+    "lineArcDone": "Wrote character-line arc: {{name}}",
+    "outlineLockedSkip": "{{level}} is locked, skip overwrite",
+    "outlineSaved": "Saved {{level}}",
+    "nothingToRefine": "Nothing to refine",
+    "targetLocked": "Target is locked"
   },
   "workflowDefs": {
     "architectureTitle": "🏗️ Generate Story Architecture",
@@ -339,7 +346,23 @@
     "refDigestTitle": "Reference digest: {{name}} (ch. {{from}}–{{to}})",
     "refDigestStep": "Chapter digests",
     "refDigestStepDesc": "Generate structured digests for chapters {{from}}–{{to}}",
-    "refDigestDone": "Digest complete. You can define character lines and outline next."
+    "refDigestDone": "Digest complete. You can define character lines and outline next.",
+    "refOutlineTitle": "Outline: {{name}}",
+    "refStepStages": "Stage axis",
+    "refStepStagesDesc": "Segment by major map / antagonist",
+    "refStepLineArcs": "Character-line arcs",
+    "refStepLineArcsDesc": "Write an arc for each unlocked character line",
+    "refStepL2": "L2 global outline",
+    "refStepL2Desc": "Distill the book skeleton from stages and arcs",
+    "refStepL3": "L3 progression",
+    "refStepL3Desc": "Abstract reusable pacing rules",
+    "refOutlineDone": "Outline complete",
+    "refRefineTitle": "Refine: {{name}} · {{scope}}",
+    "refRefineStep": "Rewrite by instruction",
+    "refRefineDone": "Refine complete",
+    "refRerunTitle": "Rerun: {{name}} · {{scope}}",
+    "refRerunStep": "Regenerate this block",
+    "refRerunDone": "Rerun complete"
   },
   "pipeline": {
     "retryFailed": "  ⚠️ {{label}} failed on attempt {{attempt}}, retrying... ({{error}})",

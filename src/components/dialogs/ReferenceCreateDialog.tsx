@@ -60,7 +60,7 @@ export default function ReferenceCreateDialog({ open, onClose }: ReferenceCreate
   }
 
   const handleClose = () => {
-    if (starting || splitting) return
+    if (splitting) return
     reset()
     onClose()
   }
@@ -123,7 +123,7 @@ export default function ReferenceCreateDialog({ open, onClose }: ReferenceCreate
       }
       await useReferenceStore.getState().loadWorks()
       await useReferenceStore.getState().selectWork(workId)
-      await startWorkflow(createReferenceDigestWorkflow({
+      void startWorkflow(createReferenceDigestWorkflow({
         workId,
         workName: name.trim(),
         from: range.from,
@@ -289,7 +289,7 @@ export default function ReferenceCreateDialog({ open, onClose }: ReferenceCreate
         </div>
 
         <DialogFooter>
-          <Button variant="ghost" onClick={handleClose} disabled={starting}>{t('cancel', { ns: 'common' })}</Button>
+          <Button variant="ghost" onClick={handleClose} disabled={splitting}>{t('cancel', { ns: 'common' })}</Button>
           <Button
             onClick={() => void handleStart()}
             disabled={starting || splitting || !name.trim() || chapters.length === 0 || range.to < 1}

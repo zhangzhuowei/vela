@@ -232,7 +232,14 @@
     "digestStart": "开始拆解 {{count}} 章（第 {{from}}～{{to}} 章）",
     "digestFailed": "第 {{chapter}} 章拆解失败：{{error}}",
     "digestProgress": "已完成 {{done}}，失败 {{failed}}，共 {{total}}",
-    "digestSummary": "拆解结束：成功 {{done}}，失败 {{failed}}"
+    "digestSummary": "拆解结束：成功 {{done}}，失败 {{failed}}",
+    "stageBatchDone": "阶段批 {{index}}/{{total}}：切出 {{count}} 段",
+    "stagesSaved": "阶段轴已写入 {{count}} 段",
+    "lineArcDone": "已写人物线弧：{{name}}",
+    "outlineLockedSkip": "{{level}} 已锁定，跳过覆盖",
+    "outlineSaved": "已保存 {{level}}",
+    "nothingToRefine": "没有可微调的目标",
+    "targetLocked": "目标已锁定"
   },
   "workflowDefs": {
     "architectureTitle": "🏗️ 生成故事架构",
@@ -339,7 +346,23 @@
     "refDigestTitle": "拆书：{{name}}（第 {{from}}～{{to}} 章）",
     "refDigestStep": "逐章拆解",
     "refDigestStepDesc": "第 {{from}}～{{to}} 章逐章生成结构化摘要",
-    "refDigestDone": "拆书完成，可以定义人物线并归纳大纲"
+    "refDigestDone": "拆书完成，可以定义人物线并归纳大纲",
+    "refOutlineTitle": "归纳大纲：{{name}}",
+    "refStepStages": "阶段轴",
+    "refStepStagesDesc": "按情节切分大地图 / 大敌阶段",
+    "refStepLineArcs": "人物线弧",
+    "refStepLineArcsDesc": "为每条未锁定的人物线写叙事弧",
+    "refStepL2": "L2 全书总纲",
+    "refStepL2Desc": "从阶段与线弧提炼全书骨架",
+    "refStepL3": "L3 推进模式",
+    "refStepL3Desc": "归纳可套用的推进规律",
+    "refOutlineDone": "大纲归纳完成",
+    "refRefineTitle": "微调：{{name}} · {{scope}}",
+    "refRefineStep": "按建议改写",
+    "refRefineDone": "微调完成",
+    "refRerunTitle": "重跑：{{name}} · {{scope}}",
+    "refRerunStep": "单独重新生成",
+    "refRerunDone": "重跑完成"
   },
   "pipeline": {
     "retryFailed": "  ⚠️ {{label}} 第{{attempt}}次失败，正在重试...（{{error}}）",

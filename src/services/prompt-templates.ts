@@ -2870,8 +2870,8 @@ Requirements:
     variables: {
       chapter_number: '章号',
       chapter_title: '拆章标题',
-      chapter_content: '本章正文（可能是前半或后半）',
-      part_note: '分半提示（整章 / 前半 / 后半）',
+      chapter_content: '本章正文（可能是整章或按段切出的一块）',
+      part_note: '分段提示（整章为空；否则为第 i/n 段）',
       known_lines: '已确认的人物线本名与别名（可为空）',
     },
     content: `请阅读范文第 {{chapter_number}} 章「{{chapter_title}}」{{part_note}}，输出结构化摘要。
@@ -2902,6 +2902,180 @@ Requirements:
 - 只列本章实际登场或被明确提及的角色，龙套不列。
 - intimate：本章是否含亲密场面。
 - 仅输出 JSON。`,
+  },
+  {
+    key: 'ref_stage_segment',
+    name: '参考作品·阶段切分',
+    description: '把一批章摘要切成若干情节阶段（大地图 / 大敌 / 身份变更），给出每段目标、敌人、入段钩子、出段爆点。',
+    systemRole: '你是一位网文结构分析师，按情节推进而非字数切阶段。',
+    variables: {
+      digests: '本批章摘要（每行：第N章｜主攻｜摘要）',
+      previous_tail: '上一批最后一个阶段（可为空）',
+      user_hint: '用户对切分粒度的要求（可为空）',
+    },
+    content: `以下是范文一批章节的摘要，请切成情节阶段。
+
+【上一批最后一个阶段】
+{{previous_tail}}
+
+【切分要求】
+- 新阶段的信号：进入新地图 / 新的主要敌人或目标 / 主角身份或处境发生质变。
+- 一个阶段通常 15～60 章；不要按固定章数机械切。
+- 若本批开头仍在延续「上一批最后一个阶段」，第一段设 "continuesPrevious": true 并沿用其标题。
+{{user_hint}}
+
+【章摘要】
+{{digests}}
+
+---
+输出 JSON：
+{
+  "stages": [
+    {
+      "title": "阶段名（6 字内）",
+      "fromChapter": 起始章号,
+      "toChapter": 结束章号,
+      "goal": "本阶段主角要达成什么",
+      "antagonist": "主要敌人 / 对立面",
+      "entryHook": "把读者拉进本阶段的钩子",
+      "exitPeak": "本阶段的收束爆点",
+      "continuesPrevious": false
+    }
+  ]
+}
+章号必须连续覆盖本批全部章，不得重叠。仅输出 JSON。`,
+  },
+  {
+    key: 'ref_line_arc',
+    name: '参考作品·人物线弧',
+    description: '给一条关系线写叙事弧：从初遇到确立后的复用方式，引用具体章号。',
+    systemRole: '你是一位网文结构分析师，擅长归纳单条人物线的推进方式。',
+    variables: {
+      line_name: '线名（本名）',
+      line_stats: '本线统计（首出场 / 主攻章数 / 日常 / 助攻 / 引出 / 最长缺席）',
+      line_chapters: '本线出现过的章（章号｜阶段｜功能｜摘要一句）',
+      user_hint: '用户要求（可为空）',
+    },
+    content: `请为范文中「{{line_name}}」这条关系线写叙事弧。
+
+【统计】
+{{line_stats}}
+
+【出现过的章】
+{{line_chapters}}
+
+{{user_hint}}
+
+---
+输出 Markdown，四段，每段 2～4 句并引用章号：
+## 推进节奏
+（初遇→推进→突破→收尾各花了多少章，中间穿插了什么）
+## 关键突破点
+（哪几章是转折，用了什么事件）
+## 确立后的复用
+（日常露脸、助攻其他线、引出新角色分别怎么用）
+## 可借鉴的套路
+（抽象成 2～3 条可复用的规律，不要复述剧情）`,
+  },
+  {
+    key: 'ref_global_outline',
+    name: '参考作品·全书总纲',
+    description: '基于阶段纲与人物线弧写全书总纲：主题、核心冲突、主角起点→终点、力量阶梯、势力格局。',
+    systemRole: '你是一位资深网文主编，擅长从结构提炼全书骨架。',
+    variables: {
+      work_name: '范文名',
+      stages: '阶段纲（每段：序号｜标题｜章范围｜目标｜敌人｜爆点）',
+      line_arcs: '各人物线弧（Markdown 拼接）',
+      sample_note: '抽样说明（如「仅基于前 200 章」）',
+      user_hint: '用户要求（可为空）',
+    },
+    content: `请为范文《{{work_name}}》写全书总纲。{{sample_note}}
+
+【阶段纲】
+{{stages}}
+
+【人物线弧】
+{{line_arcs}}
+
+{{user_hint}}
+
+---
+输出 Markdown：
+## 主题与核心冲突
+## 主角：起点 → 终点
+## 力量 / 地位阶梯
+（每上一阶对应哪个阶段）
+## 势力格局
+## 主线与各关系线的编织方式
+（主线推进与关系线切换如何交错）
+## 结局走向
+只写结构，不复述具体情节细节。`,
+  },
+  {
+    key: 'ref_progression_pattern',
+    name: '参考作品·推进模式',
+    description: '抽象范文的推进规律：高潮间隔、升级循环、伏笔距离、关系线轮换与复用比例。数字来自统计，不要自己编。',
+    systemRole: '你是一位网文结构分析师，只做规律归纳，输出可直接套用到别的书的写法。',
+    variables: {
+      stages: '阶段纲',
+      line_stats: '人物线统计表（代码算出的数字）',
+      switch_points: '主攻线切换点列表',
+      hooks_sample: '抽样 30 条章末钩子',
+      sample_note: '抽样说明',
+      user_hint: '用户要求（可为空）',
+    },
+    content: `请归纳范文的推进模式。{{sample_note}}
+
+【阶段纲】
+{{stages}}
+
+【人物线统计（已由程序算出，直接引用数字）】
+{{line_stats}}
+
+【主攻线切换点】
+{{switch_points}}
+
+【章末钩子抽样】
+{{hooks_sample}}
+
+{{user_hint}}
+
+---
+输出 Markdown：
+## 阶段节奏
+（平均阶段长度、每阶段内高潮位置、阶段间怎么过渡）
+## 升级 / 地图循环
+（是否存在「升级—打脸—新地图」类循环，周期多少章）
+## 关系线轮换
+（并行几条、主攻线平均多少章换一次、硬切还是借旧线引出）
+## 已攻略角色的复用
+（日常 / 助攻 / 引出三种方式的比例与典型用法）
+## 钩子类型分布
+（把抽样钩子归成 3～5 类并给比例）
+## 可直接套用的规则
+（5～8 条「每 X 章…」「新线引入前先…」式规则）`,
+  },
+  {
+    key: 'ref_refine',
+    name: '参考作品·按建议微调',
+    description: '按用户建议改写某一层 / 某一段大纲，保留未被建议触及的部分。',
+    systemRole: '你是一位网文结构编辑，只改被要求改的地方。',
+    variables: {
+      scope_label: '作用域说明（如「L3 推进模式」「第 3 阶段」「人物线：绫波」）',
+      current: '当前内容（Markdown 或 JSON）',
+      instruction: '用户建议',
+      output_format: '输出格式说明（Markdown 或与输入同结构的 JSON）',
+    },
+    content: `请按建议修改【{{scope_label}}】。
+
+【当前内容】
+{{current}}
+
+【建议】
+{{instruction}}
+
+要求：只改建议涉及的部分，其余原样保留；不要新增与建议无关的内容。
+{{output_format}}`,
   },
 
   // ================================================================

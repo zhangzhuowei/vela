@@ -232,7 +232,14 @@
     "digestStart": "Разбор {{count}} глав ({{from}}–{{to}})",
     "digestFailed": "Глава {{chapter}} не разобрана: {{error}}",
     "digestProgress": "Готово {{done}}, ошибок {{failed}}, всего {{total}}",
-    "digestSummary": "Разбор завершён: успешно {{done}}, ошибок {{failed}}"
+    "digestSummary": "Разбор завершён: успешно {{done}}, ошибок {{failed}}",
+    "stageBatchDone": "Пакет этапов {{index}}/{{total}}: {{count}} сегментов",
+    "stagesSaved": "Ось этапов записана: {{count}} сегментов",
+    "lineArcDone": "Дуга линии записана: {{name}}",
+    "outlineLockedSkip": "{{level}} заблокирован, пропуск",
+    "outlineSaved": "Сохранено {{level}}",
+    "nothingToRefine": "Нечего править",
+    "targetLocked": "Цель заблокирована"
   },
   "workflowDefs": {
     "architectureTitle": "🏗️ Генерация сюжетной архитектуры",
@@ -339,7 +346,23 @@
     "refDigestTitle": "Разбор: {{name}} (гл. {{from}}–{{to}})",
     "refDigestStep": "Поглавный разбор",
     "refDigestStepDesc": "Структурированные дайджесты глав {{from}}–{{to}}",
-    "refDigestDone": "Разбор завершён. Можно задать линии персонажей и план."
+    "refDigestDone": "Разбор завершён. Можно задать линии персонажей и план.",
+    "refOutlineTitle": "План: {{name}}",
+    "refStepStages": "Ось этапов",
+    "refStepStagesDesc": "Нарезать по крупной карте / противнику",
+    "refStepLineArcs": "Дуги линий",
+    "refStepLineArcsDesc": "Написать дугу для каждой незаблокированной линии",
+    "refStepL2": "L2 общий план",
+    "refStepL2Desc": "Скелет книги из этапов и дуг",
+    "refStepL3": "L3 паттерн",
+    "refStepL3Desc": "Выделить переносимые правила ритма",
+    "refOutlineDone": "План готов",
+    "refRefineTitle": "Правка: {{name}} · {{scope}}",
+    "refRefineStep": "Переписать по совету",
+    "refRefineDone": "Правка готова",
+    "refRerunTitle": "Перезапуск: {{name}} · {{scope}}",
+    "refRerunStep": "Перегенерировать блок",
+    "refRerunDone": "Перезапуск готов"
   },
   "pipeline": {
     "retryFailed": "  ⚠️ {{label}} завершилось ошибкой (попытка {{attempt}}), повтор... ({{error}})",

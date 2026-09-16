@@ -1,7 +1,7 @@
 import { create } from 'zustand'
 import { ipc } from '../services/ipc-client'
 import type {
-  RefWorkData, RefChapterMeta, RefDigestData, RefLineData, RefStageData, RefOutlineData,
+  RefWorkData, RefChapterMeta, RefDigestData, RefLineData, RefStageData, RefOutlineData, RefRevisionData,
 } from '../../electron/repositories/reference-repository'
 
 interface ReferenceState {
@@ -13,6 +13,7 @@ interface ReferenceState {
   stages: RefStageData[]
   outlineL2: RefOutlineData | null
   outlineL3: RefOutlineData | null
+  revisions: RefRevisionData[]
   loading: boolean
   loadWorks: () => Promise<void>
   selectWork: (id: number | null) => Promise<void>
@@ -29,6 +30,7 @@ export const useReferenceStore = create<ReferenceState>((set, get) => ({
   stages: [],
   outlineL2: null,
   outlineL3: null,
+  revisions: [],
   loading: false,
 
   loadWorks: async () => {
@@ -39,7 +41,7 @@ export const useReferenceStore = create<ReferenceState>((set, get) => ({
   selectWork: async (id) => {
     set({ selectedWorkId: id })
     if (id === null) {
-      set({ chapters: [], digests: [], lines: [], stages: [], outlineL2: null, outlineL3: null })
+      set({ chapters: [], digests: [], lines: [], stages: [], outlineL2: null, outlineL3: null, revisions: [] })
       return
     }
     await get().reloadSelected()
@@ -49,16 +51,21 @@ export const useReferenceStore = create<ReferenceState>((set, get) => ({
     const id = get().selectedWorkId
     if (id === null) return
     set({ loading: true })
-    const [chapters, digests, lines, stages, outlineL2, outlineL3, works] = await Promise.all([
-      ipc.invoke('db:ref-chapter-meta-list', id),
-      ipc.invoke('db:ref-digest-list', id),
-      ipc.invoke('db:ref-line-list', id),
-      ipc.invoke('db:ref-stage-list', id),
-      ipc.invoke('db:ref-outline-get', id, 'L2'),
-      ipc.invoke('db:ref-outline-get', id, 'L3'),
-      ipc.invoke('db:ref-work-list'),
-    ])
-    set({ chapters, digests, lines, stages, outlineL2, outlineL3, works, loading: false })
+    try {
+      const [chapters, digests, lines, stages, outlineL2, outlineL3, revisions, works] = await Promise.all([
+        ipc.invoke('db:ref-chapter-meta-list', id),
+        ipc.invoke('db:ref-digest-list', id),
+        ipc.invoke('db:ref-line-list', id),
+        ipc.invoke('db:ref-stage-list', id),
+        ipc.invoke('db:ref-outline-get', id, 'L2'),
+        ipc.invoke('db:ref-outline-get', id, 'L3'),
+        ipc.invoke('db:ref-revision-list', id),
+        ipc.invoke('db:ref-work-list'),
+      ])
+      set({ chapters, digests, lines, stages, outlineL2, outlineL3, revisions, works })
+    } finally {
+      set({ loading: false })
+    }
   },
 
   deleteWork: async (id) => {

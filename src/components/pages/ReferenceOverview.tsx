@@ -1,36 +1,82 @@
-import { useEffect } from 'react'
-import { Library, Play, RotateCcw } from 'lucide-react'
+import { useEffect, useState } from 'react'
+import { Library, Play, RotateCcw, GitBranch, ChevronDown, ChevronRight } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { useProjectStore } from '../../stores/project-store'
 import { useReferenceStore } from '../../stores/reference-store'
 import { useLLMStore } from '../../stores/llm-store'
 import { useWorkflowStore } from '../../stores/workflow-store'
-import { createReferenceDigestWorkflow } from '../../services/workflows/reference-workflow'
+import { createReferenceDigestWorkflow, createReferenceOutlineWorkflow, createReferenceRerunWorkflow } from '../../services/workflows/reference-workflow'
 import { nextDigestRange } from '../../services/reference/analyzed-range'
+import type { RefRefineScope, RefRerunScope } from '../../services/workflows/commands/reference-analysis.command'
+import type { RefRevisionData } from '../../../electron/repositories/reference-repository'
 import { ipc } from '../../services/ipc-client'
 import { globalEventBus } from '../../shared/event-bus'
 import { Button } from '../ui/Button'
 import { EmptyState } from '../ui/EmptyState'
+import { NativeSelect } from '../ui/NativeSelect'
+import { Switch } from '../ui/Switch'
+import { toast } from '../ui/Toast'
 import { cn } from '../../lib/utils'
+import MarkdownContent from '../ui/MarkdownContent'
+import LineEditor from '../reference/LineEditor'
+import RefinePanel from '../reference/RefinePanel'
+import LineMatrix from '../reference/LineMatrix'
+import { buildLineMatrix } from '../../services/reference/line-matrix'
+
+type Tab = 'outline' | 'lines' | 'digests'
+
+function CollapseTitle({
+  open, onToggle, title, collapseLabel, expandLabel,
+}: {
+  open: boolean
+  onToggle: () => void
+  title: string
+  collapseLabel: string
+  expandLabel: string
+}) {
+  return (
+    <button
+      type="button"
+      className="flex items-center gap-1 min-w-0 text-left text-xs font-medium"
+      title={open ? collapseLabel : expandLabel}
+      aria-expanded={open}
+      onClick={onToggle}
+    >
+      {open ? <ChevronDown size={12} className="flex-shrink-0" /> : <ChevronRight size={12} className="flex-shrink-0" />}
+      <span className="truncate">{title}</span>
+    </button>
+  )
+}
 
 export default function ReferenceOverview() {
   const { t } = useTranslation('pages')
   const currentProject = useProjectStore((s) => s.currentProject)
   const models = useLLMStore((s) => s.models)
   const startWorkflow = useWorkflowStore((s) => s.startWorkflow)
+  const analyzing = useWorkflowStore((s) => s.activeRuns.some((r) => r.type === 'reference_analysis'))
   const {
-    works, selectedWorkId, chapters, digests, loading, reloadSelected,
+    works, selectedWorkId, chapters, digests, lines, stages, outlineL2, outlineL3, revisions, loading, reloadSelected,
   } = useReferenceStore()
+  const [tab, setTab] = useState<Tab>('outline')
+  const [refine, setRefine] = useState<{ scope: RefRefineScope; label: string } | null>(null)
+  const [collapsed, setCollapsed] = useState<Record<string, boolean>>({})
+  const isOpen = (key: string, defaultOpen = true) => (collapsed[key] === undefined ? defaultOpen : !collapsed[key])
+  const toggle = (key: string, defaultOpen = true) => {
+    setCollapsed((c) => {
+      const currentlyOpen = c[key] === undefined ? defaultOpen : !c[key]
+      return { ...c, [key]: currentlyOpen }
+    })
+  }
 
   const work = works.find((w) => w.id === selectedWorkId) ?? null
   const failed = digests.filter((d) => d.status === 'failed')
   const okNums = new Set(digests.filter((d) => d.status === 'ok').map((d) => d.chapterNumber))
   const pendingNums = chapters.map((c) => c.number).filter((n) => !okNums.has(n)).sort((a, b) => a - b)
-  const canContinue = !!work && work.status !== 'running' && pendingNums.length > 0
-  const modelLabel = (id: string) => {
-    if (!id) return t('reference.header.defaultModel')
-    return models.find((m) => m.id === id)?.name || id
-  }
+  const busy = !!work && (work.status === 'running' || analyzing)
+  const canContinue = !!work && !busy && pendingNums.length > 0
+  const canOutline = !!work && !busy && okNums.size > 0 && lines.length > 0
+  const digestCandidates = models.filter((m) => m.purposes.includes('summary') || m.purposes.includes('generation'))
+  const outlineCandidates = models.filter((m) => m.purposes.includes('generation'))
 
   useEffect(() => {
     const offRefresh = globalEventBus.on('REFRESH_RESOURCE', (payload) => {
@@ -65,17 +111,44 @@ export default function ReferenceOverview() {
     }), false)
   }
 
-  if (!currentProject) {
-    return (
-      <EmptyState
-        icon={<Library size={40} />}
-        message={t('reference.noSelection')}
-        opacity={0.4}
-      />
-    )
+  const handleOutline = async () => {
+    if (!work) return
+    await startWorkflow(createReferenceOutlineWorkflow({ workId: work.id, workName: work.name }), false)
   }
 
-  if (!work) {
+  const startRerun = (scope: RefRerunScope, label: string) => {
+    if (!work || busy) return
+    void startWorkflow(createReferenceRerunWorkflow({
+      workId: work.id, workName: work.name, scope, scopeLabel: label,
+    }), false)
+  }
+
+  const saveModel = async (field: 'digestModelId' | 'outlineModelId', value: string) => {
+    if (!work || busy) return
+    const res = await ipc.invoke('db:ref-work-upsert', { ...work, [field]: value })
+    if (!res.success) {
+      toast.error(res.error || t('reference.header.modelSaveFailed'))
+      return
+    }
+    await reloadSelected()
+  }
+
+  const rollback = async (rev: RefRevisionData) => {
+    if (!rev.before || rev.before === '{}') return
+    if (rev.scope === 'L2' || rev.scope === 'L3') {
+      await ipc.invoke('db:ref-outline-upsert', { workId: rev.workId, level: rev.scope, body: rev.before, force: true })
+    } else if (rev.scope === 'stage') {
+      await ipc.invoke('db:ref-stage-upsert', JSON.parse(rev.before))
+    } else if (rev.scope === 'line') {
+      const line = lines.find((l) => l.id === rev.targetId)
+      if (line) await ipc.invoke('db:ref-line-upsert', { ...line, arcSummary: rev.before })
+    } else {
+      await ipc.invoke('db:ref-digest-upsert', JSON.parse(rev.before))
+    }
+    await reloadSelected()
+  }
+
+  if (!currentProject || !work) {
     return (
       <EmptyState
         icon={<Library size={40} />}
@@ -86,99 +159,473 @@ export default function ReferenceOverview() {
   }
 
   const chapterTitle = (n: number) => chapters.find((c) => c.number === n)?.title || ''
+  const tabs: Array<{ id: Tab; label: string }> = [
+    { id: 'outline', label: t('reference.tabOutline') },
+    { id: 'lines', label: t('reference.tabLines') },
+    { id: 'digests', label: t('reference.tabDigests') },
+  ]
 
   return (
-    <div className="w-full h-full flex flex-col overflow-hidden" style={{ backgroundColor: 'var(--color-editor-bg)' }}>
-      <div className="px-5 py-4 border-b border-[var(--color-border)] space-y-2">
-        <div className="flex items-center justify-between gap-3">
-          <div className="min-w-0">
-            <h2 className="text-sm font-medium truncate">{work.name}</h2>
-            <p className="text-xs text-[var(--color-text-muted)] mt-1">
-              {t('reference.header.chapters', { count: work.totalChapters })}
-              {' · '}
-              {t('reference.header.analyzed', { from: work.analyzedFrom, to: work.analyzedTo })}
-              {' · '}
-              {t(`reference.status.${work.status}`)}
-            </p>
-            <p className="text-xs text-[var(--color-text-muted)] mt-0.5">
-              {t('reference.header.models', {
-                digest: modelLabel(work.digestModelId),
-                outline: modelLabel(work.outlineModelId),
-              })}
-            </p>
+    <div className="w-full h-full flex overflow-hidden" style={{ backgroundColor: 'var(--color-editor-bg)' }}>
+      <div className="flex-1 min-w-0 flex flex-col overflow-hidden">
+        <div className="px-5 py-4 border-b border-[var(--color-border)] space-y-2">
+          <div className="flex items-center justify-between gap-3">
+            <div className="min-w-0">
+              <h2 className="text-sm font-medium truncate">{work.name}</h2>
+              <p className="text-xs text-[var(--color-text-muted)] mt-1">
+                {t('reference.header.chapters', { count: work.totalChapters })}
+                {' · '}
+                {t('reference.header.analyzed', { from: work.analyzedFrom, to: work.analyzedTo })}
+                {' · '}
+                {t(`reference.status.${work.status}`)}
+              </p>
+              <div className="flex flex-wrap items-center gap-x-3 gap-y-1 mt-1.5">
+                <label className="flex items-center gap-1.5 text-xs text-[var(--color-text-muted)]">
+                  <span className="flex-shrink-0">{t('reference.header.digestModel')}</span>
+                  <NativeSelect
+                    className="w-44"
+                    value={work.digestModelId}
+                    disabled={busy}
+                    onChange={(e) => void saveModel('digestModelId', e.target.value)}
+                  >
+                    <option value="">{t('reference.header.defaultModel')}</option>
+                    {digestCandidates.map((m) => (
+                      <option key={m.id} value={m.id}>{m.name}</option>
+                    ))}
+                    {work.digestModelId && !digestCandidates.some((m) => m.id === work.digestModelId) && (
+                      <option value={work.digestModelId}>{work.digestModelId}</option>
+                    )}
+                  </NativeSelect>
+                </label>
+                <label className="flex items-center gap-1.5 text-xs text-[var(--color-text-muted)]">
+                  <span className="flex-shrink-0">{t('reference.header.outlineModel')}</span>
+                  <NativeSelect
+                    className="w-44"
+                    value={work.outlineModelId}
+                    disabled={busy}
+                    onChange={(e) => void saveModel('outlineModelId', e.target.value)}
+                  >
+                    <option value="">{t('reference.header.defaultModel')}</option>
+                    {outlineCandidates.map((m) => (
+                      <option key={m.id} value={m.id}>{m.name}</option>
+                    ))}
+                    {work.outlineModelId && !outlineCandidates.some((m) => m.id === work.outlineModelId) && (
+                      <option value={work.outlineModelId}>{work.outlineModelId}</option>
+                    )}
+                  </NativeSelect>
+                </label>
+              </div>
+            </div>
+            <div className="flex items-center gap-2 flex-shrink-0">
+              <Button size="sm" variant="outline" disabled={!canContinue || loading} onClick={() => void handleContinue()}>
+                <Play size={12} />
+                {t('reference.continue')}
+              </Button>
+              <Button size="sm" variant="outline" disabled={failed.length === 0 || work.status === 'running'} onClick={() => void handleRetryFailed()}>
+                <RotateCcw size={12} />
+                {t('reference.retryFailed')}
+              </Button>
+              <Button size="sm" disabled={!canOutline || loading} onClick={() => void handleOutline()}>
+                <GitBranch size={12} />
+                {t('reference.runOutline')}
+              </Button>
+            </div>
           </div>
-          <div className="flex items-center gap-2 flex-shrink-0">
-            <Button size="sm" variant="outline" disabled={!canContinue || loading} onClick={() => void handleContinue()}>
-              <Play size={12} />
-              {t('reference.continue')}
-            </Button>
-            <Button size="sm" variant="outline" disabled={failed.length === 0 || work.status === 'running'} onClick={() => void handleRetryFailed()}>
-              <RotateCcw size={12} />
-              {t('reference.retryFailed')}
-            </Button>
+          <div className="flex gap-1">
+            {tabs.map((item) => (
+              <button
+                key={item.id}
+                type="button"
+                className={cn(
+                  'px-2.5 py-1 rounded text-xs',
+                  tab === item.id ? 'bg-[var(--color-hover)] text-[var(--color-text)]' : 'text-[var(--color-text-muted)]',
+                )}
+                onClick={() => setTab(item.id)}
+              >
+                {item.label}
+              </button>
+            ))}
           </div>
+        </div>
+
+        <div className="flex-1 overflow-y-auto px-5 py-4 space-y-6">
+          {failed.length > 0 && tab === 'digests' && (
+            <section>
+              <h3 className="text-xs font-medium mb-2">{t('reference.failedTitle')}</h3>
+              <ul className="space-y-1">
+                {failed.map((d) => (
+                  <li key={d.chapterNumber} className="text-xs text-[var(--color-danger,#dc2626)]">
+                    {t('reference.failedItem', { chapter: d.chapterNumber, error: d.error })}
+                  </li>
+                ))}
+              </ul>
+            </section>
+          )}
+
+          {tab === 'digests' && (
+            <section>
+              <h3 className="text-xs font-medium mb-2">{t('reference.digestTitle')}</h3>
+              <div className="space-y-2">
+                {digests.length === 0 && (
+                  <p className="text-xs text-[var(--color-text-muted)]">{t('reference.digestEmpty')}</p>
+                )}
+                {digests.map((d) => {
+                  const label = t('reference.chapterHeading', { number: d.chapterNumber, title: chapterTitle(d.chapterNumber) })
+                  const open = isOpen(`digest-${d.chapterNumber}`, false)
+                  return (
+                  <div
+                    key={d.chapterNumber}
+                    className={cn(
+                      'rounded-lg px-3 py-2 border border-[var(--color-border)]',
+                      d.status === 'failed' && 'opacity-70',
+                    )}
+                  >
+                    <div className="flex items-center justify-between gap-2 text-xs">
+                      <CollapseTitle
+                        open={open}
+                        onToggle={() => toggle(`digest-${d.chapterNumber}`, false)}
+                        title={label}
+                        collapseLabel={t('reference.outline.collapse')}
+                        expandLabel={t('reference.outline.expand')}
+                      />
+                      <div className="flex items-center gap-1 flex-shrink-0">
+                        <Button
+                          size="sm"
+                          variant="ghost"
+                          onClick={() => setRefine({ scope: { kind: 'digest', chapterNumber: d.chapterNumber }, label })}
+                        >
+                          {t('reference.outline.refine')}
+                        </Button>
+                        <Button
+                          size="sm"
+                          variant="ghost"
+                          disabled={busy}
+                          title={t('reference.outline.rerunHint')}
+                          onClick={() => startRerun({ kind: 'digest', chapterNumber: d.chapterNumber }, label)}
+                        >
+                          {t('reference.outline.rerun')}
+                        </Button>
+                      </div>
+                    </div>
+                    <p className="mt-0.5 text-[0.65rem] text-[var(--color-text-muted)]">
+                      {d.activeLine
+                        ? t('reference.activeLine', { name: d.activeLine })
+                        : t('reference.activeLineNone')}
+                      {d.intimate ? ` · ${t('reference.intimate')}` : ''}
+                    </p>
+                    {open && (
+                      <>
+                        {d.summary && (
+                          <p className="mt-1 text-xs text-[var(--color-text-secondary)] leading-relaxed">{d.summary}</p>
+                        )}
+                        {d.characterStates.length > 0 && (
+                          <div className="mt-1.5 flex flex-wrap gap-1">
+                            {d.characterStates.map((s) => (
+                              <span
+                                key={`${d.chapterNumber}-${s.name}`}
+                                className="px-1.5 py-0.5 rounded text-[0.65rem] bg-[var(--color-hover)] text-[var(--color-text-muted)]"
+                              >
+                                {s.name} · {s.stage}/{s.func}
+                              </span>
+                            ))}
+                          </div>
+                        )}
+                      </>
+                    )}
+                  </div>
+                  )
+                })}
+              </div>
+            </section>
+          )}
+
+          {tab === 'lines' && (
+            <LineEditor workId={work.id} digests={digests} lines={lines} reloadSelected={reloadSelected} />
+          )}
+
+          {tab === 'outline' && (
+            <div className="space-y-6">
+              {okNums.size === 0 && (
+                <p className="text-xs text-[var(--color-text-muted)]">{t('reference.outline.needDigests')}</p>
+              )}
+              {okNums.size > 0 && lines.length === 0 && (
+                <p className="text-xs text-[var(--color-text-muted)]">{t('reference.outline.needLines')}</p>
+              )}
+
+              <section>
+                <div className="flex items-center justify-between mb-2">
+                  <CollapseTitle
+                    open={isOpen('l2')}
+                    onToggle={() => toggle('l2')}
+                    title={t('reference.outline.l2')}
+                    collapseLabel={t('reference.outline.collapse')}
+                    expandLabel={t('reference.outline.expand')}
+                  />
+                  <div className="flex items-center gap-2">
+                    {outlineL2 && (
+                      <Switch
+                        checked={outlineL2.locked}
+                        onCheckedChange={(locked) => void ipc.invoke('db:ref-outline-lock', work.id, 'L2', locked).then(() => reloadSelected())}
+                        aria-label={outlineL2.locked ? t('reference.outline.unlock') : t('reference.outline.lock')}
+                      />
+                    )}
+                    <Button size="sm" variant="ghost" disabled={!outlineL2} onClick={() => setRefine({ scope: { kind: 'L2' }, label: t('reference.outline.l2') })}>
+                      {t('reference.outline.refine')}
+                    </Button>
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                      disabled={busy || !!outlineL2?.locked}
+                      title={t('reference.outline.rerunHint')}
+                      onClick={() => startRerun({ kind: 'L2' }, t('reference.outline.l2'))}
+                    >
+                      {t('reference.outline.rerun')}
+                    </Button>
+                  </div>
+                </div>
+                {isOpen('l2') && (outlineL2?.body
+                  ? <div className="text-xs"><MarkdownContent content={outlineL2.body} /></div>
+                  : <p className="text-xs text-[var(--color-text-muted)]">{t('reference.outline.noOutline')}</p>)}
+              </section>
+
+              <section>
+                <div className="flex items-center justify-between mb-2">
+                  <CollapseTitle
+                    open={isOpen('l3')}
+                    onToggle={() => toggle('l3')}
+                    title={t('reference.outline.l3')}
+                    collapseLabel={t('reference.outline.collapse')}
+                    expandLabel={t('reference.outline.expand')}
+                  />
+                  <div className="flex items-center gap-2">
+                    {outlineL3 && (
+                      <Switch
+                        checked={outlineL3.locked}
+                        onCheckedChange={(locked) => void ipc.invoke('db:ref-outline-lock', work.id, 'L3', locked).then(() => reloadSelected())}
+                        aria-label={outlineL3.locked ? t('reference.outline.unlock') : t('reference.outline.lock')}
+                      />
+                    )}
+                    <Button size="sm" variant="ghost" disabled={!outlineL3} onClick={() => setRefine({ scope: { kind: 'L3' }, label: t('reference.outline.l3') })}>
+                      {t('reference.outline.refine')}
+                    </Button>
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                      disabled={busy || !!outlineL3?.locked}
+                      title={t('reference.outline.rerunHint')}
+                      onClick={() => startRerun({ kind: 'L3' }, t('reference.outline.l3'))}
+                    >
+                      {t('reference.outline.rerun')}
+                    </Button>
+                  </div>
+                </div>
+                {isOpen('l3') && (outlineL3?.body
+                  ? <div className="text-xs"><MarkdownContent content={outlineL3.body} /></div>
+                  : <p className="text-xs text-[var(--color-text-muted)]">{t('reference.outline.noOutline')}</p>)}
+              </section>
+
+              <section>
+                <div className="mb-2">
+                  <CollapseTitle
+                    open={isOpen('stages')}
+                    onToggle={() => toggle('stages')}
+                    title={t('reference.outline.stages')}
+                    collapseLabel={t('reference.outline.collapse')}
+                    expandLabel={t('reference.outline.expand')}
+                  />
+                </div>
+                {isOpen('stages') && (stages.length === 0 ? (
+                  <p className="text-xs text-[var(--color-text-muted)]">{t('reference.outline.noOutline')}</p>
+                ) : (
+                  <ul className="space-y-2">
+                    {stages.map((s) => {
+                      const open = isOpen(`stage-${s.id}`, false)
+                      const inRange = digests.filter((d) => d.chapterNumber >= s.fromChapter && d.chapterNumber <= s.toChapter)
+                      return (
+                      <li key={s.id} className="rounded-lg px-3 py-2 border border-[var(--color-border)] text-xs space-y-1">
+                        <div className="flex items-center justify-between gap-2">
+                          <CollapseTitle
+                            open={open}
+                            onToggle={() => toggle(`stage-${s.id}`, false)}
+                            title={`${s.seq} · ${s.title} · ${s.fromChapter}–${s.toChapter}`}
+                            collapseLabel={t('reference.outline.collapse')}
+                            expandLabel={t('reference.outline.expand')}
+                          />
+                          <div className="flex items-center gap-2 flex-shrink-0">
+                            <Switch
+                              checked={s.locked}
+                              onCheckedChange={(locked) => void ipc.invoke('db:ref-stage-upsert', { ...s, locked }).then(() => reloadSelected())}
+                              aria-label={s.locked ? t('reference.outline.unlock') : t('reference.outline.lock')}
+                            />
+                            <Button size="sm" variant="ghost" onClick={() => setRefine({ scope: { kind: 'stage', stageId: s.id }, label: s.title })}>
+                              {t('reference.outline.refine')}
+                            </Button>
+                            <Button
+                              size="sm"
+                              variant="ghost"
+                              disabled={busy || s.locked}
+                              title={t('reference.outline.rerunHint')}
+                              onClick={() => startRerun({ kind: 'stage', stageId: s.id }, s.title)}
+                            >
+                              {t('reference.outline.rerun')}
+                            </Button>
+                          </div>
+                        </div>
+                        {open && (
+                          <>
+                            {s.goal && <p className="text-[var(--color-text-secondary)]">{s.goal}</p>}
+                            {s.antagonist && <p className="text-[var(--color-text-muted)]">{t('reference.outline.stageAntagonist', { text: s.antagonist })}</p>}
+                            {s.entryHook && <p className="text-[var(--color-text-muted)]">{t('reference.outline.stageEntry', { text: s.entryHook })}</p>}
+                            {s.exitPeak && <p className="text-[var(--color-text-muted)]">{t('reference.outline.stageExit', { text: s.exitPeak })}</p>}
+                            {inRange.map((d) => (
+                              <button
+                                key={d.chapterNumber}
+                                type="button"
+                                className="block w-full text-left pl-4 py-0.5 text-[var(--color-text-secondary)] hover:text-[var(--color-accent)]"
+                                onClick={() => setRefine({
+                                  scope: { kind: 'digest', chapterNumber: d.chapterNumber },
+                                  label: t('reference.chapterHeading', { number: d.chapterNumber, title: chapterTitle(d.chapterNumber) }),
+                                })}
+                              >
+                                {t('reference.chapterHeading', { number: d.chapterNumber, title: chapterTitle(d.chapterNumber) })}
+                                {d.summary ? ` · ${d.summary.slice(0, 80)}` : ''}
+                              </button>
+                            ))}
+                          </>
+                        )}
+                      </li>
+                      )
+                    })}
+                  </ul>
+                ))}
+              </section>
+
+              <section>
+                <div className="flex items-center justify-between mb-2">
+                  <CollapseTitle
+                    open={isOpen('lines')}
+                    onToggle={() => toggle('lines')}
+                    title={t('reference.outline.lines')}
+                    collapseLabel={t('reference.outline.collapse')}
+                    expandLabel={t('reference.outline.expand')}
+                  />
+                  <Button
+                    size="sm"
+                    variant="ghost"
+                    disabled={busy || lines.length === 0 || lines.every((l) => l.locked)}
+                    title={
+                      busy ? t('reference.outline.rerunBusy')
+                        : lines.length === 0 ? t('reference.outline.needLines')
+                          : lines.every((l) => l.locked) ? t('reference.outline.rerunAllLocked')
+                            : t('reference.outline.rerunLinesHint')
+                    }
+                    onClick={() => startRerun({ kind: 'lines' }, t('reference.outline.lines'))}
+                  >
+                    {t('reference.outline.rerun')}
+                  </Button>
+                </div>
+                {isOpen('lines') && (lines.length === 0 ? (
+                  <p className="text-xs text-[var(--color-text-muted)]">{t('reference.outline.needLines')}</p>
+                ) : (
+                  <>
+                    <LineMatrix
+                      matrix={buildLineMatrix(digests, lines)}
+                      lines={lines}
+                      stages={stages}
+                      onCellClick={(ch) => {
+                        setTab('digests')
+                        setRefine({
+                          scope: { kind: 'digest', chapterNumber: ch },
+                          label: t('reference.chapterHeading', { number: ch, title: chapterTitle(ch) }),
+                        })
+                      }}
+                    />
+                    <ul className="space-y-2 mt-3">
+                    {lines.map((l) => {
+                      const open = isOpen(`line-${l.id}`, false)
+                      return (
+                      <li key={l.id} className="rounded-lg px-3 py-2 border border-[var(--color-border)] text-xs">
+                        <div className="flex items-center justify-between mb-1">
+                          <CollapseTitle
+                            open={open}
+                            onToggle={() => toggle(`line-${l.id}`, false)}
+                            title={l.name}
+                            collapseLabel={t('reference.outline.collapse')}
+                            expandLabel={t('reference.outline.expand')}
+                          />
+                          <div className="flex items-center gap-1">
+                            <Button size="sm" variant="ghost" onClick={() => setRefine({ scope: { kind: 'line', lineId: l.id }, label: l.name })}>
+                              {t('reference.outline.refine')}
+                            </Button>
+                            <Button
+                              size="sm"
+                              variant="ghost"
+                              disabled={busy || l.locked}
+                              title={t('reference.outline.rerunHint')}
+                              onClick={() => startRerun({ kind: 'line', lineId: l.id }, l.name)}
+                            >
+                              {t('reference.outline.rerun')}
+                            </Button>
+                          </div>
+                        </div>
+                        {open && (l.arcSummary
+                          ? <div className="text-xs"><MarkdownContent content={l.arcSummary} /></div>
+                          : <p className="text-[var(--color-text-muted)]">{t('reference.outline.noOutline')}</p>)}
+                      </li>
+                      )
+                    })}
+                    </ul>
+                  </>
+                ))}
+              </section>
+
+              <section>
+                <div className="mb-2">
+                  <CollapseTitle
+                    open={isOpen('revisions', false)}
+                    onToggle={() => toggle('revisions', false)}
+                    title={t('reference.outline.revisions')}
+                    collapseLabel={t('reference.outline.collapse')}
+                    expandLabel={t('reference.outline.expand')}
+                  />
+                </div>
+                {isOpen('revisions', false) && (revisions.length === 0 ? (
+                  <p className="text-xs text-[var(--color-text-muted)]">{t('reference.outline.noOutline')}</p>
+                ) : (
+                  <ul className="space-y-1">
+                    {revisions.slice(0, 20).map((rev) => (
+                      <li key={rev.id} className="flex items-center justify-between gap-2 text-xs">
+                        <span className="truncate text-[var(--color-text-muted)]">
+                          {rev.scope} · {rev.instruction.slice(0, 40)}
+                        </span>
+                        <Button
+                          size="sm"
+                          variant="ghost"
+                          disabled={!rev.before || rev.before === '{}'}
+                          onClick={() => void rollback(rev)}
+                        >
+                          {t('reference.outline.rollback')}
+                        </Button>
+                      </li>
+                    ))}
+                  </ul>
+                ))}
+              </section>
+            </div>
+          )}
         </div>
       </div>
 
-      <div className="flex-1 overflow-y-auto px-5 py-4 space-y-6">
-        {failed.length > 0 && (
-          <section>
-            <h3 className="text-xs font-medium mb-2">{t('reference.failedTitle')}</h3>
-            <ul className="space-y-1">
-              {failed.map((d) => (
-                <li key={d.chapterNumber} className="text-xs text-[var(--color-danger,#dc2626)]">
-                  {t('reference.failedItem', { chapter: d.chapterNumber, error: d.error })}
-                </li>
-              ))}
-            </ul>
-          </section>
-        )}
-
-        <section>
-          <h3 className="text-xs font-medium mb-2">{t('reference.digestTitle')}</h3>
-          <div className="space-y-2">
-            {digests.length === 0 && (
-              <p className="text-xs text-[var(--color-text-muted)]">{t('reference.digestEmpty')}</p>
-            )}
-            {digests.map((d) => (
-              <div
-                key={d.chapterNumber}
-                className={cn(
-                  'rounded-lg px-3 py-2 border border-[var(--color-border)]',
-                  d.status === 'failed' && 'opacity-70',
-                )}
-              >
-                <div className="flex items-center justify-between gap-2 text-xs">
-                  <span className="font-medium">
-                    {t('reference.chapterHeading', { number: d.chapterNumber, title: chapterTitle(d.chapterNumber) })}
-                  </span>
-                  <span className="text-[var(--color-text-muted)]">
-                    {d.activeLine
-                      ? t('reference.activeLine', { name: d.activeLine })
-                      : t('reference.activeLineNone')}
-                    {d.intimate ? ` · ${t('reference.intimate')}` : ''}
-                  </span>
-                </div>
-                {d.summary && (
-                  <p className="mt-1 text-xs text-[var(--color-text-secondary)] leading-relaxed">{d.summary}</p>
-                )}
-                {d.characterStates.length > 0 && (
-                  <div className="mt-1.5 flex flex-wrap gap-1">
-                    {d.characterStates.map((s) => (
-                      <span
-                        key={`${d.chapterNumber}-${s.name}`}
-                        className="px-1.5 py-0.5 rounded text-[0.65rem] bg-[var(--color-hover)] text-[var(--color-text-muted)]"
-                      >
-                        {s.name} · {s.stage}/{s.func}
-                      </span>
-                    ))}
-                  </div>
-                )}
-              </div>
-            ))}
-          </div>
-        </section>
-      </div>
+      {refine && (
+        <RefinePanel
+          key={JSON.stringify(refine.scope)}
+          workId={work.id}
+          workName={work.name}
+          scope={refine.scope}
+          scopeLabel={refine.label}
+          onClear={() => setRefine(null)}
+        />
+      )}
     </div>
   )
 }

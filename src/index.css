@@ -167,11 +167,13 @@
      薰衣草紫 #9B8EC8 · 星辰金 #C9A76C */
   :root {
     /* ☀️ 浅色主题 — 清冷蓝调（从 Logo 蓝紫色系延伸） */
+    color-scheme: light;
 
     /* 背景层次（冷白蓝调，与Logo深蓝形成呼应） */
     --color-bg: #F7F9FC;
     --color-sidebar: #EFF2F7;
     --color-panel: #EFF2F7;
+    --color-input: #FFFFFF;
     --color-titlebar: #F7F9FC;
     --color-activity-bar: #E5E9F0;
     --color-hover: #EBF0F7;
@@ -277,10 +279,12 @@
 
   /* 🌑 星空主题 — Logo 深邃星空（直接取自 Logo 背景色 #0A1628） */
   .galaxy {
+    color-scheme: dark;
     /* 背景层次 — Logo 深蓝背景色为基底，逐层提亮 */
     --color-bg: #0A1628;
     --color-sidebar: #0E1B30;
     --color-panel: #0E1B30;
+    --color-input: #142640;
     --color-titlebar: #0A1628;
     --color-activity-bar: #071220;
     --color-hover: #142640;
@@ -347,9 +351,11 @@
 
   /* 📜 纸质感主题 — 写作沉浸（温暖牛皮纸色调 + Logo 紫色强调） */
   .paper {
+    color-scheme: light;
     --color-bg: #F5F0E8;
     --color-sidebar: #EDE8E0;
     --color-panel: #EDE8E0;
+    --color-input: #F5F0E8;
     --color-titlebar: #F5F0E8;
     --color-activity-bar: #E4DDD4;
     --color-hover: #E8E3DB;
@@ -413,9 +419,11 @@
 
   /* 🌃 黑夜主题 — VS Code / IDEA 深灰极客风（真正的暗黑模式） */
   .dark {
+    color-scheme: dark;
     --color-bg: #1E1E1E;
     --color-sidebar: #252526;
     --color-panel: #252526;
+    --color-input: #2A2D2E;
     --color-titlebar: #181818;
     --color-activity-bar: #333333;
     --color-hover: #2A2D2E;
@@ -501,6 +509,12 @@
     -moz-osx-font-smoothing: grayscale;
     /* 增强的过渡曲线 */
     transition-timing-function: cubic-bezier(0.16, 1, 0.3, 1);
+  }
+
+  /* Windows 原生 <select> 弹出层跟 color-scheme 走；再给 option 上主题色，避免暗色浅字配白底 */
+  select option {
+    background-color: var(--color-input);
+    color: var(--color-text);
   }
 
   /* 禁止文本选择（IDE 区域） */

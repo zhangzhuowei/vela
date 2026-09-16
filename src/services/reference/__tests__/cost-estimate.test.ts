@@ -15,6 +15,11 @@ describe('estimateReferenceCost', () => {
     expect(estimateReferenceCost(big, { from: 1, to: 1 }).digestCalls).toBe(2)
   })
 
+  it('counts ceil(wordCount / max) calls for very long chapters', () => {
+    const big = [{ number: 1, wordCount: DIGEST_MAX_CHARS * 3 + 1 }]
+    expect(estimateReferenceCost(big, { from: 1, to: 1 }).digestCalls).toBe(4)
+  })
+
   it('clamps range to available chapters', () => {
     const r = estimateReferenceCost(chapters, { from: 900, to: 5000 })
     expect(r.digestCalls).toBe(101)

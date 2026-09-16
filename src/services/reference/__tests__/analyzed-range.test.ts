@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { contiguousAnalyzedTo, nextDigestRange } from '../analyzed-range'
+import { chapterRunQueue, contiguousAnalyzedTo, nextDigestRange } from '../analyzed-range'
 
 describe('contiguousAnalyzedTo', () => {
   it('returns 0 when nothing succeeded', () => {
@@ -31,5 +31,16 @@ describe('nextDigestRange', () => {
 
   it('returns null when there is nothing left', () => {
     expect(nextDigestRange([], 200, 200)).toBeNull()
+  })
+})
+
+describe('chapterRunQueue', () => {
+  it('uses pending when force is empty or omitted', () => {
+    expect(chapterRunQueue([3, 4])).toEqual([3, 4])
+    expect(chapterRunQueue([3, 4], [])).toEqual([3, 4])
+  })
+
+  it('reruns forced chapters even if they are not pending', () => {
+    expect(chapterRunQueue([5], [1, 2, 1])).toEqual([1, 2])
   })
 })
