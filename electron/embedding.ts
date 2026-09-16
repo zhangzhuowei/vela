@@ -116,6 +116,16 @@ export async function generateEmbeddings(
 
 // ===== 文本分块 =====
 
+/** 句子切分时的重叠：只保留上一块末尾最后一个句号之后的完整句，避免半截词 */
+function sentenceOverlapTail(prev: string, overlap: number): string {
+  if (overlap <= 0 || !prev) return ''
+  const tail = prev.slice(-overlap)
+  const marks = [...tail.matchAll(/[。！？.!?]/g)]
+  const last = marks[marks.length - 1]
+  if (last && last.index != null) return tail.slice(last.index + 1)
+  return ''
+}
+
 /** 将文本按段落分块，每块约 maxChars 字符 */
 export function chunkText(
   text: string,
@@ -141,8 +151,7 @@ export function chunkText(
       for (const sentence of sentences) {
         if (sentenceChunk.length + sentence.length > maxChars && sentenceChunk.length > 0) {
           chunks.push(sentenceChunk.trim())
-          // 保留 overlap
-          sentenceChunk = sentenceChunk.slice(-overlap) + sentence
+          sentenceChunk = sentenceOverlapTail(sentenceChunk, overlap) + sentence
         } else {
           sentenceChunk += sentence
         }
@@ -153,11 +162,10 @@ export function chunkText(
       continue
     }
 
-    // 累积段落
+    // 累积段落。段与段之间不再硬截 overlap，避免词表块从「搅、上下搅」这种半句起头
     if (currentChunk.length + para.length > maxChars && currentChunk.length > 0) {
       chunks.push(currentChunk.trim())
-      // 保留 overlap
-      currentChunk = currentChunk.slice(-overlap) + '\n\n' + para
+      currentChunk = para
     } else {
       currentChunk += (currentChunk ? '\n\n' : '') + para
     }

@@ -93,7 +93,8 @@ export function registerKBController() {
   ipcMain.handle('kb:remove-document', async (_event, docId: string) => {
     const projectPath = getCurrentProjectPath()
     if (!projectPath) return { success: false }
-    return { success: removeDocument(docId, projectPath) }
+    const success = await removeDocument(String(docId), projectPath)
+    return { success }
   })
 
   ipcMain.handle('kb:stats', async () => {

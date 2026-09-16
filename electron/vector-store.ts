@@ -360,14 +360,16 @@ export async function removeDocument(
     const db = await getConnection(projectPath)
     const tableNames = await db.tableNames()
 
+    const escaped = String(docId).replace(/'/g, "''")
+
     if (tableNames.includes(TABLE_NAME)) {
       const table = await db.openTable(TABLE_NAME)
-      await table.delete(`docId = '${docId}'`)
+      await table.delete(`docId = '${escaped}'`)
     }
 
     if (tableNames.includes(DOCS_TABLE_NAME)) {
       const docsTable = await db.openTable(DOCS_TABLE_NAME)
-      await docsTable.delete(`id = '${docId}'`)
+      await docsTable.delete(`id = '${escaped}'`)
     }
 
     return true

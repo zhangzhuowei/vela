@@ -171,11 +171,19 @@ export default function KnowledgeOverview() {
     )
     if (!ok) return
     setRemoving(true)
+    const removed = selectedDoc
     try {
-      const success = await removeKbDocument(selectedDoc.id)
+      const success = await removeKbDocument(removed.id)
       if (success) {
-        toast.success(t('deleteOk'))
+        setDocuments((prev) => prev.filter((d) => d.id !== removed.id))
+        setStats((s) => ({
+          ...s,
+          documentCount: Math.max(0, s.documentCount - 1),
+          totalChunks: Math.max(0, s.totalChunks - (removed.chunkCount || 0)),
+        }))
+        setChunks([])
         selectDoc(null)
+        toast.success(t('deleteOk'))
       } else {
         toast.error(t('deleteFailed'))
       }
