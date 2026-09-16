@@ -9,6 +9,7 @@ import { pinPostHistory } from '../llm-request-inspect'
 import { getPromptTemplate, renderPrompt } from '../prompt-templates'
 import { splitProseAndState } from './state-protocol'
 import { wordlistUsageNote } from '../kb-allocate'
+import { DEFAULT_LENGTH_FLOOR_RATIO, lengthFloor } from '../length-gate'
 import type { WorkingState } from '../../shared/ipc-channels'
 
 export { pinPostHistory }
@@ -107,6 +108,8 @@ export function buildSceneMessages(params: {
   references?: KnowledgeRef[]
   /** 本轮目标字数（未设置则不注入篇幅要求） */
   targetLength?: number
+  /** 篇幅下限比例（与写稿管线共用全局设置；未传用默认） */
+  lengthFloorRatio?: number
   /** 同线上一场前情摘要（多线联动，未启用则不传） */
   lineContext?: string
   /** 场间前情（上一场结尾或本章已收场摘要，未启用则不传） */
@@ -139,7 +142,7 @@ export function buildSceneMessages(params: {
       params.lineContext?.trim() ? `本线前情：${params.lineContext.trim()}` : '',
     ].filter(Boolean).join('\n'),
     length_note: params.targetLength
-      ? `本轮篇幅：目标约 ${params.targetLength} 字，硬性下限 ${Math.round(params.targetLength * 0.8)} 字，这是必须满足的要求。用足场景推进、动作细节与对白把篇幅写满，不要注水，也绝不允许提前收束。`
+      ? `本轮篇幅：目标约 ${params.targetLength} 字，硬性下限 ${lengthFloor(params.targetLength, params.lengthFloorRatio ?? DEFAULT_LENGTH_FLOOR_RATIO)} 字，这是必须满足的要求。用足场景推进、动作细节与对白把篇幅写满，不要注水，也绝不允许提前收束。`
       : '',
     option_note: '',
     characters_block:
@@ -173,6 +176,8 @@ export function buildDistillMessages(params: {
   references?: KnowledgeRef[]
   /** 蒸馏目标字数（未设置则忠实草稿体量） */
   targetLength?: number
+  /** 篇幅下限比例（未传用默认） */
+  lengthFloorRatio?: number
   /** 启用 Mod 的行文指导，贴在逐字稿之后 */
   postHistory?: string
   /** 设定纲要常驻摘要（未配置时不传） */
@@ -191,7 +196,7 @@ export function buildDistillMessages(params: {
     chapter_goal: params.chapterGoal || '（未写）',
     scene_line: sceneLine(params.sceneTitle, params.sceneGoal),
     length_note: params.targetLength
-      ? `蒸馏篇幅：约 ${params.targetLength} 字上下，不得少于八成；宁可保留细节也不要为压缩丢失情节与关键对白。`
+      ? `蒸馏篇幅：约 ${params.targetLength} 字上下，不得少于 ${lengthFloor(params.targetLength, params.lengthFloorRatio ?? DEFAULT_LENGTH_FLOOR_RATIO)} 字；宁可保留细节也不要为压缩丢失情节与关键对白。`
       : '',
     character_names: params.characterNames.join('、') || '（无）',
     references_block: referencesBlock(params.references),

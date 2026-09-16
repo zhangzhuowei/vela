@@ -584,10 +584,15 @@ describe('dialogue-prompts', () => {
 })
 
 describe('shouldContinueTurn', () => {
-  it('continues when prose is under 80% of the target and rounds remain', () => {
-    expect(shouldContinueTurn(500, 800, 0)).toBe(true)
-    expect(shouldContinueTurn(640, 800, 1)).toBe(false)
-    expect(shouldContinueTurn(500, 800, 2)).toBe(false)
+  it('continues when prose is under the floor ratio of the target and rounds remain', () => {
+    expect(shouldContinueTurn(500, 800, 0, 2, 0.8)).toBe(true)
+    expect(shouldContinueTurn(640, 800, 1, 2, 0.8)).toBe(false)
+    expect(shouldContinueTurn(500, 800, 2, 2, 0.8)).toBe(false)
+  })
+
+  it('defaults to the shared 85% floor', () => {
+    expect(shouldContinueTurn(640, 800, 0)).toBe(true)
+    expect(shouldContinueTurn(680, 800, 0)).toBe(false)
   })
 
   it('does not continue when no target is set', () => {

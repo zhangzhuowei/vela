@@ -30,17 +30,24 @@ import { runWithModScopeAsync } from '../mods'
 import { buildScenePrelude, resolveScenePreludeMode } from './scene-prelude'
 import { loadSettingDigest } from '../setting-bible-service'
 import { allocateKbHits, kbOverfetch } from '../kb-allocate'
+import { DEFAULT_LENGTH_FLOOR_RATIO, lengthFloor, resolveLengthFloorRatio } from '../length-gate'
 
 type LLMUsage = { promptTokens: number; completionTokens: number; totalTokens: number }
 
-/** 正文不足目标八成且未达续写上限时自动再开一轮。 */
+/** 正文低于目标 × 下限比例且未达续写上限时自动再开一轮；比例与写稿管线共用全局设置。 */
 export function shouldContinueTurn(
   written: number,
   target: number | undefined,
   rounds: number,
-  maxContinuations = 2
+  maxContinuations = 2,
+  floorRatio = DEFAULT_LENGTH_FLOOR_RATIO
 ): boolean {
-  return Boolean(target && written < target * 0.8 && rounds < maxContinuations)
+  return Boolean(target && written < lengthFloor(target, floorRatio) && rounds < maxContinuations)
+}
+
+async function fetchLengthFloorRatio(): Promise<number> {
+  const cfg = await ipc.invoke('config:get').catch(() => null)
+  return resolveLengthFloorRatio(cfg?.lengthFloorRatio)
 }
 
 /** 对话模式的调用也记入 llm_calls，与写稿管线共用「模型调用」面板 */
@@ -269,8 +276,10 @@ export async function assembleTurnMessages(params: AssembleTurnParams): Promise<
   postHistory: string
   workingState: WorkingState
   characters: DialogueCharacter[]
+  floorRatio: number
 }> {
   const { scene } = params
+  const floorRatio = await fetchLengthFloorRatio()
   const turns = await ipc.invoke('db:scene-turn-list', scene.id)
   const workingState = await ensureWorkingState(scene.chapterNumber)
   const characters = await sceneCharacters(scene.chapterNumber, workingState)
@@ -284,7 +293,7 @@ export async function assembleTurnMessages(params: AssembleTurnParams): Promise<
   const target = params.targetLength
   const promptInput =
     !params.retry && target
-      ? `${params.userInput.trim()}\n（本轮篇幅目标约 ${target} 字，硬性下限 ${Math.round(target * 0.8)} 字，写满为止）`
+      ? `${params.userInput.trim()}\n（本轮篇幅目标约 ${target} 字，硬性下限 ${lengthFloor(target, floorRatio)} 字，写满为止）`
       : params.userInput
   const scope = { chapterNumber: scene.chapterNumber, sceneId: scene.id }
   return runWithModScopeAsync(scope, async () => {
@@ -307,11 +316,12 @@ export async function assembleTurnMessages(params: AssembleTurnParams): Promise<
       references,
       settingDigest,
       targetLength: target,
+      lengthFloorRatio: floorRatio,
       optionCount: params.optionCount,
       optionMaxChars: params.optionMaxChars,
       skipFormat: true,
     })
-    return { core, postHistory, workingState, characters }
+    return { core, postHistory, workingState, characters, floorRatio }
   })
 }
 
@@ -333,14 +343,15 @@ export async function generateTurn(
 ): Promise<string> {
   const { scene, callbacks } = params
   const abandoned = () => Boolean(params.signal?.aborted)
-  const { core: coreMessages, postHistory, workingState, characters } = await assembleTurnMessages(params)
+  const { core: coreMessages, postHistory, workingState, characters, floorRatio } = await assembleTurnMessages(params)
   if (abandoned()) {
     callbacks.onError('已取消生成')
     return ''
   }
 
-  // 篇幅闸门：正文不足目标八成时自动续写（最多 2 轮），与写稿链路同款策略
+  // 篇幅闸门：正文低于目标 × 下限比例时自动续写（最多 2 轮），与写稿链路同款策略
   const MAX_CONTINUATIONS = 2
+  const continueTemplate = getPromptTemplate('dialogue_continue')
   const target = params.targetLength
   const parts: { prose: string; patch: WorkingState; options: string[] }[] = []
   let rounds = 0
@@ -401,7 +412,7 @@ export async function generateTurn(
             const options = parseOptionHints(fullText, params.optionCount)
             if (prose) parts.push({ prose, patch, options })
             const written = countChars(totalProse())
-            if (target && prose && shouldContinueTurn(written, target, rounds, MAX_CONTINUATIONS) && !abandoned()) {
+            if (target && prose && continueTemplate && shouldContinueTurn(written, target, rounds, MAX_CONTINUATIONS, floorRatio) && !abandoned()) {
               rounds++
               callbacks.onRoundEnd?.(totalProse())
               const contMsgs = [
@@ -409,9 +420,11 @@ export async function generateTurn(
                 { role: 'assistant' as const, content: fullText },
                 {
                   role: 'user' as const,
-                  content:
-                    `目前正文共约 ${written} 字，尚未达到本轮目标（约 ${target} 字，硬性下限 ${Math.round(target * 0.8)} 字）。` +
-                    '继续写下去补足篇幅：无缝衔接上文，不要重复已写内容、不要总结、不要重新开头；写完后同样输出 <state> 状态块（只含相对最新状态的变化）。',
+                  content: renderPrompt(continueTemplate, {
+                    written: String(written),
+                    target: String(target),
+                    floor: String(lengthFloor(target, floorRatio)),
+                  }),
                 },
               ]
               const rid = await runRound(contMsgs)
@@ -483,6 +496,7 @@ export async function distillScene(params: {
         references,
         settingDigest,
         targetLength: params.targetLength,
+        lengthFloorRatio: await fetchLengthFloorRatio(),
         postHistory: await fetchModPostHistory(),
       })
   )

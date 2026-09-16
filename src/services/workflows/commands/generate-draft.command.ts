@@ -1,6 +1,6 @@
 import { BaseWorkflowCommand, CommandExecuteParams } from './base-command'
 import { useProjectStore } from '../../../stores/project-store'
-import { getPromptTemplate } from '../../prompt-templates'
+import { getPromptTemplate, renderPrompt } from '../../prompt-templates'
 import { ChapterPromptBuilder } from '../../prompts/prompt-builder'
 import { ipc } from '../../ipc-client'
 import {
@@ -23,6 +23,17 @@ import {
 import { stripEditorialMarkers } from '../../prose-clean'
 import { loadSettingDigest } from '../../setting-bible-service'
 import { allocateKbHits, kbOverfetch, wordlistUsageNote } from '../../kb-allocate'
+import {
+  countProseChars, lengthFloor, isOvershoot, appendContinuation, resolveLengthFloorRatio,
+} from '../../length-gate'
+
+/** 续写轮带给模型的、主提示词里已有的上下文（不重新检索，直接复用） */
+interface ContinuationContext {
+  previousEnding: string
+  writingStyle: string
+  characterStates: string
+  settingDigest: string
+}
 
 export class GenerateDraftCommand extends BaseWorkflowCommand {
   protected attachModGuidance = true
@@ -110,10 +121,12 @@ export class GenerateDraftCommand extends BaseWorkflowCommand {
     // Prompt 构建——按「稳定前缀 → 可变后缀」排列
     // 以最大化 LLM 上下文缓存命中率
     // ==========================================
+    const settingDigest = await loadSettingDigest({ chapterNumber: this.chapterInfo.chapterNumber })
+    let previousEnding = ''
     const promptBuilder = new ChapterPromptBuilder(template)
       // ---- 缓存命中区（跨章稳定，前缀对齐）----
       .withArchitecture(architecture)
-      .withSettingDigest(await loadSettingDigest({ chapterNumber: this.chapterInfo.chapterNumber }))
+      .withSettingDigest(settingDigest)
       .withGlobalGuidance(mergedGuidance)
       .withWritingStyle(project.novelConfig.writingStyle || '')
       .withStyleReference(project.novelConfig.styleReference || '')
@@ -153,7 +166,7 @@ export class GenerateDraftCommand extends BaseWorkflowCommand {
       // 近 3 章定稿正文一次并行读回：上一章结尾与反雷同速览共用同一份数据
       //（原实现串行逐章读，且上一章全文要读两遍）
       const recentContents = await this.readRecentFinalizedContents(this.chapterInfo.chapterNumber, 3)
-      const previousEnding = previousChapter !== null
+      previousEnding = previousChapter !== null
         ? stripEditorialMarkers(recentContents.get(previousChapter) || '').slice(-1000)
         : ''
 
@@ -224,10 +237,19 @@ export class GenerateDraftCommand extends BaseWorkflowCommand {
     // ==========================================
     // 篇幅闸门：字数低于下限时自动续写补足
     // ==========================================
+    const floorRatio = resolveLengthFloorRatio((await ipc.invoke('config:get').catch(() => null))?.lengthFloorRatio)
+    const floor = lengthFloor(targetWords, floorRatio)
     cleanDraftText = await this.ensureWordCount(
       cleanDraftText,
       targetWords,
+      floor,
       promptBuilder.getSystemRole(),
+      {
+        previousEnding: previousEnding || '（无前文）',
+        writingStyle: project.novelConfig.writingStyle || '（未设置）',
+        characterStates: this.formatCharacterStateArchive(this.onStageCharacters(allCharacters)),
+        settingDigest: settingDigest ? `\n${settingDigest}\n` : '',
+      },
       callbacks,
       context,
     )
@@ -266,6 +288,12 @@ export class GenerateDraftCommand extends BaseWorkflowCommand {
         callbacks.log(i18n.t('generateDraft.canonGateError', { ns: 'commands', error: String(e) }))
         throw e
       }
+    }
+
+    // Gate 的自动修复可能删内容；这里只复核记警告，不再续写（避免和修复打架）
+    if (finalDraft !== cleanDraftText && floor > 0) {
+      const afterGate = this.countWords(finalDraft)
+      if (afterGate < floor) callbacks.log(i18n.t('generateDraft.lengthAfterGate', { ns: 'commands', count: afterGate, floor }))
     }
 
     // 落于数据库
@@ -318,64 +346,70 @@ export class GenerateDraftCommand extends BaseWorkflowCommand {
 
   /** 正文字数统计：忽略空白字符，与"中文字数"的直观认知对齐 */
   private countWords(text: string): number {
-    return (text || '').replace(/\s/g, '').length
+    return countProseChars(text)
+  }
+
+  /** 本章出场角色的角色卡；蓝图没填出场角色时退回全部 */
+  private onStageCharacters(allChars: CharacterData[]): CharacterData[] {
+    const names = new Set((this.chapterInfo.characters ?? []).map((n) => n.trim()).filter(Boolean))
+    if (names.size === 0) return allChars
+    const picked = allChars.filter((c) => names.has(c.name))
+    return picked.length > 0 ? picked : allChars
   }
 
   /**
-   * 篇幅闸门：草稿字数低于目标下限时，自动发起续写补足（最多 2 轮）。
+   * 篇幅闸门：草稿字数低于下限时，自动发起续写补足（最多 2 轮）。
    *
    * 背景：写稿模板对字数只有"大约 N 字左右"的弱约束，且紧邻多条反注水指令，
    * 模型会系统性写短；而原链路对字数不做任何校验，短稿会直接入库。
    * 走"续写补足"而非"整篇重写"，是为了保住第一轮已经写好的文笔与细节。
+   * 续写走模板 draft_continue（可自定义 / 可 mod），带上一章结尾、文风、出场角色状态与设定纲要。
    */
   private async ensureWordCount(
     draft: string,
     targetWords: number,
+    floor: number,
     systemRole: string,
+    ctx: ContinuationContext,
     callbacks: CommandExecuteParams['callbacks'],
     context: CommandExecuteParams['context'],
   ): Promise<string> {
-    if (!targetWords || targetWords <= 0) return draft
+    if (!targetWords || targetWords <= 0 || floor <= 0) return draft
+    const tr = (key: string, vars?: Record<string, unknown>) => i18n.t(`generateDraft.${key}`, { ns: 'commands', ...vars })
 
-    const floor = Math.round(targetWords * 0.9)
+    const template = getPromptTemplate('draft_continue')
+    if (!template) {
+      callbacks.log(tr('lengthTemplateMissing'))
+      return draft
+    }
+
     const MAX_ROUNDS = 2
     let result = draft
-    let settingBlock = ''
 
     for (let round = 1; round <= MAX_ROUNDS; round++) {
       const current = this.countWords(result)
       if (current >= floor) {
-        if (round === 1) callbacks.log(`  📏 篇幅校验通过：${current} 字（目标 ${targetWords} / 下限 ${floor}）`)
-        return result
+        if (round === 1) callbacks.log(tr('lengthOk', { count: current, target: targetWords, floor }))
+        break
       }
 
       const gap = targetWords - current
-      callbacks.log(`  📏 篇幅不足：${current} 字 < 下限 ${floor} 字，自动续写补足约 ${gap} 字（第 ${round}/${MAX_ROUNDS} 轮）...`)
+      callbacks.log(tr('lengthShort', { count: current, floor, gap, round, max: MAX_ROUNDS }))
 
-      // 续写是独立一轮请求，主提示词里的设定纲要不会自动带过来
-      if (round === 1) {
-        const digest = await loadSettingDigest({ chapterNumber: this.chapterInfo.chapterNumber })
-        settingBlock = digest ? `\n${digest}\n` : ''
-      }
-
-      const continuePrompt = `你正在完成一章尚未写完的小说正文。下面是本章已经写好的部分，它的篇幅不足，需要你直接续写下去。
-
-【本章写作方向】
-${typeof this.chapterInfo === 'object' ? JSON.stringify(this.chapterInfo, null, 2) : String(this.chapterInfo)}
-${settingBlock}
-【本章已写好的部分（全文）】
-${result}
-
-【续写要求】
-1. 直接从上文的最后一句往下接着写，不要重写开头，不要复述或改写上文已有的任何段落，不要写"（续）"之类的标记。
-2. 需要补足约 ${gap} 字，使本章总字数达到 ${targetWords} 字左右。
-3. 补足篇幅的方式是把本章既定情节的每个节拍写足：补足场景的五感细节、角色的动作与微表情、对白的来回交锋与言外之意、主角的即时心理判断。严禁靠设定科普、无关寒暄、重复同一信息点来凑字数，更不许把后续章节的情节提前写进来。
-4. 如果上文末尾已经像是一个收尾，请把它当作本章中途的一个停顿，继续往下推进剧情。
-5. ${i18n.t(
-        this.endingMode === 'smooth' ? 'chapterEnding.continueSmooth' : 'chapterEnding.continueCliffhanger',
-        { ns: 'commands' },
-      )}
-6. 只输出续写的正文纯文本，不要 Markdown 符号，对话用中文双引号，段落之间保留一个空行。`
+      const continuePrompt = renderPrompt(template, {
+        chapter_info: typeof this.chapterInfo === 'object' ? JSON.stringify(this.chapterInfo, null, 2) : String(this.chapterInfo),
+        previous_ending: ctx.previousEnding,
+        writing_style: ctx.writingStyle,
+        character_states: ctx.characterStates,
+        setting_digest: ctx.settingDigest,
+        current_text: result,
+        gap: String(gap),
+        target_words: String(targetWords),
+        ending_guidance: i18n.t(
+          this.endingMode === 'smooth' ? 'chapterEnding.continueSmooth' : 'chapterEnding.continueCliffhanger',
+          { ns: 'commands' },
+        ),
+      })
 
       let added = ''
       try {
@@ -383,22 +417,29 @@ ${result}
           await this.callLLM(continuePrompt, systemRole, callbacks, undefined, context, this.modelId)
         )
       } catch (e) {
-        callbacks.log(`  ⚠️ 续写补足失败，保留当前篇幅：${String(e)}`)
+        callbacks.log(tr('lengthContinueFailed', { error: String(e) }))
         return result
       }
 
       if (this.countWords(added) < 50) {
-        callbacks.log('  ⚠️ 续写返回内容过少，停止补足')
+        callbacks.log(tr('lengthTooLittle'))
         return result
       }
 
-      result = `${result.trimEnd()}\n\n${added.trim()}`
+      const merged = appendContinuation(result, added)
+      if (merged === result) {
+        callbacks.log(tr('lengthAllOverlap'))
+        return result
+      }
+      result = merged
       const after = this.countWords(result)
-      callbacks.log(`  📏 补足后 ${after} 字${after >= floor ? '，已达标' : ''}`)
-      if (after >= floor) return result
+      callbacks.log(tr(after >= floor ? 'lengthAfterOk' : 'lengthAfter', { count: after }))
+      if (after >= floor) break
+      if (round === MAX_ROUNDS) callbacks.log(tr('lengthMaxRounds', { count: after, target: targetWords }))
     }
 
-    callbacks.log(`  ⚠️ 已达最大补足轮次，最终 ${this.countWords(result)} 字（目标 ${targetWords}）`)
+    const finalCount = this.countWords(result)
+    if (isOvershoot(finalCount, targetWords)) callbacks.log(tr('lengthOvershoot', { count: finalCount, target: targetWords }))
     return result
   }
 
