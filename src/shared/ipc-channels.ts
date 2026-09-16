@@ -301,6 +301,11 @@ import type { ForeshadowingData } from '../../electron/repositories/foreshadowin
 import type { SceneData, SceneTurnData } from '../../electron/repositories/scene-repository'
 import type { SettingModuleData, SettingModuleInput } from '../../electron/repositories/setting-module-repository'
 import type { BranchData, BranchInput, BranchStats } from '../../electron/repositories/branch-repository'
+import type {
+  RefWorkData, RefWorkInput, RefChapterMeta, RefChapterData, RefDigestData, RefDigestInput,
+  RefLineData, RefLineInput, RefStageData, RefStageInput, RefOutlineData, RefOutlineLevel,
+  RefRevisionData, RefRevisionInput,
+} from '../../electron/repositories/reference-repository'
 import type { ChapterVisibility } from './chapter-addressing'
 
 /** 章级角色进行中状态：{ 角色名: { 字段: 值 } } */
@@ -344,6 +349,29 @@ export interface DatabaseChannels {
   'db:setting-module-upsert': { args: [data: SettingModuleInput]; return: { success: boolean; id?: number; error?: string } }
   'db:setting-module-delete': { args: [id: number]; return: { success: boolean; error?: string } }
   'db:setting-module-reorder': { args: [ids: number[]]; return: { success: boolean; error?: string } }
+
+  // ===== 参考作品拆书 =====
+  'db:ref-work-list': { args: []; return: RefWorkData[] }
+  'db:ref-work-get': { args: [id: number]; return: RefWorkData | null }
+  'db:ref-work-upsert': { args: [data: RefWorkInput]; return: { success: boolean; data?: number; error?: string } }
+  'db:ref-work-delete': { args: [id: number]; return: { success: boolean; error?: string } }
+  'db:ref-chapter-replace': { args: [workId: number, chapters: Array<Omit<RefChapterData, 'workId'>>]; return: { success: boolean; error?: string } }
+  'db:ref-chapter-meta-list': { args: [workId: number]; return: RefChapterMeta[] }
+  'db:ref-chapter-get': { args: [workId: number, number: number]; return: RefChapterData | null }
+  'db:ref-chapter-pending': { args: [workId: number, from: number, to: number]; return: number[] }
+  'db:ref-digest-upsert': { args: [data: RefDigestInput]; return: { success: boolean; error?: string } }
+  'db:ref-digest-list': { args: [workId: number]; return: RefDigestData[] }
+  'db:ref-line-list': { args: [workId: number]; return: RefLineData[] }
+  'db:ref-line-upsert': { args: [data: RefLineInput]; return: { success: boolean; data?: number; error?: string } }
+  'db:ref-line-delete': { args: [id: number]; return: { success: boolean; error?: string } }
+  'db:ref-stage-list': { args: [workId: number]; return: RefStageData[] }
+  'db:ref-stage-replace-unlocked': { args: [workId: number, stages: Array<Omit<RefStageInput, 'id' | 'workId'>>]; return: { success: boolean; error?: string } }
+  'db:ref-stage-upsert': { args: [data: RefStageInput]; return: { success: boolean; data?: number; error?: string } }
+  'db:ref-outline-get': { args: [workId: number, level: RefOutlineLevel]; return: RefOutlineData | null }
+  'db:ref-outline-upsert': { args: [data: { workId: number; level: RefOutlineLevel; body: string; force?: boolean }]; return: { success: boolean; data?: boolean; error?: string } }
+  'db:ref-outline-lock': { args: [workId: number, level: RefOutlineLevel, locked: boolean]; return: { success: boolean; error?: string } }
+  'db:ref-revision-insert': { args: [data: RefRevisionInput]; return: { success: boolean; data?: number; error?: string } }
+  'db:ref-revision-list': { args: [workId: number]; return: RefRevisionData[] }
 
   // 2d. 线（番外 / IF）
   'db:branch-list': { args: []; return: BranchData[] }

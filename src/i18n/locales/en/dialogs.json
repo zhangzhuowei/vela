@@ -227,5 +227,29 @@
       "writingRequirements": "Global Writing Requirements",
       "subGenre": "Sub-genre"
     }
+  },
+  "referenceCreate": {
+    "title": "Import reference work",
+    "description": "Pick source files, split chapters, then generate structured digests. Nothing is written into this book's config, architecture, or knowledge base.",
+    "selectFile": "Select source files",
+    "filesSelected": "{{count}} file(s) selected",
+    "supportedFormats": ".txt / .md (multiple files allowed)",
+    "select": "Browse",
+    "analyzing": "Splitting chapters…",
+    "splitFailed": "Chapter split failed",
+    "name": "Title",
+    "namePlaceholder": "e.g. Battle Through the Heavens",
+    "range": "Analysis range",
+    "sampleTo": "Sample through chapter",
+    "all": "All chapters",
+    "totalChapters": "{{count}} chapters total",
+    "digestModel": "L0 digest model",
+    "outlineModel": "Outline model",
+    "defaultModel": "Default generation model",
+    "estimate": "About {{calls}} L0 calls · {{minutes}} min · {{tokens}} tokens",
+    "sampleHint": "Sampling only runs the first N chapters; you can continue the rest from the overview.",
+    "start": "Start analysis",
+    "starting": "Starting…",
+    "startFailed": "Failed to create the reference work"
   }
 }

@@ -20,6 +20,7 @@ import ReviewReport from '../editor/ReviewReport'
 import ThreeWayMerge from '../editor/ThreeWayMerge'  // 保留引用以防其他入口使用
 import WelcomePage from '../pages/WelcomePage'
 import KnowledgeOverview from '../pages/KnowledgeOverview'
+import ReferenceOverview from '../pages/ReferenceOverview'
 import { useProjectStore } from '../../stores/project-store'
 import { useEditorStore, type EditorTab } from '../../stores/editor-store'
 import { useLayoutStore } from '../../stores/layout-store'
@@ -418,6 +419,10 @@ export default function EditorArea({ onNewProject }: EditorAreaProps) {
   // 侧栏为「知识库」时，中间区域固定展示向量数据库查询界面（跳过 Tab 系统）
   if (sidebarView === 'knowledge') {
     return <KnowledgeOverview />
+  }
+
+  if (sidebarView === 'references') {
+    return <ReferenceOverview />
   }
 
   // 未打开项目时显示欢迎页

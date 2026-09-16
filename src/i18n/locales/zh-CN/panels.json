@@ -11,6 +11,7 @@
     "home": "主页",
     "project": "项目结构",
     "knowledge": "知识库",
+    "references": "参考作品",
     "characters": "角色管理",
     "foreshadowing": "伏笔台账"
   },
@@ -540,5 +541,20 @@
     "closeRight": "关闭右侧所有",
     "closeAll": "关闭所有",
     "unsavedClickToClose": "有未保存的修改，点击关闭"
+  },
+  "reference": {
+    "title": "参考作品",
+    "create": "导入范文并拆书",
+    "empty": "还没有参考作品。点右上角加号导入范文。",
+    "openProjectFirst": "请先打开项目",
+    "meta": "{{chapters}} 章 · 已拆到 {{analyzed}} · {{status}}",
+    "delete": "删除",
+    "deleteConfirm": "删除参考作品「{{name}}」？范文正文和拆书结果会一并去掉。",
+    "status": {
+      "idle": "未开始",
+      "running": "拆书中",
+      "done": "已完成",
+      "error": "有失败章"
+    }
   }
 }

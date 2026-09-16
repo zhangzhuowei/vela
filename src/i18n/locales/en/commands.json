@@ -225,6 +225,15 @@
     "emptyResult": "⚠️ Style analysis returned empty result",
     "saved": "✅ Writing style characteristics saved to novel configuration"
   },
+  "reference": {
+    "workNotFound": "Reference work not found",
+    "templateNotFound": "Missing prompt template: {{key}}",
+    "chapterMissing": "Chapter {{chapter}} text is missing",
+    "digestStart": "Digesting {{count}} chapters ({{from}}–{{to}})",
+    "digestFailed": "Chapter {{chapter}} digest failed: {{error}}",
+    "digestProgress": "Done {{done}}, failed {{failed}}, total {{total}}",
+    "digestSummary": "Digest finished: {{done}} ok, {{failed}} failed"
+  },
   "workflowDefs": {
     "architectureTitle": "🏗️ Generate Story Architecture",
     "architectureCompletedMessage": "🏗️ Story architecture generated! Check it in the sidebar under \"Story Architecture\"",
@@ -326,7 +335,11 @@
     "povThirdOmniscient": "Third Person Omniscient",
     "povMultiPov": "Multiple POV",
     "sourceLabelArchCharacters": "Architecture - Character Map",
-    "chapterTitleFallback": "Ch.{{chapter}}"
+    "chapterTitleFallback": "Ch.{{chapter}}",
+    "refDigestTitle": "Reference digest: {{name}} (ch. {{from}}–{{to}})",
+    "refDigestStep": "Chapter digests",
+    "refDigestStepDesc": "Generate structured digests for chapters {{from}}–{{to}}",
+    "refDigestDone": "Digest complete. You can define character lines and outline next."
   },
   "pipeline": {
     "retryFailed": "  ⚠️ {{label}} failed on attempt {{attempt}}, retrying... ({{error}})",

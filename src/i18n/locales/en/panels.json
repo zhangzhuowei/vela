@@ -12,6 +12,7 @@
     "home": "Home",
     "project": "Project Structure",
     "knowledge": "Knowledge Base",
+    "references": "References",
     "characters": "Character Management"
   },
   "aiPanel": {
@@ -540,5 +541,20 @@
     "closeRight": "Close all to the right",
     "closeAll": "Close all",
     "unsavedClickToClose": "Unsaved changes, click to close"
+  },
+  "reference": {
+    "title": "References",
+    "create": "Import a reference work",
+    "empty": "No reference works yet. Use the plus button to import one.",
+    "openProjectFirst": "Please open a project first",
+    "meta": "{{chapters}} chapters · digested to {{analyzed}} · {{status}}",
+    "delete": "Delete",
+    "deleteConfirm": "Delete reference work “{{name}}”? Source text and analysis will be removed.",
+    "status": {
+      "idle": "idle",
+      "running": "running",
+      "done": "done",
+      "error": "errors"
+    }
   }
 }

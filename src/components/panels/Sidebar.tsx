@@ -10,6 +10,7 @@ import { useTranslation } from 'react-i18next'
 import { useLayoutStore } from '../../stores/layout-store'
 import { ContextMenu } from '../ui/ContextMenu'
 import KnowledgePanel from './KnowledgePanel'
+import ReferencePanel from './ReferencePanel'
 import HomeSidebarPanel from './sidebar/HomeSidebarPanel'
 import ProjectTree from './sidebar/ProjectTree'
 import CharactersView from './sidebar/CharactersView'
@@ -36,6 +37,7 @@ export default function Sidebar() {
     home:       t('sidebar.home'),
     project:    t('sidebar.project'),
     knowledge:  t('sidebar.knowledge'),
+    references: t('sidebar.references'),
     characters: t('sidebar.characters'),
     foreshadowing: t('sidebar.foreshadowing'),
   }
@@ -55,6 +57,7 @@ export default function Sidebar() {
         {sidebarView === 'home'       && <HomeSidebarPanel />}
         {sidebarView === 'project'    && <ProjectTree />}
         {sidebarView === 'knowledge'  && <KnowledgePanel />}
+        {sidebarView === 'references' && <ReferencePanel />}
         {sidebarView === 'characters' && <CharactersView />}
         {sidebarView === 'foreshadowing' && <ForeshadowingView />}
       </div>

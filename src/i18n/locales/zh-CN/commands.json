@@ -225,6 +225,15 @@
     "emptyResult": "⚠️ 文风分析返回空结果",
     "saved": "✅ 文风特征已保存到小说配置"
   },
+  "reference": {
+    "workNotFound": "参考作品不存在",
+    "templateNotFound": "缺少提示词模板：{{key}}",
+    "chapterMissing": "第 {{chapter}} 章正文缺失",
+    "digestStart": "开始拆解 {{count}} 章（第 {{from}}～{{to}} 章）",
+    "digestFailed": "第 {{chapter}} 章拆解失败：{{error}}",
+    "digestProgress": "已完成 {{done}}，失败 {{failed}}，共 {{total}}",
+    "digestSummary": "拆解结束：成功 {{done}}，失败 {{failed}}"
+  },
   "workflowDefs": {
     "architectureTitle": "🏗️ 生成故事架构",
     "architectureCompletedMessage": "🏗️ 故事架构已生成完成！前往侧边栏「故事架构」查看",
@@ -326,7 +335,11 @@
     "povThirdOmniscient": "第三人称全知视角",
     "povMultiPov": "多视角轮换",
     "sourceLabelArchCharacters": "架构-角色图谱",
-    "chapterTitleFallback": "第{{chapter}}章"
+    "chapterTitleFallback": "第{{chapter}}章",
+    "refDigestTitle": "拆书：{{name}}（第 {{from}}～{{to}} 章）",
+    "refDigestStep": "逐章拆解",
+    "refDigestStepDesc": "第 {{from}}～{{to}} 章逐章生成结构化摘要",
+    "refDigestDone": "拆书完成，可以定义人物线并归纳大纲"
   },
   "pipeline": {
     "retryFailed": "  ⚠️ {{label}} 第{{attempt}}次失败，正在重试...（{{error}}）",

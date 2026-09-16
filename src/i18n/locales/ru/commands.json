@@ -225,6 +225,15 @@
     "emptyResult": "⚠️ Анализ стиля вернул пустой результат",
     "saved": "✅ Характеристики стиля сохранены в конфигурацию романа"
   },
+  "reference": {
+    "workNotFound": "Референс не найден",
+    "templateNotFound": "Нет шаблона промпта: {{key}}",
+    "chapterMissing": "Текст главы {{chapter}} отсутствует",
+    "digestStart": "Разбор {{count}} глав ({{from}}–{{to}})",
+    "digestFailed": "Глава {{chapter}} не разобрана: {{error}}",
+    "digestProgress": "Готово {{done}}, ошибок {{failed}}, всего {{total}}",
+    "digestSummary": "Разбор завершён: успешно {{done}}, ошибок {{failed}}"
+  },
   "workflowDefs": {
     "architectureTitle": "🏗️ Генерация сюжетной архитектуры",
     "architectureCompletedMessage": "🏗️ Архитектура сюжета сгенерирована! Посмотрите в боковой панели «Архитектура сюжета»",
@@ -326,7 +335,11 @@
     "povThirdOmniscient": "Третье лицо, всезнающий рассказчик",
     "povMultiPov": "Множественные POV",
     "sourceLabelArchCharacters": "Архитектура - Карта персонажей",
-    "chapterTitleFallback": "Гл.{{chapter}}"
+    "chapterTitleFallback": "Гл.{{chapter}}",
+    "refDigestTitle": "Разбор: {{name}} (гл. {{from}}–{{to}})",
+    "refDigestStep": "Поглавный разбор",
+    "refDigestStepDesc": "Структурированные дайджесты глав {{from}}–{{to}}",
+    "refDigestDone": "Разбор завершён. Можно задать линии персонажей и план."
   },
   "pipeline": {
     "retryFailed": "  ⚠️ {{label}} завершилось ошибкой (попытка {{attempt}}), повтор... ({{error}})",

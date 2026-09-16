@@ -61,5 +61,30 @@
     "deleteConfirmSetting": "«{{name}}» синхронизирован из библии сеттинга. При следующем сохранении модуля он будет импортирован снова.",
     "deleteOk": "Удалено из базы знаний",
     "deleteFailed": "Не удалось удалить"
+  },
+  "reference": {
+    "noSelection": "Выберите референс слева или импортируйте текст для разбора.",
+    "header": {
+      "chapters": "{{count}} глав",
+      "analyzed": "Разобраны главы {{from}}–{{to}}",
+      "models": "L0: {{digest}} · План: {{outline}}",
+      "defaultModel": "модель генерации по умолчанию"
+    },
+    "continue": "Продолжить оставшиеся",
+    "retryFailed": "Повторить ошибки",
+    "failedTitle": "Неудачные главы",
+    "failedItem": "Глава {{chapter}}: {{error}}",
+    "digestTitle": "Дайджесты глав (L0)",
+    "digestEmpty": "Дайджестов пока нет. Они появятся после импорта.",
+    "chapterHeading": "Гл. {{number}} {{title}}",
+    "activeLine": "Фокус {{name}}",
+    "activeLineNone": "Нет фокусной линии",
+    "intimate": "интимная сцена",
+    "status": {
+      "idle": "ожидание",
+      "running": "разбор",
+      "done": "готово",
+      "error": "ошибки"
+    }
   }
 }

@@ -173,7 +173,7 @@ function migrateSchema(db: BetterSqlite3.Database) {
   addColumnIfMissing('project_core', 'extra_export_mode', `extra_export_mode TEXT DEFAULT 'appendix'`)
 }
 
-/** 创建完整表结构（9 张核心表 + 2 张沿用表） */
+/** 创建完整表结构（核心表 + 沿用表 + 线表 + 7 张参考作品表） */
 function createTables(db: BetterSqlite3.Database) {
   db.exec(`
     -- ============================================================
@@ -543,6 +543,104 @@ function createTables(db: BetterSqlite3.Database) {
       created_at TEXT DEFAULT (datetime('now')),
       updated_at TEXT DEFAULT (datetime('now'))
     );
+
+    -- ============================================================
+    -- 参考作品拆书：范文正文 + 分层大纲（不进写作知识库）
+    -- ============================================================
+    CREATE TABLE IF NOT EXISTS ref_works (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      name TEXT NOT NULL,
+      source_files TEXT DEFAULT '[]',
+      total_chapters INTEGER DEFAULT 0,
+      total_words INTEGER DEFAULT 0,
+      analyzed_from INTEGER DEFAULT 0,
+      analyzed_to INTEGER DEFAULT 0,
+      digest_model_id TEXT DEFAULT '',
+      outline_model_id TEXT DEFAULT '',
+      status TEXT DEFAULT 'idle',
+      created_at TEXT DEFAULT (datetime('now')),
+      updated_at TEXT DEFAULT (datetime('now'))
+    );
+
+    CREATE TABLE IF NOT EXISTS ref_chapters (
+      work_id INTEGER NOT NULL,
+      number INTEGER NOT NULL,
+      title TEXT DEFAULT '',
+      content TEXT NOT NULL,
+      word_count INTEGER DEFAULT 0,
+      PRIMARY KEY (work_id, number),
+      FOREIGN KEY (work_id) REFERENCES ref_works(id) ON DELETE CASCADE
+    );
+
+    CREATE TABLE IF NOT EXISTS ref_digests (
+      work_id INTEGER NOT NULL,
+      chapter_number INTEGER NOT NULL,
+      summary TEXT DEFAULT '',
+      events TEXT DEFAULT '[]',
+      hook TEXT DEFAULT '',
+      active_line TEXT DEFAULT '',
+      character_states TEXT DEFAULT '[]',
+      introduced TEXT DEFAULT '[]',
+      intimate INTEGER DEFAULT 0,
+      status TEXT DEFAULT 'ok',
+      error TEXT DEFAULT '',
+      updated_at TEXT DEFAULT (datetime('now')),
+      PRIMARY KEY (work_id, chapter_number),
+      FOREIGN KEY (work_id) REFERENCES ref_works(id) ON DELETE CASCADE
+    );
+
+    CREATE TABLE IF NOT EXISTS ref_lines (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      work_id INTEGER NOT NULL,
+      name TEXT NOT NULL,
+      aliases TEXT DEFAULT '[]',
+      kind TEXT DEFAULT 'romance',
+      sort_order INTEGER DEFAULT 0,
+      locked INTEGER DEFAULT 0,
+      arc_summary TEXT DEFAULT '',
+      FOREIGN KEY (work_id) REFERENCES ref_works(id) ON DELETE CASCADE
+    );
+    CREATE INDEX IF NOT EXISTS idx_ref_lines_work ON ref_lines(work_id, sort_order);
+
+    CREATE TABLE IF NOT EXISTS ref_stages (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      work_id INTEGER NOT NULL,
+      seq INTEGER NOT NULL,
+      title TEXT DEFAULT '',
+      from_chapter INTEGER NOT NULL,
+      to_chapter INTEGER NOT NULL,
+      goal TEXT DEFAULT '',
+      antagonist TEXT DEFAULT '',
+      entry_hook TEXT DEFAULT '',
+      exit_peak TEXT DEFAULT '',
+      locked INTEGER DEFAULT 0,
+      FOREIGN KEY (work_id) REFERENCES ref_works(id) ON DELETE CASCADE
+    );
+    CREATE INDEX IF NOT EXISTS idx_ref_stages_work ON ref_stages(work_id, seq);
+
+    CREATE TABLE IF NOT EXISTS ref_outlines (
+      work_id INTEGER NOT NULL,
+      level TEXT NOT NULL,
+      body TEXT DEFAULT '',
+      version INTEGER DEFAULT 1,
+      locked INTEGER DEFAULT 0,
+      updated_at TEXT DEFAULT (datetime('now')),
+      PRIMARY KEY (work_id, level),
+      FOREIGN KEY (work_id) REFERENCES ref_works(id) ON DELETE CASCADE
+    );
+
+    CREATE TABLE IF NOT EXISTS ref_revisions (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      work_id INTEGER NOT NULL,
+      scope TEXT NOT NULL,
+      target_id INTEGER DEFAULT 0,
+      instruction TEXT DEFAULT '',
+      before TEXT DEFAULT '',
+      after TEXT DEFAULT '',
+      created_at TEXT DEFAULT (datetime('now')),
+      FOREIGN KEY (work_id) REFERENCES ref_works(id) ON DELETE CASCADE
+    );
+    CREATE INDEX IF NOT EXISTS idx_ref_revisions_work ON ref_revisions(work_id, created_at);
 
     -- 索引
     CREATE INDEX IF NOT EXISTS idx_llm_calls_time ON llm_calls(created_at);

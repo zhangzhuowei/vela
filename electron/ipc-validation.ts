@@ -340,6 +340,126 @@ export function validateVisibility(v: unknown, path = 'visibility') {
   }
 }
 
+const VALID_REF_STATUS = ['idle', 'running', 'done', 'error'] as const
+const VALID_REF_STAGE = ['first_meet', 'progress', 'breakthrough', 'closure', 'done', 'none'] as const
+const VALID_REF_FUNC = ['main', 'daily', 'assist', 'introduce', 'mention'] as const
+const VALID_REF_KIND = ['romance', 'plot', 'other'] as const
+
+function checkStringArray(v: unknown, path: string, maxItems: number, maxLen: number): string[] {
+  if (v === undefined || v === null) return []
+  if (!Array.isArray(v)) throw new ValidationError(path, 'expected array')
+  if (v.length > maxItems) throw new ValidationError(path, `too many items (>${maxItems})`)
+  return v.map((s, i) => checkStringLength(s, `${path}[${i}]`, { max: maxLen }))
+}
+
+export function validateRefWorkInput(v: unknown, path = 'refWork') {
+  if (!isObject(v)) throw new ValidationError(path, 'expected object')
+  return {
+    id: checkOptional(v.id, `${path}.id`, (n, p) => checkNumberRange(n, p, { min: 0, max: 1e9, integer: true })),
+    name: checkStringLength(v.name, `${path}.name`, { min: 1, max: 200 }),
+    sourceFiles: checkStringArray(v.sourceFiles, `${path}.sourceFiles`, 500, 1000),
+    totalChapters: checkNumberRange(v.totalChapters ?? 0, `${path}.totalChapters`, { min: 0, max: 1e6, integer: true }),
+    totalWords: checkNumberRange(v.totalWords ?? 0, `${path}.totalWords`, { min: 0, max: 1e9, integer: true }),
+    analyzedFrom: checkNumberRange(v.analyzedFrom ?? 0, `${path}.analyzedFrom`, { min: 0, max: 1e6, integer: true }),
+    analyzedTo: checkNumberRange(v.analyzedTo ?? 0, `${path}.analyzedTo`, { min: 0, max: 1e6, integer: true }),
+    digestModelId: checkStringLength(v.digestModelId ?? '', `${path}.digestModelId`, { max: 200 }),
+    outlineModelId: checkStringLength(v.outlineModelId ?? '', `${path}.outlineModelId`, { max: 200 }),
+    status: checkEnum(v.status ?? 'idle', `${path}.status`, VALID_REF_STATUS),
+  }
+}
+
+export function validateRefDigestInput(v: unknown, path = 'refDigest') {
+  if (!isObject(v)) throw new ValidationError(path, 'expected object')
+  const statesRaw = v.characterStates ?? []
+  if (!Array.isArray(statesRaw)) throw new ValidationError(`${path}.characterStates`, 'expected array')
+  const characterStates = statesRaw.slice(0, 60).map((s, i) => {
+    if (!isObject(s)) throw new ValidationError(`${path}.characterStates[${i}]`, 'expected object')
+    return {
+      name: checkStringLength(s.name, `${path}.characterStates[${i}].name`, { min: 1, max: 60 }),
+      stage: checkEnum(s.stage ?? 'none', `${path}.characterStates[${i}].stage`, VALID_REF_STAGE),
+      func: checkEnum(s.func ?? 'mention', `${path}.characterStates[${i}].func`, VALID_REF_FUNC),
+    }
+  })
+  const introducedRaw = v.introduced ?? []
+  if (!Array.isArray(introducedRaw)) throw new ValidationError(`${path}.introduced`, 'expected array')
+  const introduced = introducedRaw.slice(0, 30).map((s, i) => {
+    if (!isObject(s)) throw new ValidationError(`${path}.introduced[${i}]`, 'expected object')
+    return {
+      name: checkStringLength(s.name, `${path}.introduced[${i}].name`, { min: 1, max: 60 }),
+      by: checkStringLength(s.by ?? '', `${path}.introduced[${i}].by`, { max: 60 }),
+    }
+  })
+  return {
+    workId: checkNumberRange(v.workId, `${path}.workId`, { min: 1, max: 1e9, integer: true }),
+    chapterNumber: checkNumberRange(v.chapterNumber, `${path}.chapterNumber`, { min: 1, max: 1e6, integer: true }),
+    summary: checkStringLength(v.summary ?? '', `${path}.summary`, { max: 4000 }),
+    events: checkStringArray(v.events, `${path}.events`, 30, 500),
+    hook: checkStringLength(v.hook ?? '', `${path}.hook`, { max: 500 }),
+    activeLine: checkStringLength(v.activeLine ?? '', `${path}.activeLine`, { max: 60 }),
+    characterStates,
+    introduced,
+    intimate: Boolean(v.intimate),
+    status: checkEnum(v.status ?? 'ok', `${path}.status`, ['ok', 'failed'] as const),
+    error: checkStringLength(v.error ?? '', `${path}.error`, { max: 2000 }),
+  }
+}
+
+export function validateRefLineInput(v: unknown, path = 'refLine') {
+  if (!isObject(v)) throw new ValidationError(path, 'expected object')
+  return {
+    id: checkOptional(v.id, `${path}.id`, (n, p) => checkNumberRange(n, p, { min: 0, max: 1e9, integer: true })),
+    workId: checkNumberRange(v.workId, `${path}.workId`, { min: 1, max: 1e9, integer: true }),
+    name: checkStringLength(v.name, `${path}.name`, { min: 1, max: 60 }),
+    aliases: checkStringArray(v.aliases, `${path}.aliases`, 30, 60),
+    kind: checkEnum(v.kind ?? 'romance', `${path}.kind`, VALID_REF_KIND),
+    sortOrder: checkNumberRange(v.sortOrder ?? 0, `${path}.sortOrder`, { min: 0, max: 1e6, integer: true }),
+    locked: Boolean(v.locked),
+    arcSummary: checkStringLength(v.arcSummary ?? '', `${path}.arcSummary`, { max: 6000 }),
+  }
+}
+
+export function validateRefStageInput(v: unknown, path = 'refStage') {
+  if (!isObject(v)) throw new ValidationError(path, 'expected object')
+  const fromChapter = checkNumberRange(v.fromChapter, `${path}.fromChapter`, { min: 1, max: 1e6, integer: true })
+  const toChapter = checkNumberRange(v.toChapter, `${path}.toChapter`, { min: 1, max: 1e6, integer: true })
+  if (fromChapter > toChapter) throw new ValidationError(`${path}.toChapter`, 'must be >= fromChapter')
+  return {
+    id: checkOptional(v.id, `${path}.id`, (n, p) => checkNumberRange(n, p, { min: 0, max: 1e9, integer: true })),
+    workId: checkNumberRange(v.workId, `${path}.workId`, { min: 1, max: 1e9, integer: true }),
+    seq: checkNumberRange(v.seq ?? 0, `${path}.seq`, { min: 0, max: 1e6, integer: true }),
+    title: checkStringLength(v.title ?? '', `${path}.title`, { max: 200 }),
+    fromChapter,
+    toChapter,
+    goal: checkStringLength(v.goal ?? '', `${path}.goal`, { max: 2000 }),
+    antagonist: checkStringLength(v.antagonist ?? '', `${path}.antagonist`, { max: 500 }),
+    entryHook: checkStringLength(v.entryHook ?? '', `${path}.entryHook`, { max: 1000 }),
+    exitPeak: checkStringLength(v.exitPeak ?? '', `${path}.exitPeak`, { max: 1000 }),
+    locked: Boolean(v.locked),
+  }
+}
+
+export function validateRefOutlineInput(v: unknown, path = 'refOutline') {
+  if (!isObject(v)) throw new ValidationError(path, 'expected object')
+  return {
+    workId: checkNumberRange(v.workId, `${path}.workId`, { min: 1, max: 1e9, integer: true }),
+    level: checkEnum(v.level, `${path}.level`, ['L2', 'L3'] as const),
+    body: checkStringLength(v.body ?? '', `${path}.body`, { max: 60000 }),
+    force: Boolean(v.force),
+  }
+}
+
+export function validateRefRevisionInput(v: unknown, path = 'refRevision') {
+  if (!isObject(v)) throw new ValidationError(path, 'expected object')
+  return {
+    workId: checkNumberRange(v.workId, `${path}.workId`, { min: 1, max: 1e9, integer: true }),
+    scope: checkEnum(v.scope, `${path}.scope`, ['L2', 'L3', 'stage', 'line', 'digest'] as const),
+    targetId: checkNumberRange(v.targetId ?? 0, `${path}.targetId`, { min: 0, max: 1e9, integer: true }),
+    instruction: checkStringLength(v.instruction ?? '', `${path}.instruction`, { max: 4000 }),
+    before: checkStringLength(v.before ?? '', `${path}.before`, { max: 200000 }),
+    after: checkStringLength(v.after ?? '', `${path}.after`, { max: 200000 }),
+  }
+}
+
 /**
  * 安全调用 validator 包装器：捕获 ValidationError 并返回 { success, error }
  * 用于 ipcMain.handle 内部

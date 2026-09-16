@@ -27,6 +27,7 @@ export default defineConfig({
       'src/services/__tests__/prose-clean.test.ts',
       'src/shared/__tests__/chapter-addressing.test.ts',
       'src/services/__tests__/export-layout.test.ts',
+      'src/services/reference/__tests__/cost-estimate.test.ts',
     ],
     globals: false,
   },

@@ -61,5 +61,30 @@
     "deleteConfirmSetting": "「{{name}}」是设定纲要同步的。删掉后，下次保存该模块还会再导回来。",
     "deleteOk": "已从知识库删除",
     "deleteFailed": "删除失败"
+  },
+  "reference": {
+    "noSelection": "在左侧选择一部参考作品，或导入范文开始拆书",
+    "header": {
+      "chapters": "共 {{count}} 章",
+      "analyzed": "已拆第 {{from}}～{{to}} 章",
+      "models": "L0：{{digest}} · 大纲：{{outline}}",
+      "defaultModel": "默认生成模型"
+    },
+    "continue": "继续跑剩余",
+    "retryFailed": "重跑失败章",
+    "failedTitle": "失败章节",
+    "failedItem": "第 {{chapter}} 章：{{error}}",
+    "digestTitle": "逐章摘要（L0）",
+    "digestEmpty": "还没有摘要。导入后会在这里列出。",
+    "chapterHeading": "第 {{number}} 章 {{title}}",
+    "activeLine": "主攻 {{name}}",
+    "activeLineNone": "无主攻线",
+    "intimate": "含亲密场面",
+    "status": {
+      "idle": "未开始",
+      "running": "拆书中",
+      "done": "已完成",
+      "error": "有失败章"
+    }
   }
 }

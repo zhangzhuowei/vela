@@ -2862,6 +2862,48 @@ Requirements:
     },
   },
 
+  {
+    key: 'ref_chapter_digest',
+    name: '参考作品·单章拆解',
+    description: '把范文的一章压成结构化摘要：事件、钩子、每个出场角色的关系阶段与本章功能。供参考作品分层大纲使用，不写入本书。',
+    systemRole: '你是一位网文结构分析师，擅长把正文压成可统计的结构化摘要。只描述正文里发生的事，不臆造。',
+    variables: {
+      chapter_number: '章号',
+      chapter_title: '拆章标题',
+      chapter_content: '本章正文（可能是前半或后半）',
+      part_note: '分半提示（整章 / 前半 / 后半）',
+      known_lines: '已确认的人物线本名与别名（可为空）',
+    },
+    content: `请阅读范文第 {{chapter_number}} 章「{{chapter_title}}」{{part_note}}，输出结构化摘要。
+
+【已确认人物线（有则优先用本名）】
+{{known_lines}}
+
+【正文】
+{{chapter_content}}
+
+---
+输出 JSON：
+{
+  "summary": "100-200 字，本章发生了什么、状态怎么变",
+  "events": ["关键事件 1", "关键事件 2"],
+  "hook": "章末悬念或钩子，一句话；没有写空串",
+  "activeLine": "本章主攻的关系对象名；纯剧情或日常章写空串",
+  "characterStates": [
+    { "name": "角色名", "stage": "first_meet|progress|breakthrough|closure|done|none", "func": "main|daily|assist|introduce|mention" }
+  ],
+  "introduced": [ { "name": "本章首次登场的重要角色", "by": "由谁引出；剧情引出写 剧情" } ],
+  "intimate": false
+}
+
+字段说明：
+- stage 是该角色与主角关系推进到哪一步：first_meet 初遇 / progress 推进 / breakthrough 关键突破 / closure 收尾 / done 关系已确立后的常态 / none 与主角无关系线。
+- func 是该角色本章承担的功能：main 主攻对象 / daily 日常露脸 / assist 帮别人的线推进 / introduce 引出新角色 / mention 仅被提及。
+- 只列本章实际登场或被明确提及的角色，龙套不列。
+- intimate：本章是否含亲密场面。
+- 仅输出 JSON。`,
+  },
+
   // ================================================================
   // 逆向推演 — 向量采样增强版配置推演（导入已有小说用）
   // ================================================================

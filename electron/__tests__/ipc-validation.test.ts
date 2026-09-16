@@ -18,6 +18,10 @@ import {
   validateCanonWritebackPayload,
   validateBranchInput,
   validateVisibility,
+  validateRefWorkInput,
+  validateRefDigestInput,
+  validateRefLineInput,
+  validateRefStageInput,
   VALID_PLOT_STATUS,
 } from '../ipc-validation'
 
@@ -194,5 +198,35 @@ describe('branch validation', () => {
     const v = validateVisibility({ mainUpTo: 120, branchId: 1, branchFrom: 10001, branchUpTo: 10002 })
     expect(v.branchFrom).toBe(10001)
     expect(() => validateVisibility({ mainUpTo: -5, branchId: 0, branchFrom: 0, branchUpTo: 0 })).toThrow(ValidationError)
+  })
+})
+
+describe('reference validation', () => {
+  it('accepts a minimal ref work', () => {
+    const v = validateRefWorkInput({ name: '范文A', sourceFiles: ['a.txt'], totalChapters: 0, totalWords: 0,
+      analyzedFrom: 0, analyzedTo: 0, digestModelId: '', outlineModelId: '', status: 'idle' })
+    expect(v.name).toBe('范文A')
+    expect(v.status).toBe('idle')
+  })
+  it('rejects bad status', () => {
+    expect(() => validateRefWorkInput({ name: 'x', status: 'flying' })).toThrow(ValidationError)
+  })
+  it('normalizes digest character states', () => {
+    const v = validateRefDigestInput({ workId: 1, chapterNumber: 3, summary: 's', events: ['e'], hook: '',
+      activeLine: '绫波', characterStates: [{ name: '绫波', stage: 'progress', func: 'main' }],
+      introduced: [], intimate: true, status: 'ok', error: '' })
+    expect(v.characterStates[0].func).toBe('main')
+    expect(v.intimate).toBe(true)
+  })
+  it('rejects digest with unknown func', () => {
+    expect(() => validateRefDigestInput({ workId: 1, chapterNumber: 1, characterStates: [{ name: 'a', stage: 'none', func: 'boss' }] }))
+      .toThrow(ValidationError)
+  })
+  it('validates line aliases as string array', () => {
+    const v = validateRefLineInput({ workId: 1, name: '绫波', aliases: ['小绫', 'Ayanami'], kind: 'romance', sortOrder: 0, locked: false, arcSummary: '' })
+    expect(v.aliases).toEqual(['小绫', 'Ayanami'])
+  })
+  it('rejects stage with from > to', () => {
+    expect(() => validateRefStageInput({ workId: 1, seq: 1, title: 't', fromChapter: 10, toChapter: 5 })).toThrow(ValidationError)
   })
 })

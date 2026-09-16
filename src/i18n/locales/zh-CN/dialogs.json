@@ -227,5 +227,29 @@
       "writingRequirements": "全局写作要求",
       "subGenre": "细分类型"
     }
+  },
+  "referenceCreate": {
+    "title": "导入参考作品",
+    "description": "选择范文文件，拆章后按范围逐章生成结构化摘要。不写入本书配置、架构或知识库。",
+    "selectFile": "选择范文文件",
+    "filesSelected": "已选 {{count}} 个文件",
+    "supportedFormats": "支持 .txt / .md（可多选）",
+    "select": "选择",
+    "analyzing": "正在拆分章节…",
+    "splitFailed": "拆章失败",
+    "name": "作品名称",
+    "namePlaceholder": "如：斗破苍穹",
+    "range": "拆书范围",
+    "sampleTo": "抽样到第",
+    "all": "全部章节",
+    "totalChapters": "共 {{count}} 章",
+    "digestModel": "L0 拆解模型",
+    "outlineModel": "大纲模型",
+    "defaultModel": "默认生成模型",
+    "estimate": "约 {{calls}} 次 L0 调用 · {{minutes}} 分钟 · {{tokens}} token",
+    "sampleHint": "抽样只跑前 N 章；之后可在详情页继续跑剩余。",
+    "start": "开始拆书",
+    "starting": "启动中…",
+    "startFailed": "创建参考作品失败"
   }
 }

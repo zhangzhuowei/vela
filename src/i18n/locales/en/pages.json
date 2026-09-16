@@ -61,5 +61,30 @@
     "deleteConfirmSetting": "“{{name}}” is synced from the setting bible. Saving that module again will re-import it.",
     "deleteOk": "Removed from the knowledge base",
     "deleteFailed": "Failed to delete"
+  },
+  "reference": {
+    "noSelection": "Select a reference work on the left, or import a source text to start.",
+    "header": {
+      "chapters": "{{count}} chapters",
+      "analyzed": "Digested chapters {{from}}–{{to}}",
+      "models": "L0: {{digest}} · Outline: {{outline}}",
+      "defaultModel": "default generation model"
+    },
+    "continue": "Continue remaining",
+    "retryFailed": "Retry failed chapters",
+    "failedTitle": "Failed chapters",
+    "failedItem": "Chapter {{chapter}}: {{error}}",
+    "digestTitle": "Chapter digests (L0)",
+    "digestEmpty": "No digests yet. They will appear here after import.",
+    "chapterHeading": "Ch. {{number}} {{title}}",
+    "activeLine": "Focus {{name}}",
+    "activeLineNone": "No focus line",
+    "intimate": "intimate scene",
+    "status": {
+      "idle": "idle",
+      "running": "running",
+      "done": "done",
+      "error": "errors"
+    }
   }
 }

@@ -1,5 +1,5 @@
 import {
-  FolderOpen, BookOpen, Users, Milestone,
+  FolderOpen, BookOpen, Users, Milestone, Library,
   Home, Zap, ScrollText, Cpu,
 } from 'lucide-react'
 import { useLayoutStore, type SidebarView, type BottomTab } from '../../stores/layout-store'
@@ -28,6 +28,7 @@ export default function LeftToolWindowBar() {
   const sidebarActivities: Array<{ id: SidebarView; icon: typeof FolderOpen; label: string }> = [
     { id: 'project', icon: FolderOpen, label: t('activityBar.project') },
     { id: 'knowledge', icon: BookOpen, label: t('activityBar.knowledge') },
+    { id: 'references', icon: Library, label: t('activityBar.references') },
     { id: 'characters', icon: Users, label: t('activityBar.characters') },
     { id: 'foreshadowing', icon: Milestone, label: t('activityBar.foreshadowing') },
   ]

@@ -11,6 +11,7 @@ import {
   Home,
   ChevronRight,
   Download,
+  Library,
 } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { useLayoutStore, type SidebarView } from '../../stores/layout-store'
@@ -26,6 +27,7 @@ import { useOutsideClick } from '../../hooks/useOutsideClick'
 const activities: Array<{ id: SidebarView; icon: typeof FolderOpen; label: string }> = [
   { id: 'project', icon: FolderOpen, label: 'project' },
   { id: 'knowledge', icon: BookOpen, label: 'knowledge' },
+  { id: 'references', icon: Library, label: 'references' },
   { id: 'characters', icon: Users, label: 'characters' },
   { id: 'foreshadowing', icon: Milestone, label: 'foreshadowing' },
 ]
