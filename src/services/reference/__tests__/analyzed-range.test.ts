@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { chapterRunQueue, contiguousAnalyzedTo, nextDigestRange } from '../analyzed-range'
+import { chapterRunQueue, contiguousAnalyzedTo, nextDigestRange, settleDigestWorkProgress } from '../analyzed-range'
 
 describe('contiguousAnalyzedTo', () => {
   it('returns 0 when nothing succeeded', () => {
@@ -42,5 +42,31 @@ describe('chapterRunQueue', () => {
 
   it('reruns forced chapters even if they are not pending', () => {
     expect(chapterRunQueue([5], [1, 2, 1])).toEqual([1, 2])
+  })
+})
+
+describe('settleDigestWorkProgress', () => {
+  it('marks done when every chapter succeeded', () => {
+    expect(settleDigestWorkProgress([1, 2, 3], false, 0)).toEqual({
+      analyzedFrom: 1, analyzedTo: 3, status: 'done',
+    })
+  })
+
+  it('marks error when any digest failed, even if some chapters remain', () => {
+    expect(settleDigestWorkProgress([1, 2], true, 2)).toEqual({
+      analyzedFrom: 1, analyzedTo: 2, status: 'error',
+    })
+  })
+
+  it('marks idle when the prefix is complete but later chapters are still pending', () => {
+    expect(settleDigestWorkProgress([1, 2, 3], false, 5)).toEqual({
+      analyzedFrom: 1, analyzedTo: 3, status: 'idle',
+    })
+  })
+
+  it('keeps analyzedTo at the first hole after a crash', () => {
+    expect(settleDigestWorkProgress([1, 2, 4], true, 1)).toEqual({
+      analyzedFrom: 1, analyzedTo: 2, status: 'error',
+    })
   })
 })

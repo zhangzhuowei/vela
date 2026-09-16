@@ -16,6 +16,7 @@ function ok<T>(fn: () => T): { success: boolean; data?: T; error?: string } {
 
 export function registerReferenceController() {
   ipcMain.handle('db:ref-work-list', async () => ReferenceRepository.listWorks())
+  ipcMain.handle('db:ref-work-recover-interrupted', async () => ReferenceRepository.recoverInterruptedWorks())
   ipcMain.handle('db:ref-work-get', async (_e, id: number) => ReferenceRepository.getWork(id))
   ipcMain.handle('db:ref-work-upsert', async (_e, raw: unknown) => {
     const v = safeValidate(validateRefWorkInput, raw)

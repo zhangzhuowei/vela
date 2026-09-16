@@ -23,3 +23,17 @@ export function chapterRunQueue(pending: number[], forceChapters?: number[]): nu
   if (forceChapters && forceChapters.length > 0) return [...new Set(forceChapters)]
   return pending
 }
+
+/** 根据当前 L0 成败收口进度；进程崩溃后从 running 恢复也走这里。 */
+export function settleDigestWorkProgress(
+  okChapters: number[],
+  anyFailed: boolean,
+  leftoverCount: number,
+): { analyzedFrom: number; analyzedTo: number; status: 'idle' | 'error' | 'done' } {
+  const analyzedTo = contiguousAnalyzedTo(okChapters)
+  return {
+    analyzedFrom: analyzedTo > 0 ? 1 : 0,
+    analyzedTo,
+    status: anyFailed ? 'error' : leftoverCount > 0 ? 'idle' : 'done',
+  }
+}

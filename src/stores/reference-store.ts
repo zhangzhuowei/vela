@@ -1,5 +1,6 @@
 import { create } from 'zustand'
 import { ipc } from '../services/ipc-client'
+import { useWorkflowStore } from './workflow-store'
 import type {
   RefWorkData, RefChapterMeta, RefDigestData, RefLineData, RefStageData, RefOutlineData, RefRevisionData,
 } from '../../electron/repositories/reference-repository'
@@ -34,6 +35,8 @@ export const useReferenceStore = create<ReferenceState>((set, get) => ({
   loading: false,
 
   loadWorks: async () => {
+    const live = useWorkflowStore.getState().activeRuns.some((r) => r.type === 'reference_analysis')
+    if (!live) await ipc.invoke('db:ref-work-recover-interrupted')
     const works = await ipc.invoke('db:ref-work-list')
     set({ works })
   },
@@ -52,6 +55,8 @@ export const useReferenceStore = create<ReferenceState>((set, get) => ({
     if (id === null) return
     set({ loading: true })
     try {
+      const live = useWorkflowStore.getState().activeRuns.some((r) => r.type === 'reference_analysis')
+      if (!live) await ipc.invoke('db:ref-work-recover-interrupted')
       const [chapters, digests, lines, stages, outlineL2, outlineL3, revisions, works] = await Promise.all([
         ipc.invoke('db:ref-chapter-meta-list', id),
         ipc.invoke('db:ref-digest-list', id),

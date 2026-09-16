@@ -9,7 +9,7 @@ import { BasePromptBuilder } from '../../prompts/prompt-builder'
 import { ipc } from '../../ipc-client'
 import { DIGEST_MAX_CHARS, DIGEST_CONCURRENCY, STAGE_BATCH_SIZE } from '../../reference/cost-estimate'
 import { splitDigestParts } from '../../reference/digest-chunking'
-import { contiguousAnalyzedTo, chapterRunQueue } from '../../reference/analyzed-range'
+import { chapterRunQueue, settleDigestWorkProgress } from '../../reference/analyzed-range'
 import { batchByCount, mergeStageBatches, pickStageDraft, type StageDraft } from '../../reference/stage-batching'
 import { buildLineMatrix, computeLineStats } from '../../reference/line-matrix'
 import type { RefDigestInput, RefCharacterState, RefIntroduced, RefLineData, RefWorkData, RefStageData } from '../../../../electron/repositories/reference-repository'
@@ -150,13 +150,12 @@ export class RefDigestChaptersCommand extends BaseWorkflowCommand<void> {
     const okNums = allDigests.filter((d) => d.status === 'ok').map((d) => d.chapterNumber)
     const anyFailed = allDigests.some((d) => d.status === 'failed')
     const leftover = await ipc.invoke('db:ref-chapter-pending', this.workId, 1, work.totalChapters)
-    const analyzedTo = contiguousAnalyzedTo(okNums)
-    const analyzedFrom = analyzedTo > 0 ? 1 : 0
+    const settled = settleDigestWorkProgress(okNums, anyFailed, leftover.length)
     await ipc.invoke('db:ref-work-upsert', {
       ...work,
-      analyzedFrom,
-      analyzedTo,
-      status: context.cancelled ? 'idle' : (anyFailed ? 'error' : leftover.length > 0 ? 'idle' : 'done'),
+      analyzedFrom: settled.analyzedFrom,
+      analyzedTo: settled.analyzedTo,
+      status: context.cancelled ? 'idle' : settled.status,
     })
     callbacks.log(t('reference.digestSummary', { done, failed }))
     this.notifyRefresh(['references'])

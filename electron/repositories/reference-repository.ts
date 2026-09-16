@@ -3,6 +3,7 @@
  * 范文正文与分层大纲都留在这里，不进写作知识库。
  */
 import { getProjectDb } from '../database'
+import { settleDigestWorkProgress } from '../../src/services/reference/analyzed-range'
 
 export type RefWorkStatus = 'idle' | 'running' | 'done' | 'error'
 export type RefLineKind = 'romance' | 'plot' | 'other'
@@ -206,6 +207,32 @@ export class ReferenceRepository {
   static listWorks(): RefWorkData[] {
     const rows = db().prepare('SELECT * FROM ref_works ORDER BY updated_at DESC, id DESC').all() as Record<string, unknown>[]
     return rows.map(rowToWork)
+  }
+
+  /** 进程退出时 status 可能停在 running。按当前 L0 成败收口，避免重启后一直显示拆书中。 */
+  static recoverInterruptedWorks(): number {
+    const rows = db().prepare(`SELECT id FROM ref_works WHERE status = 'running'`).all() as Array<{ id: number }>
+    for (const { id } of rows) {
+      const work = this.getWork(id)
+      if (!work) continue
+      const digests = this.listDigests(id)
+      const ok = digests.filter((d) => d.status === 'ok').map((d) => d.chapterNumber)
+      const leftover = this.listPendingChapterNumbers(id, 1, work.totalChapters)
+      const settled = settleDigestWorkProgress(ok, digests.some((d) => d.status === 'failed'), leftover.length)
+      this.upsertWork({
+        id: work.id,
+        name: work.name,
+        sourceFiles: work.sourceFiles,
+        totalChapters: work.totalChapters,
+        totalWords: work.totalWords,
+        digestModelId: work.digestModelId,
+        outlineModelId: work.outlineModelId,
+        analyzedFrom: settled.analyzedFrom,
+        analyzedTo: settled.analyzedTo,
+        status: settled.status,
+      })
+    }
+    return rows.length
   }
 
   static getWork(id: number): RefWorkData | null {

@@ -352,6 +352,7 @@ export interface DatabaseChannels {
 
   // ===== 参考作品拆书 =====
   'db:ref-work-list': { args: []; return: RefWorkData[] }
+  'db:ref-work-recover-interrupted': { args: []; return: number }
   'db:ref-work-get': { args: [id: number]; return: RefWorkData | null }
   'db:ref-work-upsert': { args: [data: RefWorkInput]; return: { success: boolean; data?: number; error?: string } }
   'db:ref-work-delete': { args: [id: number]; return: { success: boolean; error?: string } }
