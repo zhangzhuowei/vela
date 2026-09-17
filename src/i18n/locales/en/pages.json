@@ -196,7 +196,9 @@
       "resaved": "Re-wrote {{count}} file(s)",
       "reuse": "Generate again with this",
       "delete": "Delete record",
-      "deleteConfirm": "Delete this record? Files on disk are kept."
+      "deleteConfirm": "Delete this record? Files on disk are kept.",
+      "loading": "Loading…",
+      "loadFailed": "This record no longer exists"
     },
     "status": {
       "idle": "idle",

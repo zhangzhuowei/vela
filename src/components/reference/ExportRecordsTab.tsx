@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { ChevronDown, ChevronRight, Copy, Save, RotateCcw, Trash2 } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import type { RefExportData } from '../../../electron/repositories/reference-repository'
+import { ipc } from '../../services/ipc-client'
 import { resolveBookSeedDir, writeBookSeedFiles } from '../../services/book-seed-files'
 import { Button } from '../ui/Button'
 import { toast } from '../ui/Toast'
@@ -12,6 +13,7 @@ import type { BookSeedPanelInitial } from './BookSeedPanel'
 
 interface Props {
   workName: string
+  /** 列表项只有元数据（大字段为空串），完整内容按 id 再取 */
   records: RefExportData[]
   onDelete: (id: number) => Promise<void>
   onReuse: (initial: BookSeedPanelInitial) => void
@@ -30,9 +32,34 @@ async function resaveRecord(rec: RefExportData, workName: string): Promise<strin
 export default function ExportRecordsTab({ workName, records, onDelete, onReuse }: Props) {
   const { t } = useTranslation('pages')
   const [open, setOpen] = useState<Record<number, boolean>>({})
+  const [details, setDetails] = useState<Record<number, RefExportData>>({})
+  const [loadingId, setLoadingId] = useState<number | null>(null)
 
   if (records.length === 0) {
     return <p className="text-xs text-[var(--color-text-muted)]">{t('reference.exports.empty')}</p>
+  }
+
+  /** 取完整记录（带大字段），本页签内缓存 */
+  const loadDetail = async (id: number): Promise<RefExportData | null> => {
+    if (details[id]) return details[id]
+    setLoadingId(id)
+    try {
+      const full = await ipc.invoke('db:ref-export-get', id)
+      if (full) setDetails((d) => ({ ...d, [id]: full }))
+      else toast.error(t('reference.exports.loadFailed'))
+      return full
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : String(e))
+      return null
+    } finally {
+      setLoadingId(null)
+    }
+  }
+
+  const toggleOpen = async (rec: RefExportData) => {
+    const next = !open[rec.id]
+    setOpen((o) => ({ ...o, [rec.id]: next }))
+    if (next) await loadDetail(rec.id)
   }
 
   const optionSummary = (rec: RefExportData) => {
@@ -45,13 +72,19 @@ export default function ExportRecordsTab({ workName, records, onDelete, onReuse 
   }
 
   const copy = async (text: string) => {
-    await navigator.clipboard.writeText(text)
-    toast.success(t('reference.exports.copied'))
+    try {
+      await navigator.clipboard.writeText(text)
+      toast.success(t('reference.exports.copied'))
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : String(e))
+    }
   }
 
   const resave = async (rec: RefExportData) => {
+    const full = await loadDetail(rec.id)
+    if (!full) return
     try {
-      const paths = await resaveRecord(rec, workName)
+      const paths = await resaveRecord(full, workName)
       if (paths.length) toast.success(t('reference.exports.resaved', { count: paths.length }))
     } catch (e) {
       toast.error(e instanceof Error ? e.message : String(e))
@@ -60,19 +93,21 @@ export default function ExportRecordsTab({ workName, records, onDelete, onReuse 
 
   const remove = async (rec: RefExportData) => {
     if (!(await confirm(t('reference.exports.deleteConfirm'), { danger: true }))) return
+    setDetails((d) => { const { [rec.id]: _drop, ...rest } = d; return rest })
     await onDelete(rec.id)
   }
 
-  const blocks = (rec: RefExportData): Array<[string, string]> => [
-    ['bookJson', rec.bookJson],
-    ['charactersJson', rec.charactersJson],
-    ['rawOutput', rec.status === 'failed' ? rec.rawOutput : ''],
+  const blocks = (full: RefExportData): Array<[string, string]> => [
+    ['bookJson', full.bookJson],
+    ['charactersJson', full.charactersJson],
+    ['rawOutput', full.status === 'failed' ? full.rawOutput : ''],
   ]
 
   return (
     <div className="space-y-2">
       {records.map((rec) => {
         const isOpen = !!open[rec.id]
+        const full = details[rec.id]
         return (
           <div
             key={rec.id}
@@ -83,7 +118,7 @@ export default function ExportRecordsTab({ workName, records, onDelete, onReuse 
                 type="button"
                 className="flex items-center gap-1 min-w-0 text-left"
                 aria-expanded={isOpen}
-                onClick={() => setOpen((o) => ({ ...o, [rec.id]: !isOpen }))}
+                onClick={() => void toggleOpen(rec)}
               >
                 {isOpen ? <ChevronDown size={12} className="flex-shrink-0" /> : <ChevronRight size={12} className="flex-shrink-0" />}
                 <span className="truncate">
@@ -102,7 +137,7 @@ export default function ExportRecordsTab({ workName, records, onDelete, onReuse 
                 <Button
                   size="sm"
                   variant="ghost"
-                  disabled={!rec.bookJson && !rec.charactersJson}
+                  disabled={(!rec.hasBookJson && !rec.hasCharactersJson) || loadingId === rec.id}
                   title={t('reference.exports.resave')}
                   onClick={() => void resave(rec)}
                 >
@@ -134,7 +169,10 @@ export default function ExportRecordsTab({ workName, records, onDelete, onReuse 
                     <pre className="whitespace-pre-wrap break-words">{rec.error}</pre>
                   </section>
                 )}
-                {blocks(rec).map(([key, text]) => (
+                {!full && loadingId === rec.id && (
+                  <p className="text-[var(--color-text-muted)]">{t('reference.exports.loading')}</p>
+                )}
+                {full && blocks(full).map(([key, text]) => (
                   text ? (
                     <section key={key}>
                       <div className="flex items-center justify-between mb-1">

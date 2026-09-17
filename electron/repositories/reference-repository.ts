@@ -120,8 +120,11 @@ export interface RefExportData {
   charactersJson: string
   filePaths: string[]
   createdAt: string
+  /** 列表接口不带大字段，用这两个判断有没有内容可看 / 可保存 */
+  hasBookJson: boolean
+  hasCharactersJson: boolean
 }
-export type RefExportInput = Omit<RefExportData, 'id' | 'createdAt'>
+export type RefExportInput = Omit<RefExportData, 'id' | 'createdAt' | 'hasBookJson' | 'hasCharactersJson'>
 
 function parseJsonArray<T>(raw: unknown, fallback: T[] = []): T[] {
   if (typeof raw !== 'string' || !raw) return fallback
@@ -251,8 +254,14 @@ function rowToExport(r: Record<string, unknown>): RefExportData {
     charactersJson: String(r.characters_json ?? ''),
     filePaths: parseJsonArray<string>(r.file_paths),
     createdAt: String(r.created_at ?? ''),
+    hasBookJson: Number(r.book_len ?? String(r.book_json ?? '').length) > 0,
+    hasCharactersJson: Number(r.chars_len ?? String(r.characters_json ?? '').length) > 0,
   }
 }
+
+/** 列表用：不取三个大字段，只带长度供前端判断有无内容 */
+const EXPORT_META_COLUMNS = `id, work_id, instruction, options, model_id, status, error, file_paths, created_at,
+  length(book_json) AS book_len, length(characters_json) AS chars_len`
 
 export class ReferenceRepository {
   static listWorks(): RefWorkData[] {
@@ -475,8 +484,10 @@ export class ReferenceRepository {
     return Number(res.lastInsertRowid)
   }
 
+  /** 只回元数据；rawOutput / bookJson / charactersJson 为空串，要内容用 getExport */
   static listExports(workId: number, limit = 50): RefExportData[] {
-    const rows = db().prepare('SELECT * FROM ref_exports WHERE work_id = ? ORDER BY id DESC LIMIT ?').all(workId, limit) as Record<string, unknown>[]
+    const rows = db().prepare(`SELECT ${EXPORT_META_COLUMNS} FROM ref_exports WHERE work_id = ? ORDER BY id DESC LIMIT ?`)
+      .all(workId, limit) as Record<string, unknown>[]
     return rows.map(rowToExport)
   }
 

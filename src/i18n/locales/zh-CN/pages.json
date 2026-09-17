@@ -196,7 +196,9 @@
       "resaved": "已重新写出 {{count}} 个文件",
       "reuse": "按此要求再生成",
       "delete": "删除记录",
-      "deleteConfirm": "删除这条生成记录？文件不会被删。"
+      "deleteConfirm": "删除这条生成记录？文件不会被删。",
+      "loading": "读取内容…",
+      "loadFailed": "这条记录已不存在"
     },
     "status": {
       "idle": "未开始",

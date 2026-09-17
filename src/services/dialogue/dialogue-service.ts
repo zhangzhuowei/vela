@@ -352,6 +352,8 @@ export async function generateTurn(
   // 篇幅闸门：正文低于目标 × 下限比例时自动续写（最多 2 轮），与写稿链路同款策略
   const MAX_CONTINUATIONS = 2
   const continueTemplate = getPromptTemplate('dialogue_continue')
+  // 对话模式没有日志回调；模板被改坏时至少在控制台留痕，免得"为什么不续写"无从排查
+  if (!continueTemplate) console.warn('[dialogue] 缺少模板 dialogue_continue，本轮不会自动续写补足')
   const target = params.targetLength
   const parts: { prose: string; patch: WorkingState; options: string[] }[] = []
   let rounds = 0
