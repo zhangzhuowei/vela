@@ -190,7 +190,7 @@ export interface LLMChannels {
   }
   'llm:test-connection': {
     args: [model: ModelProfile]
-    return: { success: boolean; error?: string; dimension?: number }
+    return: { success: boolean; error?: string; dimension?: number; kind?: 'image' }
   }
 }
 

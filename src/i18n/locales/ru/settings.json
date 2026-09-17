@@ -64,6 +64,7 @@
     "testConnection": "Проверить соединение",
     "testing": "Проверка...",
     "connectionSuccess": "✅ Соединение успешно!",
+    "connectionSuccessImage": "✅ Соединение успешно! Получены данные изображения (не сохранены в проект)",
     "connectionFailed": "❌ Ошибка соединения: {{error}}",
     "setDefault": "Сделать по умолчанию",
     "default": "По умолчанию",

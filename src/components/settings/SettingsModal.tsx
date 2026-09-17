@@ -460,7 +460,7 @@ function ModelForm({
   const [customModelName, setCustomModelName] = useState(false)
 
   const [testing, setTesting] = useState(false)
-  const [testResult, setTestResult] = useState<{ success: boolean, error?: string, dimension?: number } | null>(null)
+  const [testResult, setTestResult] = useState<{ success: boolean, error?: string, dimension?: number, kind?: 'image' } | null>(null)
   const testConnection = useLLMStore(s => s.testConnection)
   // 从服务商拉取可用模型
   const [fetchingModels, setFetchingModels] = useState(false)
@@ -764,16 +764,14 @@ function ModelForm({
       )}
 
       <div className="flex items-center gap-2 pt-1">
-        {!isImage && (
-          <Button
-            variant="outline"
-            onClick={handleTest}
-            disabled={testing || !model.baseUrl || (!model.apiKey && model.provider !== 'ollama')}
-          >
-            <Zap size={13} />
-            {testing ? t('models.testing') : t('models.testConnection')}
-          </Button>
-        )}
+        <Button
+          variant="outline"
+          onClick={handleTest}
+          disabled={testing || !model.baseUrl || !model.modelName || (!model.apiKey && model.provider !== 'ollama')}
+        >
+          <Zap size={13} />
+          {testing ? t('models.testing') : t('models.testConnection')}
+        </Button>
         <Button
           className="flex-1"
           onClick={onSave}
@@ -787,8 +785,10 @@ function ModelForm({
       {testResult && (
         <div className={`text-xs p-2 rounded ${testResult.success ? 'bg-green-500/10 text-green-500 border border-green-500/20' : 'bg-red-500/10 text-red-500 border border-red-500/20'} break-all`}>
           {testResult.success
-            ? `✅ 连接成功！${testResult.dimension ? ` 向量维度 ${testResult.dimension}` : ''}`
-            : `❌ 连接失败: ${testResult.error}`}
+            ? testResult.kind === 'image'
+              ? t('models.connectionSuccessImage')
+              : `${t('models.connectionSuccess')}${testResult.dimension ? ` 向量维度 ${testResult.dimension}` : ''}`
+            : t('models.connectionFailed', { error: testResult.error })}
         </div>
       )}
     </div>

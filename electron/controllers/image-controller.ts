@@ -3,6 +3,7 @@ import { promises as fsPromises } from 'node:fs'
 import path from 'node:path'
 import { readJsonFile, GLOBAL_CONFIG_PATH, DEFAULT_GLOBAL_CONFIG } from '../utils/config-utils'
 import { ModelProfile, GlobalConfig } from '../../src/shared/ipc-channels'
+import { detectImage, requestImageBytes } from '../utils/image-generate'
 
 /** 应用代理配置（与 llm-controller 保持一致的 env 方式） */
 function applyProxyConfig() {
@@ -20,38 +21,31 @@ function applyProxyConfig() {
   } catch { /* 忽略 */ }
 }
 
-/**
- * 构造文生图端点 URL —— 兼容 baseUrl 带不带版本号两种写法：
- *  - .../v1  → .../v1/images/generations
- *  - .../api/paas/v4 → .../v4/images/generations
- *  - 无版本号 → 追加 /v1/images/generations
- */
-function buildImageUrl(baseUrl: string): string {
-  const base = baseUrl.replace(/\/+$/, '')
-  if (/\/v\d+$/.test(base)) return `${base}/images/generations`
-  return `${base}/v1/images/generations`
+function sanitizeHint(hint?: string): string {
+  return (hint || 'image')
+    .replace(/[^\w\u4e00-\u9fa5-]+/g, '_')
+    .slice(0, 40) || 'image'
 }
 
-/** 通过魔数识别图片类型，决定扩展名与 MIME */
-function detectImage(buf: Buffer): { ext: string; mime: string } {
-  if (buf.length >= 4 && buf[0] === 0x89 && buf[1] === 0x50 && buf[2] === 0x4e && buf[3] === 0x47) {
-    return { ext: 'png', mime: 'image/png' }
+async function writeProjectImage(
+  projectPath: string,
+  bytes: Buffer,
+  filenameHint?: string,
+): Promise<{ path: string; dataUrl: string }> {
+  const { ext, mime } = detectImage(bytes)
+  const dir = path.join(projectPath, '.vela', 'images')
+  await fsPromises.mkdir(dir, { recursive: true })
+  const filePath = path.join(dir, `${sanitizeHint(filenameHint)}-${Date.now()}.${ext}`)
+  await fsPromises.writeFile(filePath, bytes)
+  return {
+    path: filePath,
+    dataUrl: `data:${mime};base64,${bytes.toString('base64')}`,
   }
-  if (buf.length >= 2 && buf[0] === 0xff && buf[1] === 0xd8) {
-    return { ext: 'jpg', mime: 'image/jpeg' }
-  }
-  if (buf.length >= 12 && buf.toString('ascii', 0, 4) === 'RIFF' && buf.toString('ascii', 8, 12) === 'WEBP') {
-    return { ext: 'webp', mime: 'image/webp' }
-  }
-  if (buf.length >= 3 && buf.toString('ascii', 0, 3) === 'GIF') {
-    return { ext: 'gif', mime: 'image/gif' }
-  }
-  return { ext: 'png', mime: 'image/png' }
 }
 
 export function registerImageController() {
   /**
-   * 文生图：调用 OpenAI 兼容 / SiliconFlow 图片接口，
+   * 文生图：按模型 protocol 走 OpenAI 兼容 /images/generations 或 Gemini generateContent，
    * 拿到图片后存到 {projectPath}/.vela/images/，返回本地路径 + base64 data URL 供即时显示。
    */
   ipcMain.handle('image:generate', async (_event, payload: {
@@ -65,71 +59,17 @@ export function registerImageController() {
     try {
       applyProxyConfig()
       const { model, prompt } = payload
-      if (!prompt?.trim()) return { success: false, error: '提示词为空' }
-      if (!model?.baseUrl || !model?.modelName) return { success: false, error: '文生图模型配置不完整' }
       if (!payload.projectPath) return { success: false, error: '未指定项目路径' }
 
-      const size = payload.size || '1024x1024'
-      const url = buildImageUrl(model.baseUrl)
-      const body: Record<string, unknown> = {
-        model: model.modelName,
-        prompt: prompt.trim(),
-        image_size: size, // SiliconFlow / 多数 OpenAI 兼容图片接口
-        batch_size: 1,
-        n: 1,
-      }
-
-      // 反向提示词：SiliconFlow 等接口支持 negative_prompt，用于排除写实、人形等元素。
-      // 不支持该参数的服务端通常会忽略未知字段，故仅在非空时附带，避免影响兼容性。
-      const negativePrompt = payload.negativePrompt?.trim()
-      if (negativePrompt) body.negative_prompt = negativePrompt
-
-      const res = await fetch(url, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${model.apiKey}`,
-        },
-        body: JSON.stringify(body),
+      const result = await requestImageBytes(model, {
+        prompt,
+        size: payload.size,
+        negativePrompt: payload.negativePrompt,
       })
+      if (!result.ok) return { success: false, error: result.error }
 
-      if (!res.ok) {
-        const t = await res.text()
-        return { success: false, error: `文生图接口失败 (${res.status}): ${t.slice(0, 300)}` }
-      }
-
-      const data = await res.json() as {
-        images?: Array<{ url?: string; b64_json?: string }>
-        data?: Array<{ url?: string; b64_json?: string }>
-      }
-      const item = data.images?.[0] ?? data.data?.[0]
-      if (!item) return { success: false, error: '接口未返回图片数据' }
-
-      let bytes: Buffer
-      if (item.b64_json) {
-        bytes = Buffer.from(item.b64_json, 'base64')
-      } else if (item.url) {
-        const imgRes = await fetch(item.url)
-        if (!imgRes.ok) return { success: false, error: `下载生成图失败 (${imgRes.status})` }
-        bytes = Buffer.from(await imgRes.arrayBuffer())
-      } else {
-        return { success: false, error: '接口未返回图片 URL 或 base64' }
-      }
-
-      const { ext, mime } = detectImage(bytes)
-      const dir = path.join(payload.projectPath, '.vela', 'images')
-      await fsPromises.mkdir(dir, { recursive: true })
-      const safeHint = (payload.filenameHint || 'image')
-        .replace(/[^\w\u4e00-\u9fa5-]+/g, '_')
-        .slice(0, 40) || 'image'
-      const filePath = path.join(dir, `${safeHint}-${Date.now()}.${ext}`)
-      await fsPromises.writeFile(filePath, bytes)
-
-      return {
-        success: true,
-        path: filePath,
-        dataUrl: `data:${mime};base64,${bytes.toString('base64')}`,
-      }
+      const saved = await writeProjectImage(payload.projectPath, result.bytes, payload.filenameHint)
+      return { success: true, ...saved }
     } catch (error) {
       return { success: false, error: String(error) }
     }
@@ -158,21 +98,8 @@ export function registerImageController() {
 
       const srcPath = result.filePaths[0]
       const bytes = await fsPromises.readFile(srcPath)
-      const { ext, mime } = detectImage(bytes)
-
-      const dir = path.join(payload.projectPath, '.vela', 'images')
-      await fsPromises.mkdir(dir, { recursive: true })
-      const safeHint = (payload.filenameHint || 'image')
-        .replace(/[^\w\u4e00-\u9fa5-]+/g, '_')
-        .slice(0, 40) || 'image'
-      const filePath = path.join(dir, `${safeHint}-${Date.now()}.${ext}`)
-      await fsPromises.writeFile(filePath, bytes)
-
-      return {
-        success: true,
-        path: filePath,
-        dataUrl: `data:${mime};base64,${bytes.toString('base64')}`,
-      }
+      const saved = await writeProjectImage(payload.projectPath, bytes, payload.filenameHint)
+      return { success: true, ...saved }
     } catch (error) {
       return { success: false, error: String(error) }
     }

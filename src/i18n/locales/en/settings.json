@@ -64,6 +64,7 @@
     "testConnection": "Test Connection",
     "testing": "Testing...",
     "connectionSuccess": "✅ Connection successful!",
+    "connectionSuccessImage": "✅ Connection successful! Received image data (not saved to the project)",
     "connectionFailed": "❌ Connection failed: {{error}}",
     "setDefault": "Set as Default",
     "default": "Default",

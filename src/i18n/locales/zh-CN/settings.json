@@ -64,6 +64,7 @@
     "testConnection": "测试连接",
     "testing": "测试中...",
     "connectionSuccess": "✅ 连接成功！",
+    "connectionSuccessImage": "✅ 连接成功！已收到图片数据（未保存到项目）",
     "connectionFailed": "❌ 连接失败: {{error}}",
     "setDefault": "设为默认",
     "default": "默认",

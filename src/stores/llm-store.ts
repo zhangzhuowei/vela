@@ -68,7 +68,7 @@ interface LLMState {
   /** 只记一条请求快照（预览组装，不调模型） */
   recordTrace: (input: { messages: LlmChatMessage[]; modelId?: string; stream?: boolean }) => void
   /** 测试模型连接（embedding 模型会额外返回向量维度） */
-  testConnection: (model: ModelProfile) => Promise<{ success: boolean; error?: string; dimension?: number }>
+  testConnection: (model: ModelProfile) => Promise<{ success: boolean; error?: string; dimension?: number; kind?: 'image' }>
 }
 
 export const useLLMStore = create<LLMState>()((set, get) => ({

@@ -273,6 +273,17 @@ export function registerLLMController() {
         return { success: true, dimension }
       }
 
+      // 文生图：走正式出图接口，但不落盘
+      if (model.purposes?.includes('image')) {
+        const { requestImageBytes, IMAGE_PROBE_PROMPT, IMAGE_PROBE_SIZE } = await import('../utils/image-generate')
+        const result = await requestImageBytes(model, {
+          prompt: IMAGE_PROBE_PROMPT,
+          size: IMAGE_PROBE_SIZE,
+        })
+        if (!result.ok) return { success: false, error: result.error }
+        return { success: true, kind: 'image' as const }
+      }
+
       // 生成模型：发一条极短的聊天请求探活
       const messages = [{ role: 'user', content: 'Say "hello" and nothing else.' }]
       const provider = LLMFactory.getProvider(model)
