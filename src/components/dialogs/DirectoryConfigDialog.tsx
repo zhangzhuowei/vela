@@ -46,7 +46,7 @@ export default function DirectoryConfigDialog({ isOpen, onClose, defaultBranchId
   // 节奏指导
   const [pacingGuidance, setPacingGuidance] = useState('')
 
-  const isBatchRunning = useWorkflowStore(s => s.isTypeRunning('batch_generate'))
+  const isBatchRunning = useWorkflowStore(s => s.isTypeRunning('directory') || s.isTypeRunning('batch_generate'))
 
   useEffect(() => {
     if (isOpen) setBranchId(defaultBranchId || 0)

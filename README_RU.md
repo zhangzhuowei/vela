@@ -11,9 +11,11 @@
 
 [Read in Chinese (中文)](README.md) | [Read in English](README_EN.md)
 
-[Скачать](#установка) | [Поддержать автора оригинала](#поддержка)
+[Скачать](#установка) | [🌟 Рекомендуемый API: Fluxion AI](#fluxion-ai) | [Поддержать автора оригинала](#поддержка)
 
 </div>
+
+> 💡 **Нет API-ключа?** Попробуйте [Fluxion AI](https://fluxionai.space/register?source=github&campaign=vela&promo=VELA) — единая точка доступа к ведущим мировым AI-моделям. OpenAI-совместимый API, работает с Vela из коробки, **$3 в подарок при регистрации**. 👉 [Забрать](https://fluxionai.space/register?source=github&campaign=vela&promo=VELA)
 
 ---
 
@@ -164,7 +166,28 @@ Vela поддерживает множество основных провайд
 
 **Поддерживаемые провайдеры LLM:**
 
-`OpenAI` · `DeepSeek` · `Google Gemini` · `Anthropic Claude` · `Ollama (Локальный)` · `Zhipu GLM` · `MiniMax` · `SiliconFlow` · `Любой API, совместимый с OpenAI`
+`OpenAI` · `DeepSeek` · `Google Gemini` · `Anthropic Claude` · `Ollama (Локальный)` · `Zhipu GLM` · `MiniMax` · `SiliconFlow` · `Fluxion AI (рекомендуем)` · `Любой API, совместимый с OpenAI`
+
+> 💡 **Рекомендуем:** если нет официального ключа или хотите снизить расходы, используйте [Fluxion AI](https://fluxionai.space/register?source=github&campaign=vela&promo=VELA) (OpenAI-совместимый). В шаге 3 выше выберите «Пользовательский / OpenAI-совместимый» и укажите `Base URL` + `API Key` от Fluxion AI. **$3** в подарок при регистрации.
+
+---
+
+<span id="fluxion-ai"></span>
+
+## 🌟 Рекомендуем: Fluxion AI — единая точка доступа к ведущим мировым AI-моделям
+
+Fluxion AI面向个人开发者、技术团队与企业，通过统一API接入并管理全球主流AI模型；通过多线路动态调度提升可用性，模型表现、响应时间与费用透明可查。使用 Fable 5.1 时，相较 Claude 官方 API 费用，Fluxion AI 最高可节省约 90%。
+
+- ✅ **Единый OpenAI-совместимый API**, работает с Vela из коробки
+- 🔀 **Многоканальная динамическая маршрутизация** для высокой доступности
+- 📊 **Прозрачные метрики моделей, задержка и расходы**
+- 🎁 **$3 API-кредита в подарок при регистрации**
+
+👉 **Эксклюзивная ссылка: [Зарегистрироваться и получить $3](https://fluxionai.space/register?source=github&campaign=vela&promo=VELA)**
+
+<a href="https://fluxionai.space/register?source=github&campaign=vela&promo=VELA" target="_blank">
+  <img src="https://drive.google.com/thumbnail?id=1nABI15ra_qGKoccMZbJpeMyl6iEFijKe&sz=w1000" width="800" alt="Fluxion AI — единая точка доступа к ведущим мировым AI-моделям"/>
+</a>
 
 ---
 

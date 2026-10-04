@@ -24,6 +24,7 @@ import { cn } from '../../lib/utils'
 import { ipc } from '../../services/ipc-client'
 import { Switch } from '../ui/Switch'
 import { DEFAULT_LENGTH_FLOOR_RATIO, resolveLengthFloorRatio } from '../../services/length-gate'
+import OllamaModelPicker from './OllamaModelPicker'
 
 // 打赏/赞助 图片资源（通过 import 让 Vite 处理路径，确保打包后可正常加载）
 import wepayImg from '/buyme/wepay.jpg?url'
@@ -236,6 +237,7 @@ function LLMSection({
   const defaultImageModelId = useLLMStore(s => s.defaultImageModelId)
   const setDefaultImageModel = useLLMStore(s => s.setDefaultImageModel)
   const [editingModel, setEditingModel] = useState<ModelProfile | null>(null)
+  const [saveError, setSaveError] = useState('')
   const [saving, setSaving] = useState(false)
   useEffect(() => {
     if (!loaded) loadModels()
@@ -289,19 +291,25 @@ function LLMSection({
   const handleSave = async () => {
     if (!editingModel) return
     setSaving(true)
-    await saveModel(editingModel)
-    // 新增模型后，如果该分类还没有默认则自动设为默认
-    const countBefore = filtered.length
-    if (countBefore === 0) {
-      setDefaultForCategory(editingModel.id)
+    setSaveError('')
+    try {
+      if (!await saveModel(editingModel)) throw new Error('SAVE_FAILED')
+      const countBefore = filtered.length
+      if (countBefore === 0) {
+        setDefaultForCategory(editingModel.id)
+      }
+      setEditingModel(null)
+    } catch {
+      setSaveError(t('models.saveFailure'))
+    } finally {
+      setSaving(false)
     }
-    setEditingModel(null)
-    setSaving(false)
   }
 
 
   return (
     <div className="space-y-4">
+      {saveError && <p role="alert" className="text-sm text-[var(--color-error)]">{saveError}</p>}
       {/* 模型编辑表单 */}
       {editingModel && (
         <ModelForm
@@ -516,7 +524,8 @@ function ModelForm({
       provider,
       protocol: (p?.protocol ?? 'openai') as 'openai' | 'gemini',
       baseUrl: p?.baseUrl ?? '',
-      modelName: defaultModelName,
+      modelName: provider === 'ollama' ? '' : defaultModelName,
+      apiKey: provider === 'ollama' ? '' : model.apiKey,
       maxTokens: firstModel?.maxTokens ?? 4096,
     })
   }
@@ -570,7 +579,7 @@ function ModelForm({
 
       {/* 显示名称 */}
       <div>
-        <Label>{t('models.modelName')}</Label>
+        <Label>{t('models.displayName')}</Label>
         <Input
           value={model.name}
           onChange={(e) => up('name', e.target.value)}
@@ -583,6 +592,7 @@ function ModelForm({
         <div>
           <Label>{t('models.provider')}</Label>
           <NativeSelect
+            aria-label={t('models.provider')}
             value={model.provider}
             onChange={(e) => handleProviderChange(e.target.value as ModelProfile['provider'])}
           >
@@ -606,8 +616,8 @@ function ModelForm({
         </div>
       </div>
 
-      {/* 模型标识：有预设时显示下拉，否则纯输入 */}
-      <div>
+      {/* Ollama reads the installed models from the configured server. */}
+      {model.provider === 'ollama' ? <OllamaModelPicker model={model} onChange={onChange} /> : <div>
         <div className="flex items-center justify-between mb-1">
           <Label className="mb-0">{t('models.modelId')}</Label>
           <div className="flex items-center gap-3">
@@ -695,12 +705,13 @@ function ModelForm({
             ))}
           </div>
         )}
-      </div>
+      </div>}
 
       {/* API 地址 */}
       <div>
         <Label>{t('models.baseUrl')}</Label>
         <Input
+          aria-label={t('models.baseUrl')}
           value={model.baseUrl}
           onChange={(e) => up('baseUrl', e.target.value)}
           placeholder={t('models.baseUrlPlaceholder')}
@@ -775,7 +786,7 @@ function ModelForm({
         <Button
           className="flex-1"
           onClick={onSave}
-          disabled={saving || !model.name || (!model.apiKey && model.provider !== 'ollama')}
+          disabled={saving || !model.name.trim() || !model.modelName.trim() || !model.baseUrl.trim() || (!model.apiKey && model.provider !== 'ollama')}
         >
           <Save size={13} />
           {saving ? t('models.saving') : t('models.saveConfig')}

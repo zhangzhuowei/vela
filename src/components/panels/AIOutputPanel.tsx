@@ -367,6 +367,10 @@ const StepOutputBlock = memo(function StepOutputBlock({ step, index, total, isAc
         )}
       </div>
 
+      {isFailed && step.error && <div role="alert" className="mx-2 my-2 rounded-md border border-[var(--color-error)] p-3 text-xs leading-relaxed whitespace-pre-wrap break-words text-[var(--color-error)]">
+        {step.error}
+      </div>}
+
       {/* 展开的对应输出数据 */}
       {expanded && rawText && (
         <div className="pl-[4px] pr-1 pt-1 pb-3 text-xs w-full max-w-full break-words">

@@ -13,9 +13,21 @@ import ToolCallBlock from './ToolCallBlock'
 import ConfirmCard from './ConfirmCard'
 import ArtifactCard from './ArtifactCard'
 import '../../../styles/agent-tools.css'
+import { useEffect, useState } from 'react'
+import { useTranslation } from 'react-i18next'
 
 interface Props {
   message: AgentMessageType
+}
+
+function PendingReply({ startedAt }: { startedAt: number }) {
+  const { t } = useTranslation('panels')
+  const [seconds, setSeconds] = useState(() => Math.max(0, Math.floor((Date.now() - startedAt) / 1000)))
+  useEffect(() => {
+    const timer = setInterval(() => setSeconds(Math.max(0, Math.floor((Date.now() - startedAt) / 1000))), 1000)
+    return () => clearInterval(timer)
+  }, [startedAt])
+  return <p role="status" className="mt-3 text-xs text-[var(--color-text-muted)]">{t('storyRevision.processing', { seconds })}</p>
 }
 
 /**
@@ -79,6 +91,7 @@ function AgentMessage({ message }: Props) {
             ))}
           </div>
         )}
+        {streaming && <PendingReply startedAt={message.createdAt} />}
       </div>
     </div>
   )

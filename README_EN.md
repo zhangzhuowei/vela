@@ -11,9 +11,11 @@
 
 [Read in Chinese (中文)](README.md) | [Read in Russian (Русский)](README_RU.md)
 
-[Download](#installation) | [Sponsor the Original Author](#sponsor-the-original-author)
+[Download](#installation) | [🌟 Recommended API: Fluxion AI](#fluxion-ai) | [Sponsor the Original Author](#sponsor-the-original-author)
 
 </div>
+
+> 💡 **No API key yet?** Try [Fluxion AI](https://fluxionai.space/register?source=github&campaign=vela&promo=VELA) — one entry point to access and manage leading global AI models. OpenAI-compatible, works with Vela out of the box, **$3 free credit on signup**. 👉 [Claim now](https://fluxionai.space/register?source=github&campaign=vela&promo=VELA)
 
 ---
 
@@ -164,7 +166,28 @@ Vela supports multiple mainstream LLM providers. Quick setup:
 
 **Supported LLM Providers:**
 
-`OpenAI` · `DeepSeek` · `Google Gemini` · `Anthropic Claude` · `Ollama (Local)` · `Zhipu GLM` · `MiniMax` · `SiliconFlow` · `Any OpenAI-compatible API`
+`OpenAI` · `DeepSeek` · `Google Gemini` · `Anthropic Claude` · `Ollama (Local)` · `Zhipu GLM` · `MiniMax` · `SiliconFlow` · `Fluxion AI (Recommended)` · `Any OpenAI-compatible API`
+
+> 💡 **Recommended:** if you don't have an official key or want to cut costs, use [Fluxion AI](https://fluxionai.space/register?source=github&campaign=vela&promo=VELA) (OpenAI-compatible). In step 3 above choose "Custom / OpenAI-compatible" and fill in your Fluxion AI `Base URL` + `API Key`. Get **$3** free credit on signup.
+
+---
+
+<span id="fluxion-ai"></span>
+
+## 🌟 Recommended: Fluxion AI — One Entry Point for Leading Global AI Models
+
+Fluxion AI serves indie developers, tech teams and enterprises with a unified API to access and manage leading global AI models. Multi-route dynamic scheduling improves availability, with transparent model performance, latency and billing. When using Fable 5.1, Fluxion AI can save up to ~90% vs. official Claude API pricing.
+
+- ✅ **Unified OpenAI-Compatible API**, works with Vela out of the box
+- 🔀 **Multi-route dynamic scheduling** for higher availability
+- 📊 **Transparent model performance, latency and costs**
+- 🎁 **Get $3 API credit on signup**
+
+👉 **Exclusive link: [Sign up and claim $3 credit](https://fluxionai.space/register?source=github&campaign=vela&promo=VELA)**
+
+<a href="https://fluxionai.space/register?source=github&campaign=vela&promo=VELA" target="_blank">
+  <img src="https://drive.google.com/thumbnail?id=1nABI15ra_qGKoccMZbJpeMyl6iEFijKe&sz=w1000" width="800" alt="Fluxion AI — One entry point for leading global AI models"/>
+</a>
 
 ---
 

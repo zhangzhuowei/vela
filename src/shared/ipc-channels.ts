@@ -125,6 +125,7 @@ export interface LLMChannels {
     args: [creds: { baseUrl: string; apiKey: string }]
     return: { success: boolean; models: string[]; error?: string }
   }
+  'llm:ollama-models': { args: [baseUrl: string, apiKey?: string]; return: { success: boolean; models: string[]; error?: string } }
   'llm:save-model': {
     args: [model: ModelProfile]
     return: { success: boolean }
@@ -300,6 +301,7 @@ import type { ChapterImageData } from '../../electron/repositories/chapter-image
 import type { DraftMeta, DraftFull } from '../../electron/repositories/draft-repository'
 import type { RevisionMeta, RevisionFull } from '../../electron/repositories/revision-repository'
 import type { ReviewMeta, ReviewFull } from '../../electron/repositories/review-repository'
+import type { RehearsalContext } from './story-rehearsal'
 import type { PostProcessRunData, PostProcessStepData } from '../../electron/repositories/post-process-repository'
 import type { ForeshadowingData } from '../../electron/repositories/foreshadowing-repository'
 import type { SceneData, SceneTurnData } from '../../electron/repositories/scene-repository'
@@ -317,6 +319,14 @@ export type WorkingState = Record<string, Record<string, string>>
 
 // ===== 数据库操作 =====
 export interface DatabaseChannels {
+  'agent:state-read': { args: []; return: string | null }
+  'agent:state-write': { args: [serialized: string]; return: void }
+  'story:index': { args: [projectPath: string, query?: string, offset?: number]; return: import('./story-revision').StoryIndex }
+  'story:read': { args: [projectPath: string, request: import('./story-revision').StoryReadRequest]; return: import('./story-revision').StoryReadResult }
+  'story:apply': { args: [projectPath: string, request: import('./story-revision').StoryRevisionRequest]; return: import('./story-revision').StoryRevision }
+  'story:history': { args: [projectPath: string]; return: import('./story-revision').StoryRevision[] }
+  'story:undo': { args: [projectPath: string, id: string]; return: import('./story-revision').StoryRevision }
+  'db:rehearsal-context': { args: [projectPath: string, chapterNumber: number]; return: RehearsalContext }
   'db:close': { args: []; return: { success: boolean } }
 
   // 1. project_core
@@ -324,10 +334,11 @@ export interface DatabaseChannels {
   'db:project-core-update': { args: [data: Partial<ProjectCoreData>]; return: { success: boolean; error?: string } }
 
   // 2. blueprints
-  'db:blueprint-get-all': { args: []; return: BlueprintData[] }
+  'db:blueprint-get-all': { args: [projectPath?: string]; return: BlueprintData[] }
   'db:blueprint-get': { args: [chapterNumber: number]; return: BlueprintData | null }
-  'db:blueprint-upsert': { args: [data: BlueprintData]; return: { success: boolean; error?: string } }
-  'db:blueprint-upsert-many': { args: [items: BlueprintData[]]; return: { success: boolean; error?: string } }
+  'db:blueprint-upsert': { args: [data: BlueprintData, projectPath?: string]; return: { success: boolean; error?: string } }
+  'db:blueprint-commit': { args: [items: BlueprintData[], deleted: number[], expected: BlueprintData[], projectPath: string]; return: { success: boolean; error?: string } }
+  'db:blueprint-upsert-many': { args: [items: BlueprintData[], projectPath?: string]; return: { success: boolean; error?: string } }
   'db:blueprint-delete': { args: [chapterNumber: number]; return: { success: boolean; error?: string } }
   'db:blueprint-update-notes': { args: [chapterNumber: number, notes: string]; return: { success: boolean; error?: string } }
 
