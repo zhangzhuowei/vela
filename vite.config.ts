@@ -87,7 +87,16 @@ export default defineConfig({
     __APP_VERSION__: JSON.stringify(pkg.version)
   },
   optimizeDeps: {
-    entries: ['index.html', 'src/**/*.{ts,tsx}']
+    // 只扫描页面入口。src 里的单测会直接 import electron/database，
+    // 预构建若跟进去会把 LanceDB 的 .node 当文本读，开发服务直接退出。
+    entries: [
+      'index.html',
+      'src/**/*.{ts,tsx}',
+      '!src/**/__tests__/**',
+      '!src/**/*.test.ts',
+      '!src/**/*.test.tsx',
+    ],
+    exclude: ['@lancedb/lancedb', 'better-sqlite3'],
   },
   build: {
     rollupOptions: {
