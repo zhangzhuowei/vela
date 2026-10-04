@@ -1,22 +1,28 @@
 import { ipcMain, BrowserWindow } from 'electron'
-import { readJsonFile, writeJsonFile, MODELS_CONFIG_PATH, GLOBAL_CONFIG_PATH, DEFAULT_GLOBAL_CONFIG } from '../utils/config-utils'
+import { readJsonFile, writeJsonFile, GLOBAL_CONFIG_PATH, DEFAULT_GLOBAL_CONFIG } from '../utils/config-utils'
 import { ModelProfile, GlobalConfig } from '../../src/shared/ipc-channels'
 import { LLMFactory } from '../llm/llm-factory'
 import { listOllamaModels } from '../llm/ollama-models'
+import { modelStore, ModelKeyError } from '../model-store'
+import { stripCacheMarkers } from '../../src/shared/prompt-cache'
 
 const activeStreams = new Map<string, AbortController>()
 
-function loadModelConfigs(): ModelProfile[] {
-  return readJsonFile<ModelProfile[]>(MODELS_CONFIG_PATH, [])
-}
-
-function saveModelConfigs(models: ModelProfile[]) {
-  writeJsonFile(MODELS_CONFIG_PATH, models)
-}
-
+/** 主进程内部取模型配置（带解密后的真实 Key） */
 function getModelConfig(modelId: string): ModelProfile | null {
-  const models = loadModelConfigs()
-  return models.find((m) => m.id === modelId) ?? null
+  return modelStore.get(modelId)
+}
+
+type ChatMessage = { role: string; content: string }
+
+/**
+ * 发给服务商前整理消息：提示词里的缓存分段标记只有 Anthropic 原生协议会用（由其 provider 自行处理），
+ * 其他协议原样去掉，模型看到的内容与以前完全一致。
+ */
+function prepareMessages(model: ModelProfile, messages: ChatMessage[]): ChatMessage[] {
+  if (!Array.isArray(messages)) return []
+  if (model.protocol === 'anthropic') return messages
+  return messages.map((m) => ({ ...m, content: typeof m.content === 'string' ? stripCacheMarkers(m.content) : m.content }))
 }
 
 function applyProxyConfig() {
@@ -57,7 +63,7 @@ export function registerLLMController() {
       if (!model) return { success: false, content: '', error: '未找到模型配置' }
 
       const provider = LLMFactory.getProvider(model)
-      return await provider.generate(model, request.messages, {
+      return await provider.generate(model, prepareMessages(model, request.messages), {
         temperature: request.temperature ?? model.temperature,
         maxTokens: request.maxTokens ?? model.maxTokens,
         responseFormat: request.responseFormat,
@@ -80,7 +86,7 @@ export function registerLLMController() {
     const provider = LLMFactory.getProvider(model)
     
     // We do not await this globally since it's streaming independently
-    provider.generateStream(model, request.messages, {
+    provider.generateStream(model, prepareMessages(model, request.messages), {
       temperature: request.temperature ?? model.temperature,
       maxTokens: request.maxTokens ?? model.maxTokens,
       responseFormat: request.responseFormat,
@@ -110,25 +116,22 @@ export function registerLLMController() {
     return { success: false }
   })
 
-  ipcMain.handle('llm:list-models', async () => loadModelConfigs())
+  // 渲染进程只拿到打码后的 Key
+  ipcMain.handle('llm:list-models', async () => modelStore.listForRenderer())
 
   ipcMain.handle('llm:save-model', async (_event, model: ModelProfile) => {
     try {
-      const models = loadModelConfigs()
-      const idx = models.findIndex((m) => m.id === model.id)
-      if (idx >= 0) models[idx] = model
-      else models.push(model)
-      saveModelConfigs(models)
+      if (!model || typeof model.id !== 'string' || !model.id) return { success: false, error: '模型配置无效' }
+      modelStore.save(model)
       return { success: true }
     } catch (error) {
-      return { success: false, error: String(error) }
+      return { success: false, error: error instanceof Error ? error.message : String(error) }
     }
   })
 
   ipcMain.handle('llm:delete-model', async (_event, modelId: string) => {
     try {
-      const models = loadModelConfigs().filter((m) => m.id !== modelId)
-      saveModelConfigs(models)
+      modelStore.remove(modelId)
       return { success: true }
     } catch (error) {
       return { success: false, error: String(error) }
@@ -183,12 +186,17 @@ export function registerLLMController() {
     return config.defaultImageModelId ?? null
   })
 
-  ipcMain.handle('llm:test-connection', async (_event, model: ModelProfile) => {
+  ipcMain.handle('llm:test-connection', async (_event, submitted: ModelProfile) => {
     try {
       applyProxyConfig()
+      // 表单里的 Key 是打码值时换成已保存的 Key（接口地址改过则要求重新填写）
+      const model = modelStore.resolveIncoming(submitted)
 
       // Embedding 模型：调用嵌入接口，并返回实际输出维度（便于用户确认配置）
       if (model.purposes?.includes('embedding')) {
+        if (model.protocol === 'anthropic') {
+          return { success: false, error: 'Anthropic 协议没有 Embedding 接口，请为向量模型选择 OpenAI 兼容或 Gemini 协议' }
+        }
         const { generateEmbeddings } = await import('../embedding')
         const vectors = await generateEmbeddings(['hello'], model.protocol, model)
         const dimension = vectors?.[0]?.length
@@ -207,7 +215,7 @@ export function registerLLMController() {
       })
       return { success: res.success, error: res.error }
     } catch (error) {
-      return { success: false, error: String(error) }
+      return { success: false, error: error instanceof ModelKeyError ? error.message : String(error) }
     }
   })
 }

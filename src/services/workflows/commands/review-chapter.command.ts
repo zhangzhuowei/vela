@@ -26,7 +26,7 @@ export class ReviewChapterCommand extends BaseWorkflowCommand<string> {
     super()
   }
 
-  async execute({ callbacks }: CommandExecuteParams): Promise<string> {
+  async execute({ callbacks, context }: CommandExecuteParams): Promise<string> {
     const project = useProjectStore.getState().currentProject
     if (!project) throw new Error(t('common.noProject'))
 
@@ -113,7 +113,8 @@ export class ReviewChapterCommand extends BaseWorkflowCommand<string> {
       promptBuilder,
       callbacks,
       { responseFormat: { type: 'json_object' } },
-      undefined,
+      // 传入 context：用户取消时能中断正在进行的流
+      context,
       this.params.modelId
     )
 

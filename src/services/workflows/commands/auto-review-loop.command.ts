@@ -1,6 +1,8 @@
 import { BaseWorkflowCommand, CommandExecuteParams } from './base-command'
 import { ReviewChapterCommand } from './review-chapter.command'
 import { RefineFromReviewCommand } from './refine-from-review.command'
+import { WorkflowCancelledError } from '../workflow-errors'
+import { blockingCount, normalizeReviewResult, type ReviewResult } from '../review-result'
 import { ipc } from '../../ipc-client'
 
 /**
@@ -15,17 +17,9 @@ import { ipc } from '../../ipc-client'
  * 不新增数据表、不新增 IPC 通道。
  */
 
-export interface ReviewItem {
-  category: string
-  severity: 'error' | 'warning' | 'pass'
-  quote?: string
-  description: string
-}
-
-export interface ReviewResult {
-  items: ReviewItem[]
-  summary: string
-}
+// 审稿结果的类型与归一化在 review-result.ts（纯函数，可单测）；这里再导出，保持原有引用路径可用
+export type { ReviewItem, ReviewResult } from '../review-result'
+export { blockingCount, normalizeSeverity, normalizeReviewResult } from '../review-result'
 
 export interface AutoReviewLoopParams {
   chapterNumber: number
@@ -58,13 +52,7 @@ export interface AutoReviewLoopResult {
   lastReview?: ReviewResult
 }
 
-/** 统计阻断级问题数量 */
-export function blockingCount(r: ReviewResult, gate: 'error' | 'error+warning'): number {
-  if (!r || !Array.isArray(r.items)) return 0
-  return r.items.filter(
-    (it) => it.severity === 'error' || (gate === 'error+warning' && it.severity === 'warning'),
-  ).length
-}
+
 
 export class AutoReviewLoopCommand extends BaseWorkflowCommand<string> {
   /** 执行结果（供批量管线等程序化读取） */
@@ -72,6 +60,38 @@ export class AutoReviewLoopCommand extends BaseWorkflowCommand<string> {
 
   constructor(private params: AutoReviewLoopParams) {
     super()
+  }
+
+  /**
+   * 审稿一次并归一化结果；拿不到可用结果时再审一次，仍不行返回 null。
+   * （解析失败绝不能当成「没有问题」：此前会得到空条目、阻断数 0，直接判通过）
+   */
+  private async runReview(
+    execParams: CommandExecuteParams,
+    draftPath: string,
+    draftContent: string,
+  ): Promise<{ review: ReviewResult } | null> {
+    for (let attempt = 1; attempt <= 2; attempt++) {
+      const reviewCmd = new ReviewChapterCommand({
+        draftPath,
+        draftContent,
+        chapterNumber: this.params.chapterNumber,
+        reviewFocus: this.params.reviewFocus,
+        silent: true,
+        modelId: this.params.reviewModelId,
+      })
+      const raw = await reviewCmd.execute(execParams)
+      let parsed: unknown = null
+      try {
+        parsed = this.parseJSON<unknown>(raw)
+      } catch {
+        parsed = null
+      }
+      const review = normalizeReviewResult(parsed)
+      if (review) return { review }
+      if (attempt === 1) execParams.callbacks.log('   ⚠️ 审稿结果无法解析，重新审稿一次...')
+    }
+    return null
   }
 
   async execute(execParams: CommandExecuteParams): Promise<string> {
@@ -86,38 +106,36 @@ export class AutoReviewLoopCommand extends BaseWorkflowCommand<string> {
     let roundsRun = 0
     let prevBlock = Number.POSITIVE_INFINITY
     let lastReview: ReviewResult | undefined
+    // 已审过的版本里阻断问题最少的那个：未通过时返回它，而不是最后一版（修复可能越修越差）
+    let best: { path: string; content: string; block: number; review: ReviewResult } | null = null
+    // 当前版本的阻断问题数；null = 当前版本还没有可用的审稿结果
+    let currentBlock: number | null = null
 
     for (let round = 1; round <= maxRounds; round++) {
-      if (context.cancelled) throw new Error('工作流已取消')
+      if (context.cancelled) throw new WorkflowCancelledError()
       roundsRun = round
       const isLastRound = round === maxRounds
 
       // 1. 审稿（复用，静默：闭环内不刷一堆报告 Tab）
       callbacks.log(`\n🔁 第 ${round}/${maxRounds} 轮审稿...`)
-      const reviewCmd = new ReviewChapterCommand({
-        draftPath: currentPath,
-        draftContent: currentContent,
-        chapterNumber: this.params.chapterNumber,
-        reviewFocus: this.params.reviewFocus,
-        silent: true,
-        modelId: this.params.reviewModelId,
-      })
-      const reviewRaw = await reviewCmd.execute(execParams)
-
-      let review: ReviewResult
-      try {
-        review = this.parseJSON<ReviewResult>(reviewRaw)
-      } catch {
-        review = { items: [], summary: '审稿结果解析失败' }
+      const reviewed = await this.runReview(execParams, currentPath, currentContent)
+      if (!reviewed) {
+        // 连续两次拿不到可用的审稿结果：既不能当作通过，也没有报告可据以修复，交给人工
+        lastReview = { items: [], summary: '审稿结果无法解析' }
+        callbacks.log('⚠️ 审稿结果连续两次无法解析，按未通过处理，请人工复核本章')
+        break
       }
+      const review = reviewed.review
       lastReview = review
 
       const errCount = blockingCount(review, 'error')
-      const warnCount = Array.isArray(review.items)
-        ? review.items.filter((i) => i.severity === 'warning').length
-        : 0
+      const warnCount = review.items.filter((i) => i.severity === 'warning').length
       const block = blockingCount(review, gate)
+      currentBlock = block
       callbacks.log(`   审稿结果：error=${errCount} warning=${warnCount}（门控=${gate}，阻断=${block}）`)
+      if (!best || block < best.block) {
+        best = { path: currentPath, content: currentContent, block, review }
+      }
 
       // 2. 门控判定
       if (block === 0) {
@@ -144,7 +162,8 @@ export class AutoReviewLoopCommand extends BaseWorkflowCommand<string> {
       const refineCmd = new RefineFromReviewCommand({
         draftPath: currentPath,
         draftContent: currentContent,
-        reviewReport: reviewRaw,
+        // 传归一化后的报告：字段名 / 严重级别已统一，修复提示词看到的就是闭环据以判定的那份
+        reviewReport: JSON.stringify(review),
         chapterNumber: this.params.chapterNumber,
         silent: true,
         modelId: this.params.reviewModelId,
@@ -174,8 +193,18 @@ export class AutoReviewLoopCommand extends BaseWorkflowCommand<string> {
 
       currentPath = `vela://draft/${created.id}`
       currentContent = refinedContent
+      currentBlock = null
       revised++
       callbacks.log(`   ✅ 已合并为新草稿 v${nextVersion}（${refinedContent.length} 字），进入下一轮复审`)
+    }
+
+    // 未通过且最后一版比之前更差：退回到阻断问题最少的那一版。
+    // 最后一版没审出结果（currentBlock 为 null）时不退：它是针对上一版问题的修复，质量未知但不一定更差
+    if (!passed && best && currentBlock !== null && best.block < currentBlock) {
+      callbacks.log(`   ↩️ 最终版本的阻断问题不比之前少，改用阻断问题最少的版本（${best.block} 个）：${best.path}`)
+      currentPath = best.path
+      currentContent = best.content
+      lastReview = best.review
     }
 
     // 通知草稿抽屉/资产树刷新

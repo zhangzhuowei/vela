@@ -27,6 +27,9 @@
     "tasksLabel": "Tasks"
   },
   "activityBar": {
+    "foreshadowing": "Foreshadowing Ledger",
+    "timeline": "Story Timeline",
+    "search": "Search (Ctrl+Shift+F)",
     "home": "Home",
     "project": "Project",
     "knowledge": "Knowledge Base",
@@ -43,7 +46,12 @@
     "closeProjectTitle": "Close Project",
     "discardAndClose": "Discard & Close",
     "unsavedConfirm": "The following files have unsaved changes:\n{{names}}\n\nAre you sure you want to close the project? Unsaved changes will be lost.",
-    "closeProjectConfirm": "The following files have unsaved changes:\n{{names}}\n\nAre you sure you want to close the project? Unsaved changes will be lost."
+    "closeProjectConfirm": "The following files have unsaved changes:\n{{names}}\n\nAre you sure you want to close the project? Unsaved changes will be lost.",
+    "backupNow": "Back Up Project Data Now",
+    "backupDone": "Backup created. While the project is open, it is also backed up automatically every 6 hours",
+    "backupFailed": "Backup failed: {{error}}",
+    "openBackupDir": "Open Backup Folder",
+    "openBackupDirFailed": "Could not open the backup folder: {{error}}"
   },
   "featureTour": {
     "entry": "Feature tour",

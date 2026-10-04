@@ -52,6 +52,7 @@ inclusion: always
 - 数据分两处：**SQLite `.vela/vela.db`**（小说配置 / 章节 / 草稿 / 角色卡 / 伏笔）与 **LanceDB `.vela/lancedb`**（知识库向量）。两者独立，换 Embedding 模型只影响后者。
 - `CREATE TABLE IF NOT EXISTS` **不会**给已存在的表补列。**新增列必须走 `electron/database.ts` 的 `migrateSchema()`**：`PRAGMA table_info(表)` 检查后 `ALTER TABLE 表 ADD COLUMN ...`（幂等、每次打开项目都执行）。迁移日志只在**真正补列时**才打印，没打印 ≠ 失败。
 - 改了 `electron/`（含 DB）要**重启 `pnpm dev`** 才生效；旧项目库在下次打开时自动补列，数据不丢。
+- 需要改写已有数据的迁移（去重、改约束等）追加到 `database.ts` 的 `MIGRATIONS` 数组末尾：每步一个事务、成功才升 `user_version`，执行前自动整库备份；库版本高于应用时拒绝打开。**只新增表**用 `CREATE TABLE IF NOT EXISTS` 即可，不要为此升 `SCHEMA_VERSION`（升了之后旧版 Vela 会拒绝打开该项目）。
 
 ## 6. 给「共享类型」加字段：一律用可选（`?`）
 
@@ -97,8 +98,12 @@ inclusion: always
 
 ## 13. 单元测试（vitest）
 
-- 测试框架是 **vitest**，`environment: 'node'`，`globals: false`（所以每个测试文件都要 `import { describe, it, expect } from 'vitest'`）。**没有 `test` npm 脚本**，跑测试用 `pnpm exec vitest run`（PowerShell 下仍需 `cmd /c` 包装 + 日志文件判断，见第 2 节）。
-- **最大的坑：`vitest.config.ts` 用的是显式 `include` 白名单**（只跑数组里列出的那几个文件）。**新增测试文件必须把它的路径加进 `include` 数组**，否则永远不会被执行——既不报错也不运行，极易误以为"测试通过"。加完再跑一次确认用例数变多了。
+- 测试框架是 **vitest**，`environment: 'node'`，`globals: false`（所以每个测试文件都要 `import { describe, it, expect } from 'vitest'`）。跑测试用 `pnpm run test`（= `vitest run`；PowerShell 下仍需 `cmd /c` 包装 + 日志文件判断，见第 2 节）。
+- `vitest.config.ts` 按 glob 收集 `src/**/__tests__/**/*.test.ts` 与 `electron/**/__tests__/**/*.test.ts`，新测试放对位置即自动纳入；`standalone.test.ts`（node:assert 脚本式）在 `exclude` 里。
+- **本机 SQLite 相关测试会失败**：`node_modules` 里的 better-sqlite3 是按 Electron ABI 编译的，用 Node 跑会报 `NODE_MODULE_VERSION` 不匹配——这是环境问题，不是代码问题。CI（`.github/workflows/ci.yml`）按 Node 安装依赖，可正常跑。本机要全量跑通，用 Electron 充当 Node：`cmd /v:on /c "cd /d E:\...\vela& set ELECTRON_RUN_AS_NODE=1& node_modules\electron\dist\electron.exe node_modules\vitest\vitest.mjs run > tmp\vitest.log 2>&1& echo VITEST_EXIT=!errorlevel!>> tmp\vitest.log"`（`set X=1&` 之间不要留空格，也不要写成 `set "X=1"`，否则破坏外层引号）。
+- **工作目录的盘符必须大写**（`cd /d E:\...`）：盘符小写（`e:\`）时，vitest 的**相对路径** `vi.mock('../xxx')` 会**静默失效**（加载的仍是真实模块），裸模块名（`vi.mock('electron')`）不受影响。
+- **测试不能碰真实的 `~/.vela`**：需要读写配置/记录文件的模块，把文件路径做成可注入参数（参考 `electron/mcp/mcp-approval.ts` 的 `createMcpApprover`），测试里传 `os.tmpdir()` 下的临时路径，不要依赖 mock `config-utils` 的 `VELA_HOME`。
+- CI 每次 push / PR 跑 `typecheck` + `lint`（`--max-warnings 0`）+ `test`，锁文件用 `--frozen-lockfile`：改依赖必须同时提交更新后的 `pnpm-lock.yaml`。
 - 测试就近放同级 `__tests__/`，命名 `*.test.ts`。语言包/JSON 这类可直接 `import x from '../locales/xx.json'` 做结构断言（参考 `src/i18n/__tests__/i18n.test.ts`）。
 - 纯函数（如 `src/services/workflows/json-repair.ts` 的容错解析）适合直接单测，不需要 DOM/Electron。
 
@@ -107,3 +112,17 @@ inclusion: always
 - 经验补充：用 `node 脚本.cjs` 里 `execSync('node node_modules/typescript/bin/tsc ...')` 时，外层执行会**提前拿回控制权**，而 node+tsc 其实还在后台跑——结果文件只停在预写的 `STARTED`，读不到真正结果，误判成失败。
 - 更稳的做法：**起后台进程**跑长命令，命令尾部自带成功标记（如 `; echo TSC_EXIT=$LASTEXITCODE`），再**轮询进程输出**，看到 `TSC_EXIT=0`（或 vitest 的 `passed`）才算过。tsc 全量约 140s，耐心轮询；没输出 ≠ 失败，别急着改代码。
 - 跑完记得停掉后台进程、删除临时脚本/日志。
+
+## 15. Vite 配置与 CSP
+
+- Vite 查找配置文件时 **`vite.config.js` 优先于 `vite.config.ts`**。`tsc -b` 以前会把 `tsconfig.node.json` 编译出的 `vite.config.js` / `.d.ts` 放在根目录，导致改了 `vite.config.ts` 却不生效；现已把 `tsconfig.node.json` 的 `outDir` 指到 `node_modules/.tmp/`。根目录若又出现 `vite.config.js`，直接删掉。
+- 生产构建会由 `vite.config.ts` 里的 `contentSecurityPolicy()` 插件往 `index.html` 注入 CSP（`script-src 'self'`，不允许内联脚本 / 远程脚本 / eval，`connect-src 'self'`）。开发模式不注入。
+- 因此 **`index.html` 里不能再写内联 `<script>`**：需要在首屏前执行的脚本放到 `public/` 下用 `<script src>` 引用（参考 `public/theme-boot.js`）。渲染进程也不要直接 `fetch` 外部地址，网络请求一律走主进程 IPC。
+
+## 16. 界面结构与界面冒烟
+
+- 左侧工具栏实际挂载的是 **`LeftToolWindowBar.tsx`**（见 `App.tsx`）；`ActivityBar.tsx` 没有任何地方引用，入口别加在那里。项目级操作（新建 / 打开 / 导出 / 备份）在主页侧栏 `HomeSidebarPanel.tsx` 和欢迎页。
+- 新增侧栏视图：`layout-store` 的 `SidebarView` 联合类型 → `Sidebar.tsx`（标题 + 分支；自己管理滚动区的视图加进 `selfScrolling`）→ `LeftToolWindowBar.tsx` 按钮 → 三语 i18n（panels `sidebar.*`、layout `activityBar.*`）。
+- 打开某份章节稿子用 `SidebarShared` 的 `resolveDraftTab` / `openDraftTab`：定稿走 `vela://manuscript/{id}`，其余走 `vela://draft/{id}`（草稿编辑器），同一份稿子已用任一路径打开就复用。要在编辑器里定位并高亮某段文字，先 `requestEditorReveal`（`src/services/editor-reveal.ts`）再开 Tab；偏移按换行统一为 `\n` 后的正文计算。
+- 界面冒烟可以不开可见窗口：脚本里先把 `USERPROFILE` / `APPDATA` 指到临时目录并 `app.setPath('home' | 'appData' | 'userData', 临时目录)`，再 `import()` 真实的 `dist-electron/main.js`，在 `browser-window-created` 里把窗口移到屏幕外、透明、不可聚焦，然后用 `webContents.executeJavaScript` 经 `window.velaAPI` 建项目灌数据、点界面。这样不会碰真实的 `~/.vela`。
+- 屏幕外 / 隐藏的窗口里 **`requestAnimationFrame` 不触发**：Toast（`show()` 用 rAF 挂载）在冒烟里看不到属正常；业务逻辑不要用 rAF 延迟执行，否则窗口在后台时也会卡住（编辑器定位就是因此改成 `setTimeout(0)`）。

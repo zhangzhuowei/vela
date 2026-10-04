@@ -4,9 +4,11 @@ import { useTranslation } from 'react-i18next'
 import { useEditorStore } from '../../stores/editor-store'
 import { useProjectStore } from '../../stores/project-store'
 import { Button } from '../ui/Button'
+import { toast } from '../ui/Toast'
 import { cn } from '../../lib/utils'
 import {
   getChapters, getChapterVersions, getVersionContent, getChapterLatestContent, revertToVersion,
+  noChapterContentMessage,
   type VersionRecord,
 } from '../../services/version-service'
 
@@ -77,6 +79,10 @@ export default function VersionHistory() {
 
     // 获取最新草稿内容进行比对
     const currentContent = await getChapterLatestContent(chapter.chapter_number)
+    if (!currentContent) {
+      toast.info(noChapterContentMessage())
+      return
+    }
 
     useEditorStore.getState().openFile({
       id: `diff-version-${versionId}`,
@@ -85,6 +91,8 @@ export default function VersionHistory() {
       originalContent: oldContent,
       content: currentContent,
       filePath: `vela://draft/ch${chapter.chapter_number}`, // 不再指向实体文件
+      // 没有关联修稿：合并结果会另存为该章的新草稿版本（见 EditorArea 合并回调）
+      chapterNumber: chapter.chapter_number,
     })
   }
 

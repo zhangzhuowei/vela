@@ -1935,6 +1935,120 @@ Output strictly in format, keep content concise, each item no more than 30 words
   },
 
   // ================================================================
+  // 分层摘要：卷摘要 / 全书摘要（定稿后处理，每卷最后一章定稿时生成）
+  // ================================================================
+
+  {
+    key: 'generate_arc_summary',
+    name: '卷摘要生成',
+    description: '每卷最后一章定稿后，把本卷各章要点压缩为卷摘要，作为长篇写作的远期记忆',
+    systemRole: '你是一位资深的长篇网文编辑，擅长提炼长篇叙事的主线脉络。',
+    variables: {
+      arc_start: '本卷起始章',
+      arc_end: '本卷结束章',
+      chapter_summaries: '本卷各章要点',
+    },
+    content: `请把下面第{{arc_start}}-{{arc_end}}章的章节要点，压缩成一段【卷摘要】，供后续写作时回顾本卷剧情。
+
+【本卷各章要点】
+{{chapter_summaries}}
+
+---
+
+写作要求：
+1. 300~500 字，连贯叙述，不要逐章罗列，不要使用 Markdown 标题或列表。
+2. 必须保留：主线推进与走向、关键转折及其因果、主要角色的立场 / 关系 / 实力变化、本卷新确立且后续会用到的设定、仍未回收的伏笔与悬念。
+3. 只写已经发生的内容，不预测、不评价、不加入要点里没有的情节。
+4. 直接输出摘要正文，不要任何开场白或说明。`,
+    contentLocalized: {
+      en: `Please condense the chapter notes for chapters {{arc_start}}-{{arc_end}} below into a single [Arc Summary], used to recall this arc's story during later writing.
+
+【Chapter Notes for This Arc】
+{{chapter_summaries}}
+
+---
+
+Requirements:
+1. 200–350 words of continuous prose — do not go chapter by chapter, and do not use Markdown headings or lists.
+2. Must preserve: main-plot progress and direction, key turning points and their causes, changes in the main characters' stances / relationships / power, settings established in this arc that later chapters will rely on, and foreshadowing or open questions not yet resolved.
+3. Only describe what has already happened — no predictions, no commentary, no plot that is not in the notes.
+4. Output the summary text directly, without any preamble or explanation.`,
+      ru: `Сожмите приведённые ниже заметки к главам {{arc_start}}–{{arc_end}} в одно [Резюме арки], чтобы при дальнейшей работе можно было вспомнить сюжет этой арки.
+
+【Заметки к главам этой арки】
+{{chapter_summaries}}
+
+---
+
+Требования:
+1. 200–350 слов связного текста — не пересказывайте главы по порядку и не используйте заголовки или списки Markdown.
+2. Обязательно сохраните: развитие и направление основного сюжета, ключевые повороты и их причины, изменения позиций / отношений / силы главных персонажей, установки этой арки, на которые будут опираться следующие главы, а также ещё не раскрытые предвестия и загадки.
+3. Описывайте только уже произошедшее — без прогнозов, оценок и событий, которых нет в заметках.
+4. Выведите сразу текст резюме, без вступлений и пояснений.`
+    },
+    systemRoleLocalized: {
+      en: 'You are a senior long-form web novel editor, skilled at distilling the main throughline of a long narrative.',
+      ru: 'Вы — опытный редактор длинных веб-романов, умеющий выделять главную линию длинного повествования.'
+    },
+  },
+
+  {
+    key: 'generate_book_summary',
+    name: '全书摘要生成',
+    description: '由各卷卷摘要汇总出全书摘要，作为长篇写作的远期记忆',
+    systemRole: '你是一位资深的长篇网文编辑，擅长提炼长篇叙事的主线脉络。',
+    variables: {
+      arc_summaries: '各卷卷摘要（按顺序）',
+      covered_until: '覆盖到的章节',
+    },
+    content: `下面是这部小说目前已完成各卷的卷摘要（覆盖到第{{covered_until}}章）。请据此写出一份【全书摘要】，作为后续写作的长期记忆。
+
+【各卷摘要（按顺序）】
+{{arc_summaries}}
+
+---
+
+写作要求：
+1. 600~1000 字，按时间顺序连贯叙述整部作品至今的主线，不要使用 Markdown 标题或列表。
+2. 越早的剧情写得越概括，越近的剧情保留越多细节。
+3. 必须保留：核心矛盾及其演变、主角成长轨迹、重要人物的关系与命运变化、已确立的关键设定、仍在进行的主线与未回收的重大伏笔。
+4. 只写已经发生的内容，不预测后续、不评价。
+5. 直接输出摘要正文，不要任何开场白或说明。`,
+    contentLocalized: {
+      en: `Below are the arc summaries of every completed arc of this novel so far (through chapter {{covered_until}}). Based on them, write a [Book Summary] to serve as long-term memory for later writing.
+
+【Arc Summaries (in order)】
+{{arc_summaries}}
+
+---
+
+Requirements:
+1. 400–700 words of continuous prose narrating the main line of the whole work so far in chronological order — no Markdown headings or lists.
+2. The earlier the events, the more condensed; the more recent, the more detail you keep.
+3. Must preserve: the core conflict and how it evolved, the protagonist's growth arc, changes in the relationships and fates of important characters, key established settings, and ongoing main plotlines and major unresolved foreshadowing.
+4. Only describe what has already happened — no predictions of what comes next, no commentary.
+5. Output the summary text directly, without any preamble or explanation.`,
+      ru: `Ниже приведены резюме всех завершённых арок романа на данный момент (до главы {{covered_until}}). На их основе напишите [Резюме книги], которое послужит долгосрочной памятью для дальнейшей работы.
+
+【Резюме арок (по порядку)】
+{{arc_summaries}}
+
+---
+
+Требования:
+1. 400–700 слов связного текста, излагающего основную линию всего произведения до настоящего момента в хронологическом порядке, — без заголовков и списков Markdown.
+2. Чем раньше события, тем сжатее; чем ближе к текущему моменту, тем больше деталей.
+3. Обязательно сохраните: основной конфликт и его развитие, путь роста главного героя, изменения в отношениях и судьбах важных персонажей, ключевые установленные установки, продолжающиеся сюжетные линии и крупные нераскрытые предвестия.
+4. Описывайте только уже произошедшее — без прогнозов и оценок.
+5. Выведите сразу текст резюме, без вступлений и пояснений.`
+    },
+    systemRoleLocalized: {
+      en: 'You are a senior long-form web novel editor, skilled at distilling the main throughline of a long narrative.',
+      ru: 'Вы — опытный редактор длинных веб-романов, умеющий выделять главную линию длинного повествования.'
+    },
+  },
+
+  // ================================================================
   // 伏笔抽取与回收识别（定稿后处理 / JSON 输出）
   // ================================================================
 

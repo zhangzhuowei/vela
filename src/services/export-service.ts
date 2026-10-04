@@ -61,8 +61,10 @@ export async function exportNovel(options: ExportOptions): Promise<{ success: bo
     addLog('info', t('export.foundChapters', { count: chapterContents.length }))
 
     // 确保输出目录存在
-    await ipc.invoke('fs:mkdir', options.outputDir)
+    await mkdirOrThrow(options.outputDir)
 
+    // 项目名用作文件名：替换路径分隔符等非法字符，避免写到所选目录之外
+    const baseName = toFileNameSegment(project.name)
     let outputPath = ''
 
     switch (options.format) {
@@ -84,18 +86,18 @@ export async function exportNovel(options: ExportOptions): Promise<{ success: bo
           content += ch.content + '\n\n---\n\n'
         }
 
-        outputPath = `${options.outputDir}/${project.name}.md`
-        await ipc.invoke('fs:write-file', outputPath, content)
+        outputPath = `${options.outputDir}/${baseName}.md`
+        await writeOrThrow(outputPath, content)
         break
       }
 
       case 'split-md': {
         // 每章一个 Markdown
-        const splitDir = `${options.outputDir}/${project.name}`
-        await ipc.invoke('fs:mkdir', splitDir)
+        const splitDir = `${options.outputDir}/${baseName}`
+        await mkdirOrThrow(splitDir)
 
         for (const ch of chapterContents) {
-          await ipc.invoke('fs:write-file', `${splitDir}/${ch.name}`, ch.content)
+          await writeOrThrow(`${splitDir}/${ch.name}`, ch.content)
         }
 
         outputPath = splitDir
@@ -119,8 +121,8 @@ export async function exportNovel(options: ExportOptions): Promise<{ success: bo
           content += plainText + '\n\n'
         }
 
-        outputPath = `${options.outputDir}/${project.name}.txt`
-        await ipc.invoke('fs:write-file', outputPath, content)
+        outputPath = `${options.outputDir}/${baseName}.txt`
+        await writeOrThrow(outputPath, content)
         break
       }
 
@@ -143,7 +145,7 @@ export async function exportNovel(options: ExportOptions): Promise<{ success: bo
           })
         }
 
-        outputPath = `${options.outputDir}/${project.name}.epub`
+        outputPath = `${options.outputDir}/${baseName}.epub`
         const res = await ipc.invoke('export:epub', {
           title: project.name,
           author: options.author?.trim() || '佚名',
@@ -164,6 +166,26 @@ export async function exportNovel(options: ExportOptions): Promise<{ success: bo
     addLog('error', t('export.exportFailed', { error: String(error) }))
     return { success: false, error: String(error) }
   }
+}
+
+/** fs:write-file 失败时只返回 success:false，不会抛异常；这里转成异常，免得把写失败报成导出成功 */
+async function writeOrThrow(filePath: string, content: string): Promise<void> {
+  const res = await ipc.invoke('fs:write-file', filePath, content)
+  if (!res?.success) throw new Error(res?.error || filePath)
+}
+
+async function mkdirOrThrow(dirPath: string): Promise<void> {
+  const res = await ipc.invoke('fs:mkdir', dirPath)
+  if (!res?.success) throw new Error(res?.error || dirPath)
+}
+
+/** 把名称转成单段文件名：替换路径分隔符与 Windows 非法字符，去掉结尾的点和空格 */
+function toFileNameSegment(name: string): string {
+  const cleaned = Array.from(name, (ch) => (ch.charCodeAt(0) < 32 || '<>:"/\\|?*'.includes(ch) ? '_' : ch))
+    .join('')
+    .trim()
+    .replace(/[. ]+$/, '')
+  return cleaned || 'novel'
 }
 
 function formatLabel(format: ExportFormat): string {

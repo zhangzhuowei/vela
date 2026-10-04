@@ -34,6 +34,8 @@ export interface WorkflowRun {
   currentStepIndex: number
   createdAt: string
   completedAt?: string
+  /** 该工作流操作的章节号（来自定义），用于判断章节是否忙碌 */
+  chapterNumber?: number
 }
 
 /** 工作流类型 */
@@ -94,6 +96,11 @@ export interface WorkflowDefinition {
   }>
   /** 工作流完成后的通知/跳转动作（可选） */
   onComplete?: WorkflowCompleteAction
+  /**
+   * 该工作流操作的章节号（单章工作流填写）。
+   * 编辑器据此判断「本章是否有 AI 任务在跑」，不要改成匹配标题文案：标题随界面语言变化
+   */
+  chapterNumber?: number
 }
 
 // ===== Store =====
@@ -216,6 +223,7 @@ export const useWorkflowStore = create<WorkflowState>()((set, get) => ({
       id: randomUUID(),
       type: definition.type,
       title: definition.title,
+      chapterNumber: definition.chapterNumber,
       status: 'running',
       currentStepIndex: 0,
       createdAt: new Date().toISOString(),

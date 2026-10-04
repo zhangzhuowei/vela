@@ -20,8 +20,14 @@ import { Label } from '../ui/Label'
 import { NativeSelect } from '../ui/NativeSelect'
 import { cn } from '../../lib/utils'
 import { ipc } from '../../services/ipc-client'
+import {
+  applyAutoSaveInterval,
+  normalizeAutoSaveInterval,
+  DEFAULT_AUTO_SAVE_INTERVAL_SEC,
+} from '../../services/editor-autosave'
 import { Switch } from '../ui/Switch'
 import OllamaModelPicker from './OllamaModelPicker'
+import { alertError } from '../ui/AlertDialog'
 
 // 打赏/赞助 图片资源（通过 import 让 Vite 处理路径，确保打包后可正常加载）
 import wepayImg from '/buyme/wepay.jpg?url'
@@ -272,7 +278,7 @@ function LLMSection({
       id: randomUUID(),
       name: '',
       provider: 'openai',
-      protocol: (openaiPreset?.protocol ?? 'openai') as 'openai' | 'gemini',
+      protocol: (openaiPreset?.protocol ?? 'openai') as ModelProfile['protocol'],
       modelName: defaultModelName,
       apiKey: '',
       baseUrl: openaiPreset?.baseUrl ?? 'https://api.openai.com',
@@ -287,19 +293,22 @@ function LLMSection({
     if (!editingModel) return
     setSaving(true)
     setSaveError('')
-    try {
-      if (!await saveModel(editingModel)) throw new Error('SAVE_FAILED')
-      // 新增模型后，如果该分类还没有默认则自动设为默认
-      const countBefore = filtered.length
-      if (countBefore === 0) {
-        setDefaultForCategory(editingModel.id)
-      }
-      setEditingModel(null)
-    } catch {
-      setSaveError(t('models.saveFailure'))
-    } finally {
+    const result = await saveModel(editingModel)
+    if (!result.success) {
+      // 保存失败（如改了接口地址却没重新填写 Key）：保留表单让用户修改
       setSaving(false)
+      const message = result.error ?? ''
+      setSaveError(message)
+      alertError(t('saveFailed', { ns: 'common', error: message }))
+      return
     }
+    // 新增模型后，如果该分类还没有默认则自动设为默认
+    const countBefore = filtered.length
+    if (countBefore === 0) {
+      setDefaultForCategory(editingModel.id)
+    }
+    setEditingModel(null)
+    setSaving(false)
   }
 
 
@@ -499,7 +508,7 @@ function ModelForm({
     onChange({
       ...model,
       provider,
-      protocol: (p?.protocol ?? 'openai') as 'openai' | 'gemini',
+      protocol: (p?.protocol ?? 'openai') as ModelProfile['protocol'],
       baseUrl: p?.baseUrl ?? '',
       modelName: provider === 'ollama' ? '' : defaultModelName,
       apiKey: provider === 'ollama' ? '' : model.apiKey,
@@ -574,6 +583,7 @@ function ModelForm({
             onChange={(e) => handleProviderChange(e.target.value as ModelProfile['provider'])}
           >
             <option value="openai">OpenAI</option>
+            <option value="anthropic">Anthropic Claude</option>
             <option value="deepseek">DeepSeek</option>
             <option value="gemini">Google Gemini</option>
             <option value="ollama">{t('modelsProviders.ollama')}</option>
@@ -585,10 +595,11 @@ function ModelForm({
           <Label>{t('models.protocol')}</Label>
           <NativeSelect
             value={model.protocol}
-            onChange={(e) => up('protocol', e.target.value as 'openai' | 'gemini')}
+            onChange={(e) => up('protocol', e.target.value as ModelProfile['protocol'])}
           >
             <option value="openai">OpenAI</option>
             <option value="gemini">Gemini</option>
+            <option value="anthropic">Anthropic</option>
           </NativeSelect>
         </div>
       </div>
@@ -667,6 +678,8 @@ function ModelForm({
             type={showKey ? 'text' : 'password'}
             value={model.apiKey}
             onChange={(e) => up('apiKey', e.target.value)}
+            // 已保存的 Key 只以打码值（••••+末 4 位）显示：聚焦时整体选中，输入即替换而不是在打码值上修改
+            onFocus={(e) => { if (e.target.value.includes('•')) e.target.select() }}
             placeholder={model.provider === 'ollama' ? t('models.apiKeyOllamaPlaceholder') : t('models.apiKeyPlaceholder')}
             className="pr-9"
           />
@@ -965,12 +978,59 @@ function FontSelect({
   )
 }
 
+/** 自动保存间隔（秒，0 = 关闭）：输入框允许清空，失焦时规范化、立即生效并写入全局配置 */
+function AutoSaveSetting() {
+  const { t } = useTranslation('settings')
+  const [value, setValue] = useState<number | ''>(DEFAULT_AUTO_SAVE_INTERVAL_SEC)
+
+  useEffect(() => {
+    ipc.invoke('config:get')
+      .then((cfg) => setValue(normalizeAutoSaveInterval(cfg?.autoSaveInterval ?? DEFAULT_AUTO_SAVE_INTERVAL_SEC)))
+      .catch(() => { /* 读取失败保持默认值 */ })
+  }, [])
+
+  const commit = () => {
+    // 清空后失焦回退为默认间隔（而不是关闭），关闭需明确填 0
+    const sec = normalizeAutoSaveInterval(value === '' ? DEFAULT_AUTO_SAVE_INTERVAL_SEC : value)
+    setValue(sec)
+    applyAutoSaveInterval(sec)
+    ipc.invoke('config:set', { autoSaveInterval: sec }).catch(() => { /* 写入失败不影响本次会话 */ })
+  }
+
+  return (
+    <div className="space-y-1.5">
+      <div>
+        <p className="text-xs font-semibold" style={{ color: 'var(--color-text)' }}>{t('appearance.autoSave')}</p>
+        <p className="text-[0.68rem] mt-0.5" style={{ color: 'var(--color-text-muted)' }}>
+          {t('appearance.autoSaveDesc')}
+        </p>
+      </div>
+      <div className="flex items-center gap-2">
+        <Input
+          type="number"
+          min={0}
+          step={5}
+          className="w-24"
+          value={value}
+          aria-label={t('appearance.autoSave')}
+          onChange={(e) => setValue(e.target.value === '' ? '' : Number(e.target.value))}
+          onBlur={commit}
+        />
+        <span className="text-xs" style={{ color: 'var(--color-text-muted)' }}>{t('appearance.autoSaveUnit')}</span>
+      </div>
+    </div>
+  )
+}
+
 function EditorSection() {
   const { writingFont, setWritingFont, uiFont, setUiFont } = useThemeStore()
   const { t } = useTranslation('settings')
 
   return (
     <div className="max-w-md space-y-5">
+      {/* 自动保存 */}
+      <AutoSaveSetting />
+
       {/* 界面字体 */}
       <div className="space-y-1.5">
         <div className="flex items-center justify-between">
@@ -1045,7 +1105,7 @@ function AboutSection() {
 
 function providerEmoji(provider: string) {
   const map: Record<string, string> = {
-    openai: '🤖', deepseek: '🐬', gemini: '✨', ollama: '🦙', bigmodel: '🧠', custom: '⚙️',
+    openai: '🤖', anthropic: '🧡', deepseek: '🐬', gemini: '✨', ollama: '🦙', bigmodel: '🧠', custom: '⚙️',
   }
   return map[provider] ?? '🔧'
 }

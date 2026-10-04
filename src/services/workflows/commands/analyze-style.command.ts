@@ -23,7 +23,7 @@ export class AnalyzeWritingStyleCommand extends BaseWorkflowCommand<string> {
     super()
   }
 
-  async execute({ callbacks }: CommandExecuteParams): Promise<string> {
+  async execute({ callbacks, context }: CommandExecuteParams): Promise<string> {
     const project = useProjectStore.getState().currentProject
     if (!project) throw new Error(t('common.noProject'))
 
@@ -80,6 +80,8 @@ export class AnalyzeWritingStyleCommand extends BaseWorkflowCommand<string> {
       finalPrompt,
       template.systemRole || '你是一位资深的文学评论家和网文研究者。',
       callbacks,
+      undefined,
+      context,
     )
 
     const cleanResult = this.stripThinkingTags(result).trim()

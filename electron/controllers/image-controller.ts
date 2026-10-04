@@ -1,8 +1,17 @@
 import { ipcMain, dialog } from 'electron'
-import { promises as fsPromises } from 'node:fs'
+import fs, { promises as fsPromises } from 'node:fs'
 import path from 'node:path'
 import { readJsonFile, GLOBAL_CONFIG_PATH, DEFAULT_GLOBAL_CONFIG } from '../utils/config-utils'
 import { ModelProfile, GlobalConfig } from '../../src/shared/ipc-channels'
+import { withRequestTimeout } from '../llm/http'
+import { getCurrentProjectPath } from '../database'
+import { assertPathAccess, checkPathAccess, PathAccessError } from '../path-guard'
+import { modelStore, ModelKeyError } from '../model-store'
+
+/** 文生图请求的最长时间（部分服务端出图需要一两分钟） */
+const IMAGE_GENERATE_TIMEOUT_MS = 180_000
+/** 下载生成图的最长时间 */
+const IMAGE_DOWNLOAD_TIMEOUT_MS = 60_000
 
 /** 应用代理配置（与 llm-controller 保持一致的 env 方式） */
 function applyProxyConfig() {
@@ -49,6 +58,28 @@ function detectImage(buf: Buffer): { ext: string; mime: string } {
   return { ext: 'png', mime: 'image/png' }
 }
 
+/** 项目图片目录 {projectPath}/.vela/images（需可写） */
+function resolveImageDir(projectPath: string): string {
+  return assertPathAccess(path.join(projectPath, '.vela', 'images'), 'write')
+}
+
+/**
+ * 定位要读取的图片。库里存的是绝对路径：项目被移动或复制后，旧路径可能已不存在或不在可读范围内，
+ * 此时按文件名到当前项目的 .vela/images 里找同名文件。
+ */
+function locateImageForRead(filePath: string): string {
+  const check = checkPathAccess(filePath, 'read')
+  if (check.ok && fs.existsSync(check.path)) return check.path
+
+  const projectPath = getCurrentProjectPath()
+  if (projectPath && typeof filePath === 'string' && /[\\/]\.vela[\\/]images[\\/][^\\/]+$/.test(filePath)) {
+    const candidate = path.join(projectPath, '.vela', 'images', path.basename(filePath))
+    if (fs.existsSync(candidate)) return candidate
+  }
+  if (!check.ok) throw new PathAccessError(check.error)
+  return check.path
+}
+
 export function registerImageController() {
   /**
    * 文生图：调用 OpenAI 兼容 / SiliconFlow 图片接口，
@@ -64,10 +95,14 @@ export function registerImageController() {
   }) => {
     try {
       applyProxyConfig()
-      const { model, prompt } = payload
+      const { prompt } = payload
+      // 渲染进程拿到的是打码后的 Key：换成已保存的真实 Key（接口地址与保存时不一致则拒绝）
+      const model = payload.model ? modelStore.resolveIncoming(payload.model) : payload.model
       if (!prompt?.trim()) return { success: false, error: '提示词为空' }
       if (!model?.baseUrl || !model?.modelName) return { success: false, error: '文生图模型配置不完整' }
       if (!payload.projectPath) return { success: false, error: '未指定项目路径' }
+      // 先校验落盘目录，避免白白调用一次付费接口
+      const dir = resolveImageDir(payload.projectPath)
 
       const size = payload.size || '1024x1024'
       const url = buildImageUrl(model.baseUrl)
@@ -84,24 +119,30 @@ export function registerImageController() {
       const negativePrompt = payload.negativePrompt?.trim()
       if (negativePrompt) body.negative_prompt = negativePrompt
 
-      const res = await fetch(url, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${model.apiKey}`,
-        },
-        body: JSON.stringify(body),
-      })
-
-      if (!res.ok) {
-        const t = await res.text()
-        return { success: false, error: `文生图接口失败 (${res.status}): ${t.slice(0, 300)}` }
-      }
-
-      const data = await res.json() as {
+      // 生成与下载各自带超时（含读完响应体），接口挂住时不会让 invoke 永远不返回
+      type ImageResponse = {
         images?: Array<{ url?: string; b64_json?: string }>
         data?: Array<{ url?: string; b64_json?: string }>
       }
+      const generated = await withRequestTimeout(IMAGE_GENERATE_TIMEOUT_MS, async (signal) => {
+        const res = await fetch(url, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${model.apiKey}`,
+          },
+          body: JSON.stringify(body),
+          signal,
+        })
+        if (!res.ok) {
+          const t = await res.text()
+          return { ok: false as const, error: `文生图接口失败 (${res.status}): ${t.slice(0, 300)}` }
+        }
+        return { ok: true as const, data: await res.json() as ImageResponse }
+      }, { what: '文生图请求' })
+      if (!generated.ok) return { success: false, error: generated.error }
+
+      const data = generated.data
       const item = data.images?.[0] ?? data.data?.[0]
       if (!item) return { success: false, error: '接口未返回图片数据' }
 
@@ -109,15 +150,19 @@ export function registerImageController() {
       if (item.b64_json) {
         bytes = Buffer.from(item.b64_json, 'base64')
       } else if (item.url) {
-        const imgRes = await fetch(item.url)
-        if (!imgRes.ok) return { success: false, error: `下载生成图失败 (${imgRes.status})` }
-        bytes = Buffer.from(await imgRes.arrayBuffer())
+        const imageUrl = item.url
+        const downloaded = await withRequestTimeout(IMAGE_DOWNLOAD_TIMEOUT_MS, async (signal) => {
+          const imgRes = await fetch(imageUrl, { signal })
+          if (!imgRes.ok) return { ok: false as const, status: imgRes.status }
+          return { ok: true as const, bytes: Buffer.from(await imgRes.arrayBuffer()) }
+        }, { what: '下载生成图' })
+        if (!downloaded.ok) return { success: false, error: `下载生成图失败 (${downloaded.status})` }
+        bytes = downloaded.bytes
       } else {
         return { success: false, error: '接口未返回图片 URL 或 base64' }
       }
 
       const { ext, mime } = detectImage(bytes)
-      const dir = path.join(payload.projectPath, '.vela', 'images')
       await fsPromises.mkdir(dir, { recursive: true })
       const safeHint = (payload.filenameHint || 'image')
         .replace(/[^\w\u4e00-\u9fa5-]+/g, '_')
@@ -131,7 +176,7 @@ export function registerImageController() {
         dataUrl: `data:${mime};base64,${bytes.toString('base64')}`,
       }
     } catch (error) {
-      return { success: false, error: String(error) }
+      return { success: false, error: error instanceof ModelKeyError ? error.message : String(error) }
     }
   })
 
@@ -146,6 +191,7 @@ export function registerImageController() {
   }) => {
     try {
       if (!payload?.projectPath) return { success: false, error: '未指定项目路径' }
+      const dir = resolveImageDir(payload.projectPath)
 
       const result = await dialog.showOpenDialog({
         properties: ['openFile'],
@@ -160,7 +206,6 @@ export function registerImageController() {
       const bytes = await fsPromises.readFile(srcPath)
       const { ext, mime } = detectImage(bytes)
 
-      const dir = path.join(payload.projectPath, '.vela', 'images')
       await fsPromises.mkdir(dir, { recursive: true })
       const safeHint = (payload.filenameHint || 'image')
         .replace(/[^\w\u4e00-\u9fa5-]+/g, '_')
@@ -181,7 +226,7 @@ export function registerImageController() {
   /** 读取本地图片为 base64 data URL（用于重新打开项目时显示已存图片） */
   ipcMain.handle('image:read', async (_event, filePath: string) => {
     try {
-      const bytes = await fsPromises.readFile(filePath)
+      const bytes = await fsPromises.readFile(locateImageForRead(filePath))
       const { mime } = detectImage(bytes)
       return { success: true, dataUrl: `data:${mime};base64,${bytes.toString('base64')}` }
     } catch (error) {

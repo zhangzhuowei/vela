@@ -19,7 +19,7 @@ export interface ProviderPreset {
   displayName?: string
   /** 默认 API 地址 */
   baseUrl: string
-  /** 默认调用协议：openai 兼容 或 gemini 原生 */
+  /** 默认调用协议：openai 兼容 / gemini 原生 / anthropic 原生 */
   protocol: string
   /** 支持的生成模型列表（含各自的 maxTokens） */
   models: ModelPreset[]
@@ -44,6 +44,20 @@ export const BUILTIN_PRESETS: ProviderPreset[] = [
     ],
     embeddingModels: ['text-embedding-3-small', 'text-embedding-3-large', 'text-embedding-ada-002'],
     imageModels: ['gpt-image-1', 'dall-e-3'],
+  },
+  {
+    /** Anthropic 原生 Messages API：支持提示缓存（同一章节多步生成共用 Canon 上下文前缀）；没有 Embedding / 文生图接口 */
+    provider: 'anthropic',
+    displayName: 'Anthropic Claude',
+    baseUrl: 'https://api.anthropic.com',
+    protocol: 'anthropic',
+    models: [
+      { name: 'claude-opus-5-5', maxTokens: 64000 },
+      { name: 'claude-sonnet-5-5', maxTokens: 64000 },
+      { name: 'claude-fable-5', maxTokens: 64000 },
+      { name: 'claude-haiku-4-5', maxTokens: 64000 },
+    ],
+    embeddingModels: [],
   },
   {
     provider: 'deepseek',

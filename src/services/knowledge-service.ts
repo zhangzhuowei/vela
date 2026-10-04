@@ -14,6 +14,8 @@ export interface KBDocument {
   importedAt: string
   chunkCount: number
   filePath: string
+  /** 首块第一行非空文本（标题预览），没有则为空串 */
+  preview?: string
 }
 
 /** 检索结果 */

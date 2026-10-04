@@ -72,5 +72,11 @@
   "openAndView": "打开查看",
   "ignore": "忽略",
   "comingSoon": "即将推出",
-  "lastAttempt": "上次尝试"
+  "lastAttempt": "上次尝试",
+  "saveFailed": "保存失败：{{error}}",
+  "autoSaveFailed": "自动保存失败：{{name}}（{{error}}）",
+  "unsupportedSavePath": "该内容不支持直接保存：{{path}}",
+  "closeSaveFailedTitle": "部分修改没能保存",
+  "closeSaveFailedMessage": "以下标签页的修改没能保存：{{names}}\n\n仍然关闭会丢失这些修改。",
+  "closeAnyway": "仍然关闭"
 }

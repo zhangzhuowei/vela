@@ -3,7 +3,20 @@ import { useLLMStore } from '../../../stores/llm-store'
 import { globalEventBus, EventPayloadMap } from '../../../shared/event-bus'
 import type { BasePromptBuilder } from '../../prompts/prompt-builder'
 import { parseJSONWithRepair } from '../json-repair'
+import { WorkflowCancelledError, isWorkflowCancelled } from '../workflow-errors'
+import { computeRetryDelayMs, isRetriableErrorMessage, isAuthErrorMessage } from '../retry-policy'
+import { orderFallbackModels } from '../model-chain'
 import i18n from '../../../i18n'
+
+/** 等待 ms 毫秒；期间工作流被取消则提前结束并抛出取消错误（批量任务退避等待可能长达数十秒） */
+async function sleepUnlessCancelled(ms: number, context?: WorkflowContext): Promise<void> {
+  const deadline = Date.now() + ms
+  while (Date.now() < deadline) {
+    if (context?.cancelled) throw new WorkflowCancelledError()
+    await new Promise((r) => setTimeout(r, Math.min(250, deadline - Date.now())))
+  }
+  if (context?.cancelled) throw new WorkflowCancelledError()
+}
 
 export interface CommandExecuteParams {
   step: unknown
@@ -20,8 +33,8 @@ export abstract class BaseWorkflowCommand<TResult = string> {
   /** 抽象执行入口 */
   abstract execute(params: CommandExecuteParams): Promise<TResult>
 
-  /** 单次 LLM 调用的重试上限（不含首次） */
-  protected maxLLMRetries = 2
+  /** 单次 LLM 调用在同一模型上的重试上限（不含首次）；用尽后再切备用模型 */
+  protected maxLLMRetries = 3
 
   /**
    * 调用 LLM（带瞬时错误自动重试）。
@@ -45,23 +58,24 @@ export abstract class BaseWorkflowCommand<TResult = string> {
       if (ci > 0) callbacks.log(`↩️ 上一模型持续失败，改用备用模型：${this.modelLabel(modelId)}`)
 
       for (let attempt = 0; attempt <= this.maxLLMRetries; attempt++) {
-        if (context?.cancelled) throw new Error('工作流已取消')
+        if (context?.cancelled) throw new WorkflowCancelledError()
         try {
           return await this.invokeLLMStreamOnce(prompt, systemPrompt, callbacks, options, context, modelId)
         } catch (e) {
           lastErr = e
           const msg = e instanceof Error ? e.message : String(e)
-          // 用户取消 → 立即中止整个链
-          if (msg.includes('取消')) throw e
+          // 用户取消 → 立即中止整个链（按类型判断，不依赖界面语言的文案）
+          if (isWorkflowCancelled(e) || context?.cancelled) throw e instanceof WorkflowCancelledError ? e : new WorkflowCancelledError()
           const retriable = this.isRetriableError(msg)
           const auth = this.isAuthError(msg)
           // 不可恢复且非鉴权错误（如 400/解析错误）→ 换模型也无意义，直接抛
           if (!retriable && !auth) throw e
           // 可恢复错误且还有重试机会 → 退避后重试同一模型
+          // （优先服务端 Retry-After，否则指数退避 + 抖动；等待期间可被取消）
           if (retriable && attempt < this.maxLLMRetries) {
-            const waitMs = 1500 * (attempt + 1)
-            callbacks.log(`⚠️ LLM 调用失败：${msg}；${Math.round(waitMs / 1000)}s 后重试 (${attempt + 1}/${this.maxLLMRetries})...`)
-            await new Promise((r) => setTimeout(r, waitMs))
+            const waitMs = computeRetryDelayMs(attempt, msg)
+            callbacks.log(`⚠️ LLM 调用失败：${msg}；${Math.max(1, Math.round(waitMs / 1000))}s 后重试 (${attempt + 1}/${this.maxLLMRetries})...`)
+            await sleepUnlessCancelled(waitMs, context)
             continue
           }
           // 重试用尽（或鉴权错误）→ 跳出，尝试链中下一个备用模型
@@ -74,8 +88,8 @@ export abstract class BaseWorkflowCommand<TResult = string> {
 
   /**
    * 构造模型尝试链：主模型在前（primary 指定则用它，否则用默认模型——
-   * 用 undefined 让 generateStream 走默认，保持原行为）；其余已配置生成模型作为备用，
-   * 备用中优先不同 base_url（不同服务商），以规避"同一家服务商同时繁忙/故障"。
+   * 用 undefined 让 generateStream 走默认，保持原行为）；其余能做文本生成的模型作为备用
+   * （排除 Embedding / 文生图模型），备用中优先不同 base_url（不同服务商）。
    */
   private buildModelChain(primary?: string): Array<string | undefined> {
     const llmStore = useLLMStore.getState()
@@ -85,11 +99,7 @@ export abstract class BaseWorkflowCommand<TResult = string> {
     if (models.length <= 1) return chain
     // 用于"排除自身 + 优选不同服务商"的基准：primary 或默认模型
     const primaryId = primary ?? llmStore.defaultModelId ?? undefined
-    const primaryBase = primaryId ? models.find((m) => m.id === primaryId)?.baseUrl ?? '' : ''
-    const others = models.filter((m) => m.id !== primaryId)
-    const diffProvider = others.filter((m) => m.baseUrl !== primaryBase)
-    const sameProvider = others.filter((m) => m.baseUrl === primaryBase)
-    for (const m of [...diffProvider, ...sameProvider]) chain.push(m.id)
+    for (const m of orderFallbackModels(models, primaryId)) chain.push(m.id)
     return chain
   }
 
@@ -135,15 +145,14 @@ export abstract class BaseWorkflowCommand<TResult = string> {
       .catch(() => { /* 记账失败不影响生成 */ })
   }
 
-  /** 可重试的瞬时错误：限流 / 服务器繁忙 / 超时 / 网络抖动 / 空响应 */
+  /** 可重试的瞬时错误：限流 / 服务器繁忙 / 超时 / 网络抖动（规则见 retry-policy.ts） */
   protected isRetriableError(msg: string): boolean {
-    return /\b(429|500|502|503|504)\b/.test(msg)
-      || /too busy|busy now|timeout|timed out|rate.?limit|overload|ECONN|ETIMEDOUT|socket hang up|network|服务器繁忙|请求过于频繁|流式生成失败/i.test(msg)
+    return isRetriableErrorMessage(msg)
   }
 
-  /** 鉴权 / 权限错误：不应重试 */
+  /** 鉴权 / 权限错误：不应在同一模型上重试 */
   protected isAuthError(msg: string): boolean {
-    return /\b(401|403)\b/.test(msg) || /unauthorized|invalid api key|forbidden|无效的?\s*api|鉴权失败/i.test(msg)
+    return isAuthErrorMessage(msg)
   }
 
   /** 获取 LLM 大模型连接代理（支持取消）— 单次调用，不含重试。modelId 为空时走默认模型 */
@@ -176,7 +185,7 @@ export abstract class BaseWorkflowCommand<TResult = string> {
             clearInterval(cancelCheckTimer!)
             cancelCheckTimer = null
             llmStore.cancelGeneration(streamRequestId).catch(() => {})
-            reject(new Error(i18n.t('base.workflowCancelled', { ns: 'commands' })))
+            reject(new WorkflowCancelledError())
           }
         }, 200)
       }
@@ -204,7 +213,7 @@ export abstract class BaseWorkflowCommand<TResult = string> {
             cleanup()
             // 取消后不 resolve，让 reject 生效
             if (context?.cancelled) {
-              reject(new Error(i18n.t('base.workflowCancelled', { ns: 'commands' })))
+              reject(new WorkflowCancelledError())
               return
             }
             this.logCall(effectiveModelId, startedAt, true, usage)
@@ -227,7 +236,7 @@ export abstract class BaseWorkflowCommand<TResult = string> {
         if (context?.cancelled) {
           llmStore.cancelGeneration(reqId).catch(() => {})
           cleanup()
-          reject(new Error(i18n.t('base.workflowCancelled', { ns: 'commands' })))
+          reject(new WorkflowCancelledError())
         }
       }).catch(err => {
         cleanup()

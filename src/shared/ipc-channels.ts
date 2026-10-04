@@ -109,14 +109,16 @@ export interface LLMChannels {
     args: [requestId: string]
     return: { success: boolean }
   }
+  /** apiKey 为打码值（••••••••+末 4 位），真实 Key 只保存在主进程（safeStorage 加密） */
   'llm:list-models': {
     args: []
     return: ModelProfile[]
   }
   'llm:ollama-models': { args: [baseUrl: string, apiKey?: string]; return: { success: boolean; models: string[]; error?: string } }
+  /** apiKey 传打码值表示沿用已保存的 Key（接口地址改了则失败，需重新填写），传空串表示清除 */
   'llm:save-model': {
     args: [model: ModelProfile]
-    return: { success: boolean }
+    return: { success: boolean; error?: string }
   }
   'llm:delete-model': {
     args: [modelId: string]
@@ -255,8 +257,9 @@ export interface TokenUsage {
 export interface ModelProfile {
   id: string
   name: string
-  provider: 'openai' | 'gemini' | 'deepseek' | 'ollama' | 'bigmodel' | 'custom'
-  protocol: 'openai' | 'gemini'
+  provider: 'openai' | 'gemini' | 'anthropic' | 'deepseek' | 'ollama' | 'bigmodel' | 'custom'
+  /** 调用协议：OpenAI 兼容 / Gemini 原生 / Anthropic 原生（Messages API，支持提示缓存） */
+  protocol: 'openai' | 'gemini' | 'anthropic'
   modelName: string
   apiKey: string
   baseUrl: string
@@ -271,6 +274,7 @@ import type { BlueprintData } from '../../electron/repositories/blueprint-reposi
 import type { CharacterData, CharacterStateData } from '../../electron/repositories/character-repository'
 import type { ChapterImageData } from '../../electron/repositories/chapter-image-repository'
 import type { DraftMeta, DraftFull } from '../../electron/repositories/draft-repository'
+import type { ChapterSearchOptions, ChapterSearchResult } from '../../electron/repositories/chapter-search-repository'
 import type { RevisionMeta, RevisionFull } from '../../electron/repositories/revision-repository'
 import type { ReviewMeta, ReviewFull } from '../../electron/repositories/review-repository'
 import type { RehearsalContext } from './story-rehearsal'
@@ -288,6 +292,10 @@ export interface DatabaseChannels {
   'story:undo': { args: [projectPath: string, id: string]; return: import('./story-revision').StoryRevision }
   'db:rehearsal-context': { args: [projectPath: string, chapterNumber: number]; return: RehearsalContext }
   'db:close': { args: []; return: { success: boolean } }
+
+  // 0. 备份（文件在 {项目}/.vela/backups/，自动备份见 electron/db-auto-backup.ts）
+  'db:backup-now': { args: []; return: { success: boolean; file?: string; error?: string } }
+  'db:backup-open-dir': { args: []; return: { success: boolean; error?: string } }
 
   // 1. project_core
   'db:project-core-get': { args: []; return: ProjectCoreData | null }
@@ -326,6 +334,8 @@ export interface DatabaseChannels {
   'db:draft-next-version': { args: [chapterNumber: number]; return: number }
   'db:draft-update-status': { args: [id: number, status: string, wordCount?: number]; return: { success: boolean; error?: string } }
   'db:draft-update-content': { args: [id: number, content: string, wordCount: number]; return: { success: boolean; error?: string } }
+  /** 全局搜索：每章搜一份代表稿（定稿优先，否则最新未归档草稿），query 按字面量匹配 */
+  'db:search-chapters': { args: [query: string, options?: ChapterSearchOptions]; return: ChapterSearchResult }
 
   // 5. revisions
   'db:revision-create': { args: [params: { baseDraftId: number; revisionIndex: number; revisionType: 'refine' | 'review-fix'; userPrompt?: string; reviewSourceId?: number; content: string; wordCount: number }]; return: { success: boolean; id?: number; error?: string } }
@@ -384,6 +394,11 @@ export interface DatabaseChannels {
   'db:canon-summary-get': { args: [chapterNumber: number]; return: CanonChapterSummary | null }
   'db:canon-summary-list-recent': { args: [limit?: number]; return: CanonChapterSummary[] }
   'db:canon-summary-upsert': { args: [summary: CanonChapterSummary]; return: { success: boolean; error?: string } }
+  /** 指定章节范围（含两端）的章节摘要，按章节号升序 */
+  'db:canon-summary-list-range': { args: [fromChapter: number, toChapter: number]; return: CanonChapterSummary[] }
+  /** 分层摘要：卷摘要（按起始章升序）在前，全书摘要在后 */
+  'db:canon-arc-summary-list': { args: []; return: CanonArcSummary[] }
+  'db:canon-arc-summary-upsert': { args: [summary: CanonArcSummary]; return: { success: boolean; error?: string } }
 
   // 原子写回（推荐路径：单次事务）
   'db:canon-writeback-atomic': {
@@ -519,6 +534,14 @@ export interface CanonChapterSummary {
   summary: string
   createdAt: string
 }
+export interface CanonArcSummary {
+  level: 'arc' | 'book'
+  startChapter: number
+  endChapter: number
+  title: string
+  summary: string
+  createdAt: string
+}
 
 
 // ===== 知识库频道 =====
@@ -528,7 +551,8 @@ export interface KnowledgeBaseChannels {
   'kb:import-text': { args: [text: string, fileName: string, projectPath: string]; return: { success: boolean; docId?: string; chunkCount?: number; error?: string } }
   'kb:search': { args: [query: string, topK?: number]; return: Array<{ text: string; score: number; fileName: string }> }
   'kb:search-with-scope': { args: [query: string, fromChapter: number, toChapter: number, topK?: number]; return: Array<{ text: string; score: number; fileName: string }> }
-  'kb:list-documents': { args: []; return: Array<{ id: string; fileName: string; importedAt: string; chunkCount: number; filePath: string }> }
+  /** preview：首块第一行非空文本（标题预览），没有则为空串 */
+  'kb:list-documents': { args: []; return: Array<{ id: string; fileName: string; importedAt: string; chunkCount: number; filePath: string; preview?: string }> }
   'kb:remove-document': { args: [docId: string]; return: { success: boolean } }
   'kb:stats': { args: []; return: { documentCount: number; totalChunks: number; vectorDimension: number } }
   'dialog:select-files': { args: []; return: string[] | null }
@@ -564,9 +588,24 @@ export interface MCPChannels {
   'mcp:get-config-path': { args: []; return: string }
 }
 
+// ===== 应用窗口生命周期 =====
+export interface AppChannels {
+  /** 渲染进程声明已接管「关窗前刷盘」（页面重载后需重新声明） */
+  'app:set-close-guard': { args: [enabled: boolean]; return: { success: boolean } }
+  /** 刷盘需要用户决定（如保存失败待确认）：暂停主进程的强制关闭倒计时 */
+  'app:close-hold': { args: []; return: { success: boolean } }
+  /** 关窗前刷盘结束：proceed=true 继续关闭/退出，false 取消本次关闭 */
+  'app:close-response': { args: [proceed: boolean]; return: { success: boolean } }
+}
+
+export interface AppEvents {
+  /** 主进程拦截到窗口关闭，请渲染进程先保存未保存的编辑 */
+  'app:before-close': undefined
+}
+
 // ===== 合并所有频道 =====
-export type AllInvokeChannels = ConfigChannels & ProjectChannels & FileChannels & LLMChannels & DatabaseChannels & KnowledgeBaseChannels & ImportChannels & MCPChannels
-export type AllEventChannels = LLMStreamEvents
+export type AllInvokeChannels = ConfigChannels & ProjectChannels & FileChannels & LLMChannels & DatabaseChannels & KnowledgeBaseChannels & ImportChannels & MCPChannels & AppChannels
+export type AllEventChannels = LLMStreamEvents & AppEvents
 
 /** 提取 invoke 频道名 */
 export type InvokeChannel = keyof AllInvokeChannels

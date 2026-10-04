@@ -14,6 +14,8 @@ import { spawn, type ChildProcess } from 'child_process'
 import { readFile } from 'fs/promises'
 import { join } from 'path'
 import { app } from 'electron'
+import { buildMcpEnv, resolveSpawn } from './mcp-launch'
+import { requestMcpLaunchApproval } from './mcp-approval'
 
 // ===== 类型定义 =====
 
@@ -138,15 +140,20 @@ class MCPManagerImpl {
         return []
       }
 
-      return Object.entries(config.mcpServers).map(([id, cfg]) => ({
-        id,
-        name: id,
-        transport: cfg.url ? 'sse' as const : 'stdio' as const,
-        command: cfg.command,
-        args: cfg.args,
-        env: cfg.env,
-        url: cfg.url,
-      }))
+      // 只保留类型正确的字段：args 必须是字符串数组，env 只取字符串值
+      return Object.entries(config.mcpServers)
+        .filter(([, cfg]) => cfg && typeof cfg === 'object')
+        .map(([id, cfg]) => ({
+          id,
+          name: id,
+          transport: typeof cfg.url === 'string' && cfg.url ? 'sse' as const : 'stdio' as const,
+          command: typeof cfg.command === 'string' ? cfg.command : undefined,
+          args: Array.isArray(cfg.args) ? cfg.args.filter((a): a is string => typeof a === 'string') : undefined,
+          env: cfg.env && typeof cfg.env === 'object'
+            ? Object.fromEntries(Object.entries(cfg.env).filter(([, v]) => typeof v === 'string'))
+            : undefined,
+          url: typeof cfg.url === 'string' ? cfg.url : undefined,
+        }))
     } catch {
       // 配置文件不存在或格式错误，静默处理
       return []
@@ -210,10 +217,15 @@ class MCPManagerImpl {
       throw new Error('stdio 模式需要 command 参数')
     }
 
-    const proc = spawn(command, args, {
-      env: { ...process.env, ...env },
-      stdio: ['pipe', 'pipe', 'pipe'],
-    })
+    // 每份启动配置第一次运行前须经用户在原生对话框中确认
+    const approved = await requestMcpLaunchApproval(runtime.config.id, { command, args, env }, this.getDefaultConfigPath())
+    if (!approved) {
+      throw new Error(`已拒绝启动 MCP 服务器「${runtime.config.id}」（可在下次启动时重新确认，或从 mcp_config.json 中删除它）`)
+    }
+
+    // 子进程只继承基础环境变量 + 配置里写明的 env；Windows 上 .cmd 脚本经 cmd.exe 启动并逐个转义参数
+    const launch = resolveSpawn(command, args, buildMcpEnv(env))
+    const proc = spawn(launch.command, launch.args, launch.options)
 
     runtime.process = proc
 
@@ -226,6 +238,11 @@ class MCPManagerImpl {
     // 监听 stderr（调试日志）
     proc.stderr?.on('data', (data: Buffer) => {
       console.warn(`[MCP:${runtime.config.id}] stderr:`, data.toString())
+    })
+
+    // 进程已退出或启动失败时再写 stdin 会触发 EPIPE；没有监听器的话这个 error 事件会让主进程崩溃
+    proc.stdin?.on('error', (error) => {
+      console.warn(`[MCP:${runtime.config.id}] stdin 写入失败:`, error.message)
     })
 
     // 监听进程退出：立即拒绝挂起请求（否则调用方要干等满 10 秒超时），
@@ -243,6 +260,8 @@ class MCPManagerImpl {
     proc.on('error', (error) => {
       runtime.status = 'error'
       runtime.error = `进程启动失败：${error.message}`
+      // 启动失败（如命令不存在）时立即结束握手请求，让错误原因直接显示出来，而不是 10 秒后报「请求超时」
+      rejectAllPending(runtime, runtime.error)
       this.notifyStatusChange(runtime.config.id, 'error', runtime.error)
     })
   }

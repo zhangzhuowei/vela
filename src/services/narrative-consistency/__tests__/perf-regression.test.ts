@@ -51,36 +51,62 @@ function makeBigCanon(numCharacters: number) {
   })
 }
 
+/**
+ * 稳定地测一段代码的耗时（毫秒）：先预热（首次调用含 JIT 编译与正则缓存建立的冷启动开销），
+ * 再把单次太快的调用在一个样本里重复多次（亚毫秒级计时噪声太大），最后取多个样本的中位数
+ * （过滤偶发的 GC 停顿）。返回的是「单次调用」的耗时。
+ */
+function medianMs(run: () => void, samples = 7): number {
+  run()
+  const probeStart = performance.now()
+  run()
+  const probe = Math.max(performance.now() - probeStart, 0.01)
+  const repeat = Math.max(1, Math.ceil(5 / probe))
+
+  const times: number[] = []
+  for (let i = 0; i < samples; i++) {
+    const start = performance.now()
+    for (let r = 0; r < repeat; r++) run()
+    times.push((performance.now() - start) / repeat)
+  }
+  times.sort((a, b) => a - b)
+  return times[Math.floor(times.length / 2)]
+}
+
+/**
+ * 绝对耗时随机器差异极大（同一段代码在不同机器 / CI 上可差几十倍，写死毫秒阈值必然误报），
+ * 这里断言「增长趋势」：输入翻倍时耗时应近似翻倍（线性，比值约 2）；
+ * 若有人改坏了 regex 缓存、Set 查找等优化导致退化成平方级，比值会接近 4，测试失败。
+ */
 describe('性能回归测试 (Perf Regression Suite)', () => {
-  it('validateChapter (10K chars, 20 chars) 必须在 10ms 内完成', () => {
-    const { text, characters } = makeChapterContent(10000, 20)
+  it('正文长度翻倍，validateChapter 耗时近似线性增长', () => {
     const canon = makeBigCanon(20)
-    const start = performance.now()
-    validateChapter({ chapterNumber: 5, chapterContent: text, canon })
-    const elapsed = performance.now() - start
-    // 修复后基线 ~0.7ms；阈值放宽到 10ms 防止 CI 抖动
-    expect(elapsed).toBeLessThan(10)
+    const small = makeChapterContent(10000, 20).text
+    const large = makeChapterContent(20000, 20).text
+    const tSmall = medianMs(() => validateChapter({ chapterNumber: 5, chapterContent: small, canon }))
+    const tLarge = medianMs(() => validateChapter({ chapterNumber: 5, chapterContent: large, canon }))
+    expect(tLarge / tSmall).toBeLessThan(3)
   })
 
-  it('validateChapter (20K chars, 50 chars) 必须在 30ms 内完成', () => {
-    const { text, characters } = makeChapterContent(20000, 50)
-    const canon = makeBigCanon(50)
-    const start = performance.now()
-    validateChapter({ chapterNumber: 5, chapterContent: text, canon })
-    const elapsed = performance.now() - start
-    // 修复后基线 ~1.6ms；阈值放宽到 30ms
-    expect(elapsed).toBeLessThan(30)
+  it('角色数翻倍，validateChapter 耗时近似线性增长', () => {
+    const text = makeChapterContent(10000, 40).text
+    const canonSmall = makeBigCanon(20)
+    const canonLarge = makeBigCanon(40)
+    const tSmall = medianMs(() => validateChapter({ chapterNumber: 5, chapterContent: text, canon: canonSmall }))
+    const tLarge = medianMs(() => validateChapter({ chapterNumber: 5, chapterContent: text, canon: canonLarge }))
+    expect(tLarge / tSmall).toBeLessThan(3)
   })
 
-  it('200 章节批量 validateChapter 必须在 200ms 内完成', () => {
-    const { text, characters } = makeChapterContent(2000, 5)
+  it('批量校验的章节数翻倍，总耗时近似线性增长（无跨章累积开销）', () => {
+    const { text } = makeChapterContent(2000, 5)
     const canon = makeBigCanon(5)
-    const start = performance.now()
-    for (let i = 1; i <= 200; i++) {
-      validateChapter({ chapterNumber: i, chapterContent: text, canon })
+    const runBatch = (count: number) => () => {
+      for (let i = 1; i <= count; i++) {
+        validateChapter({ chapterNumber: i, chapterContent: text, canon })
+      }
     }
-    const elapsed = performance.now() - start
-    // 修复后基线 ~34ms；阈值放宽到 200ms
-    expect(elapsed).toBeLessThan(200)
+    const t100 = medianMs(runBatch(100), 5)
+    const t200 = medianMs(runBatch(200), 5)
+    expect(t200 / t100).toBeLessThan(3)
   })
 })

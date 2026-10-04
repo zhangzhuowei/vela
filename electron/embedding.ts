@@ -8,6 +8,8 @@
  * 本模块仅保留 Embedding API 调用和文本分块功能
  */
 
+import { withRequestTimeout, EMBEDDING_TIMEOUT_MS } from './llm/http'
+
 // ===== Embedding API 调用 =====
 
 /** OpenAI Embedding API */
@@ -26,26 +28,30 @@ export async function embedOpenAI(
   } else {
     url = `${base}/v1/embeddings`
   }
-  const res = await fetch(url, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      'Authorization': `Bearer ${model.apiKey}`,
-    },
-    body: JSON.stringify({
-      model: embeddingModel,
-      input: texts,
-    }),
-  })
+  // 超时覆盖整个请求（含读完响应体）：服务端挂住时导入 / 检索不会永久卡住
+  const data = await withRequestTimeout(EMBEDDING_TIMEOUT_MS, async (signal) => {
+    const res = await fetch(url, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${model.apiKey}`,
+      },
+      body: JSON.stringify({
+        model: embeddingModel,
+        input: texts,
+      }),
+      signal,
+    })
 
-  if (!res.ok) {
-    const text = await res.text()
-    throw new Error(`OpenAI Embedding 调用失败 (${res.status}): ${text}`)
-  }
+    if (!res.ok) {
+      const text = await res.text()
+      throw new Error(`OpenAI Embedding 调用失败 (${res.status}): ${text}`)
+    }
 
-  const data = await res.json() as {
-    data: Array<{ embedding: number[]; index: number }>
-  }
+    return await res.json() as {
+      data: Array<{ embedding: number[]; index: number }>
+    }
+  }, { what: 'Embedding 请求' })
 
   // 按 index 排序确保顺序一致
   return data.data
@@ -69,23 +75,26 @@ export async function embedGemini(
     taskType: 'RETRIEVAL_DOCUMENT',
   }))
 
-  const res = await fetch(url, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      'x-goog-api-key': model.apiKey,
-    },
-    body: JSON.stringify({ requests }),
-  })
+  const data = await withRequestTimeout(EMBEDDING_TIMEOUT_MS, async (signal) => {
+    const res = await fetch(url, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'x-goog-api-key': model.apiKey,
+      },
+      body: JSON.stringify({ requests }),
+      signal,
+    })
 
-  if (!res.ok) {
-    const text = await res.text()
-    throw new Error(`Gemini Embedding 调用失败 (${res.status}): ${text}`)
-  }
+    if (!res.ok) {
+      const text = await res.text()
+      throw new Error(`Gemini Embedding 调用失败 (${res.status}): ${text}`)
+    }
 
-  const data = await res.json() as {
-    embeddings: Array<{ values: number[] }>
-  }
+    return await res.json() as {
+      embeddings: Array<{ values: number[] }>
+    }
+  }, { what: 'Embedding 请求' })
 
   return data.embeddings.map((e) => e.values)
 }

@@ -1,6 +1,7 @@
 import { useEffect } from 'react'
 import { Panel, Group as PanelGroup, Separator as PanelResizeHandle } from 'react-resizable-panels'
 import { useTranslation } from 'react-i18next'
+import i18n from './i18n'
 import { useThemeStore } from './stores/theme-store'
 import { useLayoutStore } from './stores/layout-store'
 import { useLLMStore } from './stores/llm-store'
@@ -27,6 +28,7 @@ import { ErrorBoundary } from './components/ErrorBoundary'
 import { actionToast } from './components/ui/ActionToast'
 import { globalEventBus } from './shared/event-bus'
 import FeatureTour from './components/onboarding/FeatureTour'
+import { startEditorAutoSave } from './services/editor-autosave'
 
 /**
  * Vela 主应用组件
@@ -72,14 +74,18 @@ export default function App() {
       initProjectService()
     }).catch(e => console.warn('[ProjectService] 初始化失败:', e))
 
+    // 编辑器定时自动保存 + 关窗前刷盘
+    const stopAutoSave = startEditorAutoSave()
+
     // C) 工作流完成时弹出 ActionToast 通知（不依赖任何面板状态）
     const unsubActionToast = globalEventBus.on('WORKFLOW_COMPLETE', () => {
       const { history } = useWorkflowStore.getState()
       const latest = history.find(r => r.status === 'completed')
       if (!latest) return
       const shortTitle = latest.title.replace(/^[^\s]+\s/, '')
+      // 用 i18n.t 而非组件的 t：这个初始化 effect 不应因切换语言而整体重跑
       actionToast.workflowComplete(
-        `✅ 「${shortTitle}」${t('completed')}`,
+        `✅ 「${shortTitle}」${i18n.t('completed', { ns: 'common' })}`,
         () => useLayoutStore.getState().openRightPanel('ai-output')
       )
     })
@@ -90,16 +96,23 @@ export default function App() {
         disposeProjectService()
       }).catch(() => {})
       unsubActionToast()
+      stopAutoSave()
     }
   }, [initTheme, initLLM, loadRecentProjects])
 
-  // 全局快捷键: Cmd+N 新建项目，Cmd+O 打开项目
+  // 全局快捷键: Cmd+N 新建项目，Cmd+O 打开项目，Cmd+Shift+F 全局搜索
   // 注意：Cmd+=/- 缩放已由 TitleBar.tsx 统一处理，此处不重复注册
   useEffect(() => {
     const handleKeyDown = async (e: KeyboardEvent) => {
       const mod = e.metaKey || e.ctrlKey
       if (!mod) return
-      if (e.key === 'n' || e.key === 'N') {
+      if (e.shiftKey && (e.key === 'f' || e.key === 'F')) {
+        e.preventDefault()
+        // 选中了一小段单行文字（如编辑器里的人名）时直接拿来当搜索词
+        const selected = window.getSelection()?.toString().trim() ?? ''
+        const prefill = selected && selected.length <= 100 && !selected.includes('\n') ? selected : undefined
+        useLayoutStore.getState().openSearch(prefill)
+      } else if (e.key === 'n' || e.key === 'N') {
         e.preventDefault()
         useLayoutStore.getState().openNewProject()
       } else if (e.key === 'o' || e.key === 'O') {

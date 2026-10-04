@@ -11,6 +11,7 @@
 import type { StepCallbacks } from '../../stores/workflow-store'
 import type { CharacterData } from '../../../electron/repositories/character-repository'
 import { ipc } from '../ipc-client'
+import { isWorkflowCancelled } from './workflow-errors'
 import i18n from '../../i18n'
 
 const t = (key: string, opts?: Record<string, unknown>) => i18n.t(key, { ns: 'commands', ...opts })
@@ -141,6 +142,8 @@ export async function withRetry(
       await fn()
       return { ok: true, attempts: attempt + 1 }
     } catch (err) {
+      // 用户取消：不重试、不记为步骤失败，直接向上传播结束整个工作流
+      if (isWorkflowCancelled(err)) throw err
       const errMsg = err instanceof Error ? err.message : String(err)
       if (attempt < maxRetries) {
         callbacks.log(t('pipeline.retryFailed', { label, attempt: attempt + 1, error: errMsg }))

@@ -17,6 +17,7 @@ import type {
   PlotLine,
   Fact,
   ChapterSummary,
+  ArcSummary,
   CanonWriteback,
 } from './types'
 
@@ -181,6 +182,35 @@ export class CanonStore {
 
   async upsertSummary(summary: ChapterSummary): Promise<void> {
     try { await this.ipcClient.invoke('db:canon-summary-upsert', summary) } catch { /* 忽略 */ }
+  }
+
+  /** 指定章节范围（含两端）的章节摘要，按章节号升序 */
+  async getSummariesInRange(fromChapter: number, toChapter: number): Promise<ChapterSummary[]> {
+    try {
+      return (await this.ipcClient.invoke('db:canon-summary-list-range', fromChapter, toChapter) as ChapterSummary[]) || []
+    } catch (err) {
+      console.warn('[CanonStore] getSummariesInRange 失败:', err)
+      return []
+    }
+  }
+
+  // ============================================================
+  // 分层摘要（卷 / 全书）
+  // ============================================================
+
+  async getArcSummaries(): Promise<ArcSummary[]> {
+    try {
+      return (await this.ipcClient.invoke('db:canon-arc-summary-list') as ArcSummary[]) || []
+    } catch (err) {
+      console.warn('[CanonStore] getArcSummaries 失败:', err)
+      return []
+    }
+  }
+
+  /** 写入失败时抛错（由调用方记录日志），不像其他写入那样静默忽略：摘要是 LLM 生成的，丢了要重新花钱 */
+  async upsertArcSummary(summary: ArcSummary): Promise<void> {
+    const res = await this.ipcClient.invoke('db:canon-arc-summary-upsert', summary) as { success: boolean; error?: string }
+    if (!res?.success) throw new Error(res?.error || '分层摘要写入失败')
   }
 
   // ============================================================

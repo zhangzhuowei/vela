@@ -17,7 +17,28 @@ import type {
   PlotLine,
   Fact,
   ChapterSummary,
+  ArcSummary,
 } from '../../src/services/narrative-consistency/types'
+
+interface ArcSummaryRow {
+  level: string
+  start_chapter: number
+  end_chapter: number
+  title: string
+  summary: string
+  created_at: string
+}
+
+function rowToArcSummary(row: ArcSummaryRow): ArcSummary {
+  return {
+    level: row.level === 'book' ? 'book' : 'arc',
+    startChapter: row.start_chapter,
+    endChapter: row.end_chapter,
+    title: row.title || '',
+    summary: row.summary || '',
+    createdAt: row.created_at || '',
+  }
+}
 
 interface TimelineRow {
   id: number
@@ -446,11 +467,61 @@ export class CanonRepository {
   static getRecentSummaries(limit = 5): ChapterSummary[] {
     const db = getProjectDb()
     if (!db) return []
+    // chapter_number < 0 是旧版「长期记忆压缩」写入的特殊行（已由分层摘要取代），不算章节摘要
     const rows = db.prepare(
       `SELECT * FROM canon_chapter_summaries
+       WHERE chapter_number >= 0
        ORDER BY chapter_number DESC LIMIT ?`
     ).all(limit) as ChapterSummaryRow[]
     return rows.map(rowToSummary).reverse()
+  }
+
+  /** 指定章节范围内的章节摘要（含两端，按章节号升序） */
+  static getSummariesInRange(fromChapter: number, toChapter: number): ChapterSummary[] {
+    const db = getProjectDb()
+    if (!db) return []
+    const rows = db.prepare(
+      `SELECT * FROM canon_chapter_summaries
+       WHERE chapter_number >= ? AND chapter_number <= ?
+       ORDER BY chapter_number ASC`
+    ).all(Math.max(0, Math.trunc(fromChapter)), Math.trunc(toChapter)) as ChapterSummaryRow[]
+    return rows.map(rowToSummary)
+  }
+
+  // ============================================================
+  // 分层摘要（卷 / 全书）
+  // ============================================================
+
+  static upsertArcSummary(summary: ArcSummary): void {
+    const db = getProjectDb()
+    if (!db) throw new Error('[CanonRepository] 数据库未连接')
+    db.prepare(`
+      INSERT INTO canon_arc_summaries (level, start_chapter, end_chapter, title, summary, created_at)
+      VALUES (?, ?, ?, ?, ?, ?)
+      ON CONFLICT(level, start_chapter) DO UPDATE SET
+        end_chapter = excluded.end_chapter,
+        title = excluded.title,
+        summary = excluded.summary,
+        created_at = excluded.created_at
+    `).run(
+      summary.level === 'book' ? 'book' : 'arc',
+      Math.trunc(summary.startChapter),
+      Math.trunc(summary.endChapter),
+      summary.title || '',
+      summary.summary || '',
+      summary.createdAt || new Date().toISOString(),
+    )
+  }
+
+  /** 全部分层摘要：卷摘要按起始章升序在前，全书摘要在后 */
+  static listArcSummaries(): ArcSummary[] {
+    const db = getProjectDb()
+    if (!db) return []
+    const rows = db.prepare(
+      `SELECT * FROM canon_arc_summaries
+       ORDER BY CASE level WHEN 'arc' THEN 0 ELSE 1 END, start_chapter ASC`
+    ).all() as ArcSummaryRow[]
+    return rows.map(rowToArcSummary)
   }
 
   static getSummary(chapterNumber: number): ChapterSummary | null {

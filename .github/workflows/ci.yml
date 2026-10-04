@@ -1,0 +1,50 @@
+name: CI
+
+# 每次推送与 PR 都跑类型检查、lint 和单元测试；打包发布见 release.yml
+on:
+  push:
+    branches: [master, main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  # 仓库 .npmrc 指向国内镜像；GitHub runner 在海外，走官方源更快更稳（与 release.yml 一致）
+  npm_config_registry: https://registry.npmjs.org/
+  # 单测不需要 Electron 二进制，跳过约 100MB 的下载
+  ELECTRON_SKIP_BINARY_DOWNLOAD: '1'
+
+jobs:
+  check:
+    name: Typecheck / Lint / Test
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v6
+        with:
+          # 与 release.yml 保持一致：pnpm-lock.yaml 是 lockfileVersion 9.0
+          version: 10
+
+      - name: Setup Node
+        uses: actions/setup-node@v7
+        with:
+          node-version: 22
+          cache: pnpm
+
+      # 锁文件必须与 package.json 一致：改了依赖却没更新锁文件时在这里直接失败
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Type check
+        run: pnpm run typecheck
+
+      - name: Lint
+        run: pnpm run lint
+
+      - name: Unit tests
+        run: pnpm run test

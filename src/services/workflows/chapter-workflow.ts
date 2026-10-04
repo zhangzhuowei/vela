@@ -124,6 +124,7 @@ export async function updateDraftStatus(filePath: string, newStatus: DraftStatus
 export function createChapterWorkflow(chapterInfo: ChapterInfo): WorkflowDefinition {
   return {
     type: 'chapter_creation',
+    chapterNumber: chapterInfo.chapterNumber,
     title: t('workflowDefs.chapterWriteTitle', { chapter: chapterInfo.chapterNumber, title: chapterInfo.title }),
     steps: [
       {
@@ -143,6 +144,7 @@ export function createChapterWorkflow(chapterInfo: ChapterInfo): WorkflowDefinit
 export function createRefineOnlyWorkflow(params: RefineOnlyParams): WorkflowDefinition {
   return {
     type: 'chapter_creation',
+    chapterNumber: params.chapterNumber,
     title: t('workflowDefs.chapterRefineTitle', { chapter: params.chapterNumber, title: params.chapterTitle }),
     steps: [
       {
@@ -168,6 +170,7 @@ export function createRefineOnlyWorkflow(params: RefineOnlyParams): WorkflowDefi
 export function createRefineFromReviewWorkflow(params: RefineFromReviewParams): WorkflowDefinition {
   return {
     type: 'chapter_creation',
+    chapterNumber: params.chapterNumber,
     title: t('workflowDefs.chapterReviewFixTitle', { chapter: params.chapterNumber, title: params.chapterTitle }),
     steps: [
       {
@@ -194,6 +197,7 @@ export function createRefineFromReviewWorkflow(params: RefineFromReviewParams): 
 export function createReviewOnlyWorkflow(params: ReviewOnlyParams): WorkflowDefinition {
   return {
     type: 'chapter_creation',
+    chapterNumber: params.chapterNumber,
     title: t('workflowDefs.chapterReviewTitle', { chapter: params.chapterNumber, title: params.chapterTitle }),
     steps: [
       {
@@ -219,6 +223,7 @@ export function createFinalizeWorkflow(params: FinalizeOnlyParams): WorkflowDefi
   const chapterInfo = { chapterNumber: params.chapterNumber, title: params.chapterTitle, role: '', purpose: '', characters: [], keyEvents: '' }
   return {
     type: 'chapter_creation',
+    chapterNumber: params.chapterNumber,
     title: t('workflowDefs.chapterFinalizeTitle', { chapter: params.chapterNumber, title: params.chapterTitle }),
     steps: [
       {
@@ -273,12 +278,13 @@ export function createFinalizeWorkflow(params: FinalizeOnlyParams): WorkflowDefi
 export function createRepairFinalizeWorkflow(chapterNumber: number): WorkflowDefinition {
   return {
     type: 'chapter_creation',
+    chapterNumber,
     title: t('workflowDefs.repairFinalizeTitle', { chapter: chapterNumber }),
     steps: [
       {
         name: t('workflowDefs.repairFinalizeStepName'),
         description: t('workflowDefs.repairFinalizeStepDesc'),
-        executor: async (_step, _context, callbacks) => {
+        executor: async (_step, context, callbacks) => {
           const { useProjectStore } = await import('../../stores/project-store')
           const { ipc } = await import('../ipc-client')
           const project = useProjectStore.getState().currentProject
@@ -301,7 +307,7 @@ export function createRepairFinalizeWorkflow(chapterNumber: number): WorkflowDef
           const { buildFinalizePostProcessSteps } = await import('./commands/finalize-chapter.command')
           const { runPostProcessPipeline, getChapterFinalizeScope } = await import('./workflow-utils')
           const scope = getChapterFinalizeScope(chapterNumber)
-          const steps = buildFinalizePostProcessSteps(project, chapterNumber, chapterTitle, full.content)
+          const steps = buildFinalizePostProcessSteps(project, chapterNumber, chapterTitle, full.content, context)
 
           await runPostProcessPipeline(project.path, scope, t('finalize.chapterGoalPrefix', { chapter: chapterNumber }), steps, callbacks, { onlyFailed: true })
 
@@ -336,6 +342,7 @@ export interface AutoReviewLoopWorkflowParams {
 export function createAutoReviewLoopWorkflow(params: AutoReviewLoopWorkflowParams): WorkflowDefinition {
   return {
     type: 'chapter_creation',
+    chapterNumber: params.chapterNumber,
     title: `🔁 自动审校闭环 — 第${params.chapterNumber}章 · ${params.chapterTitle}`,
     steps: [
       {
@@ -376,6 +383,7 @@ export interface DeaifyWorkflowParams {
 export function createDeaifyWorkflow(params: DeaifyWorkflowParams): WorkflowDefinition {
   return {
     type: 'chapter_creation',
+    chapterNumber: params.chapterNumber,
     title: `✨ 去AI味 — 第${params.chapterNumber}章 · ${params.chapterTitle}`,
     steps: [
       {

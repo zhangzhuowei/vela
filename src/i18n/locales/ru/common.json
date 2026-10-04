@@ -72,5 +72,11 @@
   "openAndView": "Открыть и просмотреть",
   "ignore": "Игнорировать",
   "comingSoon": "Скоро",
-  "lastAttempt": "Последняя попытка"
+  "lastAttempt": "Последняя попытка",
+  "saveFailed": "Не удалось сохранить: {{error}}",
+  "autoSaveFailed": "Ошибка автосохранения: {{name}} ({{error}})",
+  "unsupportedSavePath": "Это содержимое нельзя сохранить напрямую: {{path}}",
+  "closeSaveFailedTitle": "Не все изменения удалось сохранить",
+  "closeSaveFailedMessage": "Не удалось сохранить изменения во вкладках: {{names}}\n\nЕсли закрыть сейчас, эти изменения будут потеряны.",
+  "closeAnyway": "Всё равно закрыть"
 }

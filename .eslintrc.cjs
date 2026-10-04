@@ -10,5 +10,10 @@ module.exports = {
       'warn',
       { allowConstantExport: true },
     ],
+    // 以下划线开头的参数 / 变量表示「刻意不用」（占位参数、保留签名），不报未使用
+    '@typescript-eslint/no-unused-vars': [
+      'error',
+      { argsIgnorePattern: '^_', varsIgnorePattern: '^_', caughtErrorsIgnorePattern: '^_' },
+    ],
   },
 }

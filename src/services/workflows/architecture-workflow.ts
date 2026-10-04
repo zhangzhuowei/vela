@@ -1,5 +1,4 @@
 import type { WorkflowDefinition, WorkflowContext, StepCallbacks } from '../../stores/workflow-store'
-import { useLLMStore } from '../../stores/llm-store'
 import { useProjectStore } from '../../stores/project-store'
 import { getPromptTemplate } from '../prompt-templates'
 import { ipc } from '../ipc-client'
@@ -80,23 +79,15 @@ async function extractCardsFromChunk(
   const extractPrompt = new ArchitecturePromptBuilder(template).withCharacterDynamics(chunk).withGenre(genre).build()
   const systemRole = template.systemRole || '你是一位专业的小说数据结构化专家。'
 
-  const llmStore = useLLMStore.getState()
-  let fullContent = ''
-  await new Promise<void>((resolve, reject) => {
-    llmStore.generateStream(
-      [
-        { role: 'system', content: systemRole },
-        { role: 'user', content: extractPrompt },
-      ],
-      {
-        onChunk: (c) => { fullContent += c; cb.appendText(c) },
-        onDone: () => resolve(),
-        onError: (err) => reject(new Error(err)),
-      },
-      undefined,
-      { responseFormat: { type: 'json_object' } },
-    )
-  })
+  // 经命令基类调用：限流 / 超时自动退避重试、主模型持续失败时换备用模型、计入用量统计
+  const { callLLMStandalone } = await import('./commands/standalone-llm')
+  const fullContent = await callLLMStandalone(
+    extractPrompt,
+    systemRole,
+    cb,
+    'ExtractCharacterCards',
+    { responseFormat: { type: 'json_object' } },
+  )
 
   const cleaned = stripThinkingTags(fullContent)
   const jsonStr = cleaned.replace(/```json?\n?/g, '').replace(/```/g, '').trim()

@@ -1,17 +1,58 @@
 import { useState, useRef, useEffect, useCallback, useMemo } from 'react'
 import CodeMirror, { ReactCodeMirrorRef, EditorView, ViewUpdate, ExternalChange } from '@uiw/react-codemirror'
-import { keymap } from '@codemirror/view'
+import { keymap, Decoration, type DecorationSet } from '@codemirror/view'
 import { markdown, markdownLanguage } from '@codemirror/lang-markdown'
 import { languages } from '@codemirror/language-data'
-import { EditorState } from '@codemirror/state'
+import { EditorState, EditorSelection, StateEffect, StateField } from '@codemirror/state'
 import { openSearchPanel, closeSearchPanel, search } from '@codemirror/search'
 import { Sparkles, Bold } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { cn } from '../../lib/utils'
+import {
+  takeEditorReveal, subscribeEditorReveal, resolveRevealRange, type EditorRevealRequest,
+} from '../../services/editor-reveal'
 
 /** 统计字数（简单字符数统计，包含空格换行等格式符） */
 function countWords(text: string): number {
   return text.length
+}
+
+// ===== 全局搜索跳转：定位并高亮命中 =====
+
+const setRevealMark = StateEffect.define<{ from: number; to: number } | null>()
+const revealMark = Decoration.mark({ class: 'cm-search-reveal' })
+
+/** 命中高亮：用户一移动光标或修改文字就消失，不会一直挂在正文上 */
+const revealMarkField = StateField.define<DecorationSet>({
+  create: () => Decoration.none,
+  update(marks, tr) {
+    for (const effect of tr.effects) {
+      if (effect.is(setRevealMark)) {
+        const range = effect.value
+        return range && range.to > range.from
+          ? Decoration.set([revealMark.range(range.from, range.to)])
+          : Decoration.none
+      }
+    }
+    if (tr.docChanged || tr.selection) return Decoration.none
+    return marks
+  },
+  provide: (field) => EditorView.decorations.from(field),
+})
+
+/** 把定位请求落到当前文档：光标放到命中开头、滚到视口中间并高亮命中 */
+function applyReveal(view: EditorView, req: EditorRevealRequest) {
+  // 请求可能在下一帧才处理，期间编辑器已被切走销毁
+  if (!view.dom.isConnected) return
+  const range = resolveRevealRange(view.state.doc.toString(), req)
+  view.dispatch({
+    selection: EditorSelection.cursor(range.from),
+    effects: [
+      setRevealMark.of(range.exact ? { from: range.from, to: range.to } : null),
+      EditorView.scrollIntoView(range.from, { y: 'center' }),
+    ],
+  })
+  view.focus()
 }
 
 export type CodeMirrorEditorProps = {
@@ -28,6 +69,7 @@ export type CodeMirrorEditorProps = {
 
 export default function CodeMirrorEditor({
   content,
+  filePath,
   editable = true,
   onChange,
   onSave,
@@ -36,6 +78,28 @@ export default function CodeMirrorEditor({
 }: CodeMirrorEditorProps) {
   const { t } = useTranslation('editors')
   const editorRef = useRef<ReactCodeMirrorRef>(null)
+
+  // 全局搜索定位：编辑器已挂载时由订阅立即处理；新开 / 切换 Tab 时在编辑器创建后处理
+  const filePathRef = useRef(filePath)
+  filePathRef.current = filePath
+  useEffect(() => {
+    if (!filePath) return
+    return subscribeEditorReveal((target) => {
+      if (target !== filePath) return
+      const view = editorRef.current?.view
+      if (!view) return // 还没创建完：留给 handleCreateEditor
+      const req = takeEditorReveal(filePath)
+      if (req) applyReveal(view, req)
+    })
+  }, [filePath])
+  const handleCreateEditor = useCallback((view: EditorView) => {
+    const fp = filePathRef.current
+    if (!fp) return
+    const req = takeEditorReveal(fp)
+    // 创建回调在 React 提交阶段里执行，等这次提交结束再派发。
+    // 不用 requestAnimationFrame：窗口被遮挡 / 在后台时 rAF 会暂停，定位就一直不生效
+    if (req) setTimeout(() => applyReveal(view, req), 0)
+  }, [])
 
   const AI_ACTIONS = useMemo(() => [
     { key: 'refine', label: t('codeMirrorEditor.aiRefine'), color: 'text-blue-400', prompt: t('codeMirrorEditor.aiRefinePrompt') },
@@ -215,12 +279,19 @@ export default function CodeMirrorEditor({
     ".cm-activeLine": { backgroundColor: "transparent" },
     ".cm-selectionBackground, .cm-focused .cm-selectionBackground": { backgroundColor: "var(--color-hover) !important" },
     ".cm-line": { padding: "0" },
+    // 全局搜索跳转后的命中高亮
+    ".cm-search-reveal": {
+      backgroundColor: "rgba(var(--color-accent-rgb), 0.32)",
+      outline: "1px solid rgba(var(--color-accent-rgb), 0.75)",
+      borderRadius: "2px",
+    },
   }), [mode])
 
   // 构建扩展
   const extensions = useMemo(() => {
     const exts = [
       search({ top: true }),
+      revealMarkField,
       EditorView.lineWrapping,
       keymap.of([
         {
@@ -375,7 +446,8 @@ export default function CodeMirrorEditor({
     <div className="relative h-full flex flex-col min-h-0"
       onKeyDownCapture={(e) => {
         // 全局捕获 Ctrl+F 实现搜索框 Toggle（解决搜索框内焦点时快捷键失效的问题）
-        if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'f') {
+        // Ctrl+Shift+F 是全局搜索，放行给 App 的全局快捷键
+        if ((e.metaKey || e.ctrlKey) && !e.shiftKey && e.key.toLowerCase() === 'f') {
           e.preventDefault()
           e.stopPropagation()
           const view = editorRef.current?.view
@@ -414,6 +486,7 @@ export default function CodeMirrorEditor({
             readOnly={!editable}
             basicSetup={cmBasicSetup}
             onUpdate={handleUpdate}
+            onCreateEditor={handleCreateEditor}
           />
         </div>
       </div>

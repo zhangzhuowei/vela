@@ -1,7 +1,8 @@
 import i18n from '../../../i18n'
 import { BaseWorkflowCommand, CommandExecuteParams } from './base-command'
+import { callLLMStandalone } from './standalone-llm'
 import { useProjectStore } from '../../../stores/project-store'
-import { useLLMStore } from '../../../stores/llm-store'
+import type { StepCallbacks, WorkflowContext } from '../../../stores/workflow-store'
 
 const t = (key: string, opts?: Record<string, unknown>) => i18n.t(key, { ns: 'commands', ...opts })
 import { getPromptTemplate } from '../../prompt-templates'
@@ -15,8 +16,12 @@ import {
   type PostProcessStep,
 } from '../workflow-utils'
 import type { ChapterInfo } from '../chapter-workflow'
-import { extractAndWriteback, runConsistencyGate, buildCanonContext } from '../../narrative-consistency'
+import {
+  extractAndWriteback, runConsistencyGate, buildCanonContext, canonStore,
+  ARC_SIZE, arcRangeOf, isArcEnd, formatChapterSummariesForArc, formatArcSummariesForBook,
+} from '../../narrative-consistency'
 import { parseJSONWithRepair } from '../json-repair'
+import { isWorkflowCancelled } from '../workflow-errors'
 
 export interface FinalizeChapterParams {
   draftPath: string
@@ -25,39 +30,22 @@ export interface FinalizeChapterParams {
   chapterInfo: ChapterInfo
 }
 
-// ===== 工具函数：流式调用大模型并返回完整文本 =====
+// ===== 工具函数：后处理的 LLM 调用 =====
 
 /**
- * 使用 PromptBuilder 调用 LLM（不依赖 BaseWorkflowCommand 实例）
- * 独立函数，可被 PostProcessStep 的 executor 直接调用
+ * 使用 PromptBuilder 调用 LLM，可被 PostProcessStep 的 executor 直接调用。
+ * 经 callLLMStandalone 走命令基类：重试退避、备用模型链、调用记账与取消（见 standalone-llm.ts）。
+ * purpose 用于用量统计；传入 context 时用户取消能中断进行中的请求。
  */
 async function callLLMForPostProcess(
   builder: { build: () => string; getSystemRole: () => string },
-  callbacks: { appendText: (text: string) => void },
+  callbacks: StepCallbacks,
+  purpose: string,
   options?: { responseFormat?: { type: string } },
+  context?: WorkflowContext,
 ): Promise<string> {
-  const llmStore = useLLMStore.getState()
-  if (!llmStore.defaultModelId) throw new Error(t('base.noDefaultModel'))
-
-  return new Promise<string>((resolve, reject) => {
-    let fullContent = ''
-    llmStore.generateStream(
-      [
-        { role: 'system', content: builder.getSystemRole() },
-        { role: 'user', content: builder.build() },
-      ],
-      {
-        onChunk: (chunk) => { fullContent += chunk; callbacks.appendText(chunk) },
-        onDone: (text) => {
-          const raw = text || fullContent
-          resolve(stripThinkingTags(raw))
-        },
-        onError: (err) => reject(new Error(err || t('base.streamFailed'))),
-      },
-      undefined,
-      options,
-    )
-  })
+  const raw = await callLLMStandalone(builder.build(), builder.getSystemRole(), callbacks, purpose, options, context)
+  return stripThinkingTags(raw)
 }
 
 /**
@@ -89,12 +77,14 @@ function parseJSON<T>(text: string): T {
  * @param chapterNumber 章节号
  * @param chapterTitle  章节标题
  * @param draftContent  定稿正文内容
+ * @param context       所属工作流的上下文（可选）：传入后用户取消能中断后处理中的模型请求
  */
 export function buildFinalizePostProcessSteps(
   _project: { path: string },
   chapterNumber: number,
   chapterTitle: string,
   draftContent: string,
+  context?: WorkflowContext,
 ): PostProcessStep[] {
   const steps: PostProcessStep[] = []
 
@@ -129,7 +119,7 @@ export function buildFinalizePostProcessSteps(
           .withChapterNumber(chapterNumber)
           .withChapterTitle(chapterTitle)
 
-        const cleanNotes = await callLLMForPostProcess(notesBuilder, callbacks)
+        const cleanNotes = await callLLMForPostProcess(notesBuilder, callbacks, 'FinalizeChapterNotes', undefined, context)
 
         // 写入蓝图 JSON 的 notes 字段
         await ipc.invoke('db:blueprint-update-notes', chapterNumber, cleanNotes)
@@ -192,38 +182,64 @@ export function buildFinalizePostProcessSteps(
     },
   })
 
-    // ─── 步骤 2.6: [Compression v3] 长期记忆压缩（每5章执行一次）──────────
-  if (chapterNumber % 5 === 0) {
+  // ─── 步骤 2.6: [分层摘要] 每卷最后一章定稿时生成卷摘要，并据各卷摘要刷新全书摘要 ────
+  // 取代旧的「每 5 章把最近章节摘要各截 80 字拼成一行」：那样的压缩几乎不含信息，且只在章节很少时才会被读到
+  const arcTemplate = getPromptTemplate('generate_arc_summary')
+  const bookTemplate = getPromptTemplate('generate_book_summary')
+  if (isArcEnd(chapterNumber) && arcTemplate && bookTemplate) {
     steps.push({
-      key: 'canon_compression',
-      label: t('finalize.compression'),
+      key: 'arc_summary',
+      label: t('finalize.arcSummary'),
       critical: false,
-      executor: async (callbacks: any) => {
+      executor: async (callbacks) => {
         try {
-          const { canonStore } = await import('../../narrative-consistency/canon-store');
-          const recent = await canonStore.getRecentSummaries(20);
-          if (recent.length < 5) {
-            callbacks.log(t('finalize.compressionSkip'));
-            return;
+          const [from, to] = arcRangeOf(chapterNumber)
+          const chapterSummaries = await canonStore.getSummariesInRange(from, to)
+          // 本卷一半以上的章节有要点才生成，否则摘要会严重失真
+          if (chapterSummaries.length < Math.ceil(ARC_SIZE / 2)) {
+            callbacks.log(t('finalize.arcSummarySkip', { from, to, count: chapterSummaries.length }))
+            return
           }
-          // 将前15章合并为压缩摘要
-          const oldSummaries = recent.slice(0, 15);
-          const compressed = oldSummaries
-            .map((s: any) => '第' + s.chapterNumber + '章：' + (s.summary || '').slice(0, 80))
-            .join(' | ');
-          callbacks.log(t('finalize.compressionDone', { count: oldSummaries.length, length: compressed.length }));
-          // 写入压缩后的 canonical summary
-          await ipc.invoke('db:canon-summary-upsert', {
-            chapterNumber: -1, // 特殊标记：压缩摘要
-            title: t('finalize.compressionTitle', { chapter: chapterNumber }),
-            summary: compressed,
+
+          const arcBuilder = new PostProcessPromptBuilder(arcTemplate)
+            .withArcRange(from, to)
+            .withChapterSummaries(formatChapterSummariesForArc(chapterSummaries))
+          const arcText = (await callLLMForPostProcess(arcBuilder, callbacks, 'FinalizeArcSummary', undefined, context)).trim()
+          if (!arcText) throw new Error('empty arc summary')
+          await canonStore.upsertArcSummary({
+            level: 'arc',
+            startChapter: from,
+            endChapter: to,
+            title: t('finalize.arcSummaryTitle', { from, to }),
+            summary: arcText,
             createdAt: new Date().toISOString(),
-          });
+          })
+          callbacks.log(t('finalize.arcSummaryDone', { from, to, length: arcText.length }))
+
+          // 全书摘要：由全部卷摘要重新汇总（重写早期某卷时，后面各卷照样计入）
+          const arcs = (await canonStore.getArcSummaries()).filter((a) => a.level === 'arc')
+          if (arcs.length === 0) return
+          const coveredUntil = Math.max(...arcs.map((a) => a.endChapter))
+          const bookBuilder = new PostProcessPromptBuilder(bookTemplate)
+            .withArcSummaries(formatArcSummariesForBook(arcs), coveredUntil)
+          const bookText = (await callLLMForPostProcess(bookBuilder, callbacks, 'FinalizeBookSummary', undefined, context)).trim()
+          if (!bookText) throw new Error('empty book summary')
+          await canonStore.upsertArcSummary({
+            level: 'book',
+            startChapter: 1,
+            endChapter: coveredUntil,
+            title: '',
+            summary: bookText,
+            createdAt: new Date().toISOString(),
+          })
+          callbacks.log(t('finalize.bookSummaryDone', { to: coveredUntil, length: bookText.length }))
         } catch (e) {
-          callbacks.log(t('finalize.compressionError', { error: String(e) }));
+          // 用户取消要继续往上抛，交给流水线统一处理
+          if (isWorkflowCancelled(e)) throw e
+          callbacks.log(t('finalize.arcSummaryError', { error: String(e) }))
         }
       },
-    });
+    })
   }
 
 // ─── 步骤 3: 角色状态更新 ────────────────────────────────────────
@@ -243,7 +259,7 @@ export function buildFinalizePostProcessSteps(
           .withChapterNumber(chapterNumber)
           .withExistingCardsJson(simpleCards)
 
-        const cardsResult = await callLLMForPostProcess(cardBuilder, callbacks, { responseFormat: { type: 'json_object' } })
+        const cardsResult = await callLLMForPostProcess(cardBuilder, callbacks, 'FinalizeCharacterCards', { responseFormat: { type: 'json_object' } }, context)
         type LLMUpdateState = {
           location?: string
           powerLevel?: string
@@ -342,7 +358,7 @@ export function buildFinalizePostProcessSteps(
           .withChapterNumber(chapterNumber)
           .withOpenForeshadowings(openSlim)
 
-        const raw = await callLLMForPostProcess(builder, callbacks, { responseFormat: { type: 'json_object' } })
+        const raw = await callLLMForPostProcess(builder, callbacks, 'FinalizeForeshadowing', { responseFormat: { type: 'json_object' } }, context)
         const result = parseJSON<{
           planted?: Array<{ content: string; expectedChapter?: number | null }>
           paidIds?: number[]
@@ -385,7 +401,8 @@ export function buildFinalizePostProcessSteps(
         const { AnalyzeWritingStyleCommand } = await import('./analyze-style.command')
         await new AnalyzeWritingStyleCommand().execute({
           step: {} as unknown,
-          context: { data: {}, cancelled: false },
+          // 独立的 data，但取消状态跟随所属工作流
+          context: { data: {}, get cancelled() { return context?.cancelled ?? false } },
           callbacks,
         })
         callbacks.log(t('finalize.styleAnalysisDone'))
@@ -403,7 +420,7 @@ export class FinalizeChapterCommand extends BaseWorkflowCommand<void> {
     super()
   }
 
-  async execute({ callbacks }: CommandExecuteParams): Promise<void> {
+  async execute({ callbacks, context }: CommandExecuteParams): Promise<void> {
     const project = useProjectStore.getState().currentProject
     if (!project) throw new Error(t('common.noProject'))
 
@@ -430,15 +447,15 @@ export class FinalizeChapterCommand extends BaseWorkflowCommand<void> {
       const canon = await buildCanonContext({
         chapterNumber: this.params.chapterNumber,
         architecture: {
-          premise: (core as any)?.premise || '',
-          charactersArch: (core as any)?.charactersArch || '',
-          worldbuilding: (core as any)?.worldbuilding || '',
-          synopsis: (core as any)?.synopsis || '',
+          premise: core?.premise || '',
+          charactersArch: core?.charactersArch || '',
+          worldbuilding: core?.worldbuilding || '',
+          synopsis: core?.synopsis || '',
         },
-        characters: (allCharacters || []).map((c: any) => ({
-          name: c.name as string,
-          role: c.role as string,
-          currentState: c.currentState as any,
+        characters: (allCharacters || []).map((c) => ({
+          name: c.name,
+          role: c.role,
+          currentState: c.currentState,
         })),
         chapterGoal: t('finalize.chapterGoalPrefix', { chapter: this.params.chapterNumber }),
         previousEnding: '',
@@ -502,6 +519,7 @@ export class FinalizeChapterCommand extends BaseWorkflowCommand<void> {
       this.params.chapterNumber,
       this.params.chapterInfo.title,
       gatedContent,
+      context,
     )
 
     await runPostProcessPipeline(project.path, scope, sourceLabel, steps, callbacks)

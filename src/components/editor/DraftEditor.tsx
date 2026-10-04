@@ -21,8 +21,9 @@ import {
 } from '../../services/workflows/chapter-workflow'
 import { getPendingRevisions, getReviewsForVersion, type RevisionEntry } from '../../services/draft-index'
 import { readDraftBody } from '../../stores/draft-store'
-import { ipc } from '../../services/ipc-client'
 import { globalEventBus } from '../../shared/event-bus'
+import { persistEditorContent } from '../../services/editor-persistence'
+import { registerEditorFlusher } from '../../services/editor-autosave'
 
 import { DRAFT_STATUS_LABEL, DRAFT_STATUS_COLOR } from '../../shared/draft-status'
 import { PostProcessStatusPanel } from '../ui/PostProcessStatusPanel'
@@ -89,7 +90,7 @@ export default function DraftEditor({ filePath, content }: Props) {
     return () => {
       cancelled = true
     }
-  }, [filePath, storyRefresh])
+  }, [filePath, storyRefresh, t])
 
   const status: DraftStatus = meta?.status ?? 'draft'
   const isReadonly = status === 'finalized' || status === 'archived'
@@ -103,10 +104,10 @@ export default function DraftEditor({ filePath, content }: Props) {
   // ✅ 折叠为布尔 selector：流式期间 activeRuns 引用约每 120ms 换一次，
   //    订阅整表会让编辑器壳跟着每个流式批次空转重渲染
   const chapterNumber = meta?.chapterNumber
+  //    按工作流定义携带的结构化章节号判断，不匹配标题文案（标题随界面语言变化，en/ru 下匹配不上）
   const isChapterBusy = useWorkflowStore(s =>
     chapterNumber != null && s.activeRuns.some(r =>
-      r.type === 'chapter_creation' &&
-      (r.title.includes(`第${chapterNumber}章`) || r.title.includes(`第 ${chapterNumber} 章`))
+      r.type === 'chapter_creation' && r.chapterNumber === chapterNumber
     )
   )
 
@@ -150,20 +151,23 @@ export default function DraftEditor({ filePath, content }: Props) {
 
   const currentProject = useProjectStore(s => s.currentProject)
 
-  /** 保存（vela://draft/ 走 DB，其他走 FS） */
-  const doSave = async (text: string) => {
+  /**
+   * 保存（vela://draft/ 走 DB，其他走 FS，见 persistEditorContent）。
+   * silent=true（自动保存 / 关窗刷盘）时不弹提示，失败直接抛出，由调用方统一处理。
+   */
+  const doSave = async (text: string, silent = false): Promise<void> => {
     setSaving(true)
     try {
-      if (filePath.startsWith('vela://draft/') || filePath.startsWith('vela://manuscript/')) {
-        const prefix = filePath.startsWith('vela://draft/') ? 'vela://draft/' : 'vela://manuscript/'
-        const draftId = parseInt(filePath.replace(prefix, ''))
-        await ipc.invoke('db:draft-update-content', draftId, text, text.length)
-      } else {
-        await ipc.invoke('fs:write-file', filePath, text)
+      const res = await persistEditorContent(filePath, text)
+      if (!res.success) {
+        if (silent) throw new Error(res.error)
+        toast.error(t('saveFailed', { ns: 'common', error: res.error ?? '' }))
+        return
       }
-      const tabs = useEditorStore.getState().tabs
-      const targetTab = tabs.find(t => t.filePath === filePath)
-      if (targetTab) {
+      const targetTab = useEditorStore.getState().tabs.find(t => t.filePath === filePath)
+      // 保存期间用户还在输入：只落盘，不清未保存标记、也不回写 store。
+      // 回写的旧内容会经 content prop 把编辑器重置回保存时的版本，吞掉新输入
+      if (targetTab && currentBodyRef.current === text) {
         useEditorStore.getState().markTabSaved(targetTab.id)
         useEditorStore.getState().syncTabContent(targetTab.id, text)
       }
@@ -171,6 +175,15 @@ export default function DraftEditor({ filePath, content }: Props) {
       setSaving(false)
     }
   }
+
+  // 自动保存 / 关窗刷盘入口：doSave 每次渲染都会重建，经 ref 取最新的
+  const doSaveRef = useRef(doSave)
+  useEffect(() => { doSaveRef.current = doSave })
+  useEffect(() => registerEditorFlusher(filePath, async () => {
+    const tab = useEditorStore.getState().tabs.find(t => t.filePath === filePath)
+    if (!tab?.dirty) return
+    await doSaveRef.current(currentBodyRef.current, true)
+  }), [filePath])
 
   /** 执行 AI 修稿（含用户自定义提示词） */
   const doRefine = async () => {
@@ -352,7 +365,7 @@ export default function DraftEditor({ filePath, content }: Props) {
     } catch (e) {
       toast.error(t('draftEditor.repairStartFailed', { error: e }))
     }
-  }, [meta, isChapterBusy])
+  }, [meta, isChapterBusy, t])
 
   /** 打开待合并修稿 —— 弹出式合并视图，不占用原草稿 Tab */
   const openPendingRevision = async (rev: RevisionEntry) => {

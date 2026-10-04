@@ -114,7 +114,29 @@ export const useProjectStore = create<ProjectState>()((set, get) => ({
 
   openProject: async (projectPath) => {
     set({ loading: true })
+    // 是否已为切换项目清掉了旧项目的 Tab 与数据（打开失败时据此把界面也回到「无项目」状态）
+    let switchedAway = false
     try {
+      const prev = get().currentProject
+      if (prev && prev.path !== projectPath) {
+        // 切换项目前先把旧项目的未保存编辑写回旧项目的库，再清掉旧项目的 Tab 与数据。
+        // 否则旧 Tab 留在新项目里，保存 / 自动保存会按草稿 ID 写进新项目的库
+        const { flushDirtyTabs } = await import('../services/editor-autosave')
+        const failed = await flushDirtyTabs('switch-project')
+        if (failed.length > 0) {
+          const { confirm } = await import('../components/ui/Confirm')
+          const ok = await confirm(
+            i18n.t('project.switchSaveFailed', { ns: 'stores', names: failed.join('、') }),
+            { danger: true },
+          )
+          if (!ok) return false
+        }
+        // onProjectClosed 内部也会清 Tab，但那是异步的；这里先同步清掉，确保新项目打开前旧 Tab 已不在
+        const { useEditorStore } = await import('./editor-store')
+        useEditorStore.getState().clearTabs()
+        await callProjectClosed()
+        switchedAway = true
+      }
       const result = await ipc.invoke('project:open', projectPath)
       if (result.success && result.project) {
         set({ currentProject: result.project })
@@ -128,11 +150,13 @@ export const useProjectStore = create<ProjectState>()((set, get) => ({
         return true
       }
       console.error('[Project] 打开失败:', result.error)
+      // 旧项目已经关掉（Tab、数据已清，主进程的库也可能已切走），不能再显示为「已打开」
+      if (switchedAway) set({ currentProject: null, fileTree: [] })
       alertError(result.error ?? i18n.t('project.unknownError', { ns: 'stores' }), { title: i18n.t('project.openFailed', { ns: 'stores' }) })
       return false
     } catch (e) {
       console.error('[Project] IPC 通信异常:', e)
-      try { await ipc.invoke('fs:write-file', '/tmp/vela_error.log', String(e)) } catch { /* ignore error writing to log */ }
+      if (switchedAway) set({ currentProject: null, fileTree: [] })
       alertError(String(e), { title: i18n.t('project.openError', { ns: 'stores' }) })
       return false
     } finally {

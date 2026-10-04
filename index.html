@@ -6,31 +6,8 @@
     <title>Vela — AI Novel Writing IDE</title>
   </head>
   <body style="margin: 0;">
-    <!-- 同步读取主题，避免加载页与主界面背景色闪跳 -->
-    <script>
-      (function() {
-        var bgMap = { light: '#F7F9FC', galaxy: '#0A1628', paper: '#F5F0E8', dark: '#1E1E1E' };
-        var theme = 'dark';
-        try {
-          var raw = localStorage.getItem('vela-theme');
-          if (raw) {
-            var state = JSON.parse(raw).state;
-            theme = state.resolvedTheme || state.theme || 'dark';
-            if (theme === 'night') theme = 'dark'; // 兼容旧版
-          }
-        } catch(e) {}
-        
-        var bg = bgMap[theme] || bgMap.galaxy;
-        
-        // 提前给 html 注入主题 class，确保所有全局 CSS 变量立即生效
-        document.documentElement.classList.remove('light', 'dark', 'galaxy', 'paper');
-        document.documentElement.classList.add(theme);
-        
-        document.body.style.backgroundColor = bg;
-        /* 将背景色注入 CSS 变量供 .vela-initial-loader 引用 */
-        document.documentElement.style.setProperty('--loader-bg', bg);
-      })();
-    </script>
+    <!-- 同步读取主题，避免加载页与主界面背景色闪跳（独立文件：生产构建的 CSP 不允许内联脚本） -->
+    <script src="./theme-boot.js"></script>
     <div id="root">
       <style>
         .vela-initial-loader {

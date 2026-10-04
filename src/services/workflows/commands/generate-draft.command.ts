@@ -14,6 +14,7 @@ import {
   renderCanonContext,
   runConsistencyGate,
 } from '../../narrative-consistency'
+import { isWorkflowCancelled } from '../workflow-errors'
 import i18n from '../../../i18n'
 
 export class GenerateDraftCommand extends BaseWorkflowCommand {
@@ -176,7 +177,8 @@ export class GenerateDraftCommand extends BaseWorkflowCommand {
 
     callbacks.log(i18n.t('generateDraft.callingAI', { ns: 'commands' }))
 
-    const draftText = await this.callLLMWithBuilder(promptBuilder, callbacks, undefined, undefined, this.modelId)
+    // 传入 context：用户取消时能中断正在进行的流（不传则要等整章写完才停）
+    const draftText = await this.callLLMWithBuilder(promptBuilder, callbacks, undefined, context, this.modelId)
     let cleanDraftText = this.stripThinkingTags(draftText)
 
     // ==========================================
@@ -331,6 +333,8 @@ ${result}
           await this.callLLM(continuePrompt, systemRole, callbacks, undefined, context, this.modelId)
         )
       } catch (e) {
+        // 用户取消必须向上传播：吞掉的话，被取消的草稿仍会继续走 Gate 并入库
+        if (isWorkflowCancelled(e)) throw e
         callbacks.log(`  ⚠️ 续写补足失败，保留当前篇幅：${String(e)}`)
         return result
       }

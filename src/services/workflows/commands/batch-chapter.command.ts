@@ -1,6 +1,7 @@
 import { BaseWorkflowCommand, CommandExecuteParams } from './base-command'
 import { ipc } from '../../ipc-client'
 import { guardChapterWriting } from '../../workflow-guards'
+import { throwIfCancelled } from '../workflow-errors'
 import type { ChapterInfo } from '../chapter-workflow'
 
 /**
@@ -48,9 +49,7 @@ export class BatchChapterCommand extends BaseWorkflowCommand<string> {
   async execute(execParams: CommandExecuteParams): Promise<string> {
     const { callbacks, context } = execParams
     const n = this.chapterNumber
-    const ensureNotCancelled = () => {
-      if (context.cancelled) throw new Error('工作流已取消')
-    }
+    const ensureNotCancelled = () => throwIfCancelled(context)
 
     ensureNotCancelled()
 

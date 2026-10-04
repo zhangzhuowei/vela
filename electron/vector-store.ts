@@ -42,6 +42,8 @@ export interface DocumentInfo {
   importedAt: string
   chunkCount: number
   filePath: string
+  /** 首块第一行非空文本（标题预览，仅 listDocuments 返回） */
+  preview?: string
 }
 
 /** 检索结果 */
@@ -63,6 +65,34 @@ export interface KBStats {
 
 const TABLE_NAME = 'chunks'
 const DOCS_TABLE_NAME = 'documents'
+
+// ===== 过滤表达式（LanceDB 按标准 SQL 解析，值一律经下面的函数拼接，不直接插值） =====
+
+/** SQL 字符串字面量：单引号加倍（标准 SQL 里反斜杠不是转义符） */
+export function sqlString(value: string): string {
+  return `'${String(value).replace(/'/g, "''")}'`
+}
+
+/** 章节范围过滤：两端都必须是整数，否则返回 null（拒绝把任意表达式拼进过滤条件） */
+export function buildChapterScopeFilter(scope: readonly [unknown, unknown]): string | null {
+  const from = typeof scope[0] === 'number' ? scope[0] : Number(scope[0])
+  const to = typeof scope[1] === 'number' ? scope[1] : Number(scope[1])
+  if (!Number.isInteger(from) || !Number.isInteger(to)) return null
+  return `chapterNumber >= ${from} AND chapterNumber <= ${to}`
+}
+
+/**
+ * 逐字 LIKE 兜底的匹配模式：字符之间插 %（允许有间隔），每个字符单独转义单引号。
+ * 此前先整体转义再逐字拆开，会把转义出的 '' 拆成两个孤立的引号，查询里带撇号就会打断字符串字面量。
+ */
+export function buildLikePattern(queryText: string): string {
+  return `%${Array.from(queryText, (ch) => (ch === "'" ? "''" : ch)).join('%')}%`
+}
+
+/** topK 只接受 1~100 的整数，其余按默认值 5 */
+function normalizeTopK(topK: unknown): number {
+  return typeof topK === 'number' && Number.isInteger(topK) && topK > 0 ? Math.min(topK, 100) : 5
+}
 
 /**
  * FTS 分词配置：双字组 ngram。
@@ -281,8 +311,9 @@ export async function addChunks(
           }
           return cleaned
         })
-        await db.dropTable(TABLE_NAME)
-        await db.createTable(TABLE_NAME, [...cleanRows, ...records], { schema: buildChunkSchema(incomingDim) })
+        // overwrite 是一次原子的新版本提交：写入失败时旧表原样保留。
+        // （此前先 dropTable 再 createTable，createTable 一旦抛错整张表就没了）
+        await db.createTable(TABLE_NAME, [...cleanRows, ...records], { schema: buildChunkSchema(incomingDim), mode: 'overwrite' })
         console.log(`[Vela VectorStore] Embedding 维度变化(${existingDim}→${incomingDim})，已重建向量表，旧向量待重新回填`)
       } else {
         // 旧表缺字段，重建补齐；沿用本批/既有维度
@@ -302,8 +333,8 @@ export async function addChunks(
           }
           return cleaned
         })
-        await db.dropTable(TABLE_NAME)
-        await db.createTable(TABLE_NAME, [...cleanRows, ...records], { schema: buildChunkSchema(rebuildDim) })
+        // 原子替换：写入失败时旧表原样保留
+        await db.createTable(TABLE_NAME, [...cleanRows, ...records], { schema: buildChunkSchema(rebuildDim), mode: 'overwrite' })
       }
     } else {
       // 首次创建：有向量则按其维度建 vector 列；纯 FTS（无向量）则先不建 vector 列，
@@ -324,7 +355,7 @@ export async function addChunks(
       const docsTable = await db.openTable(DOCS_TABLE_NAME)
       // 先删除同名文档（幂等性），再添加新的
       try {
-        await docsTable.delete(`fileName = '${fileName.replace(/'/g, "''")}'`)
+        await docsTable.delete(`fileName = ${sqlString(fileName)}`)
       } catch { /* 表可能为空或无匹配 */ }
       await docsTable.add([docInfo])
     } else {
@@ -356,18 +387,20 @@ export async function removeDocument(
   projectPath: string,
   docId: string,
 ): Promise<boolean> {
+  // docId 来自渲染进程：必须按字符串字面量转义，否则 "x' OR '1'='1" 这样的值会删光整个知识库
+  if (typeof docId !== 'string' || !docId) return false
   try {
     const db = await getConnection(projectPath)
     const tableNames = await db.tableNames()
 
     if (tableNames.includes(TABLE_NAME)) {
       const table = await db.openTable(TABLE_NAME)
-      await table.delete(`docId = '${docId}'`)
+      await table.delete(`docId = ${sqlString(docId)}`)
     }
 
     if (tableNames.includes(DOCS_TABLE_NAME)) {
       const docsTable = await db.openTable(DOCS_TABLE_NAME)
-      await docsTable.delete(`id = '${docId}'`)
+      await docsTable.delete(`id = ${sqlString(docId)}`)
     }
 
     return true
@@ -464,11 +497,11 @@ async function likeFallbackSearch(
   scopeFilter?: string,
 ): Promise<SearchResult[]> {
   try {
-    const escapedQuery = queryText.replace(/'/g, "''")
-    const likePattern = `%${escapedQuery.split('').join('%')}%`
-    let q = table.query().filter(`text LIKE '${likePattern}'`).limit(topK)
-    if (scopeFilter) q = q.where(scopeFilter)
-    const results = await q.toArray()
+    // filter / where 是同一个条件的两种写法，后调用的会覆盖前一个：必须合成一个条件，
+    // 否则带章节范围时 LIKE 条件被丢掉，范围内所有块都会被当成命中
+    const like = `text LIKE '${buildLikePattern(queryText)}'`
+    const predicate = scopeFilter ? `(${like}) AND (${scopeFilter})` : like
+    const results = await table.query().where(predicate).limit(topK).toArray()
     return results.map((r: { text: string; fileName: string }) => ({
       text: r.text,
       score: 0.5, // 无打分
@@ -498,22 +531,27 @@ export async function searchWithScope(
   projectPath: string,
   queryText: string,
   queryVector?: number[],
-  topK: number = 5,
+  requestedTopK: number = 5,
   chapterScope?: [number, number],
 ): Promise<SearchResult[]> {
   try {
+    // 构建范围过滤条件（章节号来自渲染进程，只接受整数）
+    let scopeFilter: string | undefined
+    if (chapterScope) {
+      const filter = buildChapterScopeFilter(chapterScope)
+      if (!filter) {
+        console.warn('[Vela VectorStore] 章节范围不是整数，已拒绝检索:', chapterScope)
+        return []
+      }
+      scopeFilter = filter
+    }
+    const topK = normalizeTopK(requestedTopK)
+
     const db = await getConnection(projectPath)
     const tableNames = await db.tableNames()
     if (!tableNames.includes(TABLE_NAME)) return []
 
     const table = await db.openTable(TABLE_NAME)
-
-    // 构建范围过滤条件
-    let scopeFilter: string | undefined
-    if (chapterScope) {
-      const [from, to] = chapterScope
-      scopeFilter = `chapterNumber >= ${from} AND chapterNumber <= ${to}`
-    }
 
     // 存量库迁移：确保 FTS 索引已按当前分词方案重建
     try {
@@ -573,12 +611,27 @@ export async function listDocuments(
 
     const docsTable = await db.openTable(DOCS_TABLE_NAME)
     const rows = await docsTable.query().toArray()
+
+    // 每篇文档首块的第一行非空文本作为标题预览（渲染进程据此显示标题，不必再去读导入前的原文件）
+    const previews = new Map<string, string>()
+    if (tableNames.includes(TABLE_NAME)) {
+      try {
+        const chunksTable = await db.openTable(TABLE_NAME)
+        const firstChunks = await chunksTable.query().where('chunkIndex = 0').select(['docId', 'text']).toArray()
+        for (const c of firstChunks as Array<{ docId: string; text: string }>) {
+          const line = (c.text ?? '').split('\n').find((l) => l.trim())
+          if (line) previews.set(c.docId, line.trim().slice(0, 120))
+        }
+      } catch { /* 预览缺省时渲染进程回退为文件名 */ }
+    }
+
     return rows.map((r: { id: string; fileName: string; importedAt: string; chunkCount: number; filePath?: string }) => ({
       id: r.id,
       fileName: r.fileName,
       importedAt: r.importedAt,
       chunkCount: r.chunkCount,
       filePath: r.filePath || '',
+      preview: previews.get(r.id) ?? '',
     }))
   } catch {
     return []
@@ -732,7 +785,7 @@ export async function updateChunkVectors(
       for (const update of updates) {
         try {
           await table.update({
-            where: `id = '${update.id}'`,
+            where: `id = ${sqlString(update.id)}`,
             values: { vector: update.vector },
           })
         } catch (e) {
@@ -764,8 +817,8 @@ export async function updateChunkVectors(
       return row
     })
 
-    await db.dropTable(TABLE_NAME)
-    await db.createTable(TABLE_NAME, newData, { schema: buildChunkSchema(rebuildDim) })
+    // 原子替换：写入失败时旧表（含全部正文块）原样保留，而不是先删后建留下空窗
+    await db.createTable(TABLE_NAME, newData, { schema: buildChunkSchema(rebuildDim), mode: 'overwrite' })
 
     // 重建 FTS 索引（ngram 中文分词）
     try {

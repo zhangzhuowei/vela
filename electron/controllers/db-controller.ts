@@ -1,10 +1,12 @@
-import { ipcMain } from 'electron'
-import { closeProjectDatabase, getProjectDb } from '../database'
+import { ipcMain, shell } from 'electron'
+import fs from 'node:fs'
+import path from 'node:path'
+import { closeProjectDatabase, getProjectDb, getCurrentProjectPath } from '../database'
+import { backupNow } from '../db-auto-backup'
+import { getBackupDir } from '../db-backup'
 import { readRehearsalContext, requireProjectDatabase } from '../repositories/rehearsal-repository'
 import { indexStory, readStoryDocument, applyStoryRevision, listStoryRevisions, undoStoryRevision } from '../repositories/story-revision-repository'
 import type { StoryReadRequest, StoryRevisionRequest } from '../../src/shared/story-revision'
-import fs from 'node:fs'
-import path from 'node:path'
 import { VELA_HOME } from '../utils/config-utils'
 
 // 导入所有 Repository
@@ -12,6 +14,7 @@ import { ProjectCoreRepository, ProjectCoreData } from '../repositories/project-
 import { BlueprintRepository, BlueprintData } from '../repositories/blueprint-repository'
 import { CharacterRepository, CharacterData, CharacterStateData } from '../repositories/character-repository'
 import { DraftRepository } from '../repositories/draft-repository'
+import { ChapterSearchRepository, type ChapterSearchResult } from '../repositories/chapter-search-repository'
 import { RevisionRepository } from '../repositories/revision-repository'
 import { ReviewRepository } from '../repositories/review-repository'
 import { PostProcessRepository } from '../repositories/post-process-repository'
@@ -30,7 +33,9 @@ import {
   validateCanonPlotLineInput,
   validateCanonCharacterStateSnapshot,
   validateCanonChapterSummary,
+  validateCanonArcSummary,
   validateCanonWritebackPayload,
+  validateChapterSearchArgs,
 } from '../ipc-validation'
 import type {
   TimelineEvent,
@@ -39,6 +44,9 @@ import type {
   Fact,
   ChapterSummary,
 } from '../../src/services/narrative-consistency/types'
+
+/** 手动备份保留份数（与自动备份分开计数） */
+const MANUAL_BACKUP_KEEP = 20
 
 export function registerDatabaseController() {
   const agentStatePath = path.join(VELA_HOME, 'author-agent-state.json')
@@ -61,6 +69,30 @@ export function registerDatabaseController() {
   ipcMain.handle('db:rehearsal-context', (_event, projectPath: string, chapterNumber: number) => {
     return readRehearsalContext(projectPath, chapterNumber)
   })
+
+  // ===== 备份 =====
+  ipcMain.handle('db:backup-now', async () => {
+    const db = getProjectDb()
+    const projectPath = getCurrentProjectPath()
+    if (!db || !projectPath) return { success: false, error: '未打开项目' }
+    try {
+      const file = await backupNow(db, projectPath, 'manual', MANUAL_BACKUP_KEEP)
+      return { success: true, file }
+    } catch (error) {
+      return { success: false, error: String(error) }
+    }
+  })
+
+  ipcMain.handle('db:backup-open-dir', async () => {
+    const projectPath = getCurrentProjectPath()
+    if (!projectPath) return { success: false, error: '未打开项目' }
+    const dir = getBackupDir(projectPath)
+    await fs.promises.mkdir(dir, { recursive: true })
+    // shell.openPath 成功返回空字符串，失败返回错误描述
+    const error = await shell.openPath(dir)
+    return error ? { success: false, error } : { success: true }
+  })
+
   ipcMain.handle('db:close', async () => {
     closeProjectDatabase()
     return { success: true }
@@ -295,6 +327,18 @@ export function registerDatabaseController() {
       return { success: true }
     } catch (err) {
       return { success: false, error: String(err) }
+    }
+  })
+
+  // 全局搜索：各章代表稿（定稿优先，否则最新未归档草稿）的正文字面量匹配
+  ipcMain.handle('db:search-chapters', async (_event, query: unknown, options?: unknown): Promise<ChapterSearchResult> => {
+    const empty: ChapterSearchResult = { chapters: [], totalMatches: 0, truncated: false, countCapped: false }
+    const v = safeValidate(validateChapterSearchArgs, { query, options })
+    if (!v.ok) return { ...empty, error: v.error }
+    try {
+      return ChapterSearchRepository.search(v.data.query, v.data.options)
+    } catch (err) {
+      return { ...empty, error: String(err) }
     }
   })
 
@@ -611,6 +655,25 @@ ipcMain.handle('db:revision-create', async (_event, params: {
     if (!v.ok) return { success: false, error: v.error }
     try {
       CanonRepository.upsertSummary(v.data)
+      return { success: true }
+    } catch (err) {
+      return { success: false, error: String(err) }
+    }
+  })
+  ipcMain.handle('db:canon-summary-list-range', async (_event, fromChapter: number, toChapter: number) => {
+    if (!Number.isInteger(fromChapter) || !Number.isInteger(toChapter)) return []
+    return CanonRepository.getSummariesInRange(fromChapter, toChapter)
+  })
+
+  // 分层摘要（卷 / 全书）
+  ipcMain.handle('db:canon-arc-summary-list', async () => {
+    return CanonRepository.listArcSummaries()
+  })
+  ipcMain.handle('db:canon-arc-summary-upsert', async (_event, summary: unknown) => {
+    const v = safeValidate(validateCanonArcSummary, summary)
+    if (!v.ok) return { success: false, error: v.error }
+    try {
+      CanonRepository.upsertArcSummary(v.data)
       return { success: true }
     } catch (err) {
       return { success: false, error: String(err) }

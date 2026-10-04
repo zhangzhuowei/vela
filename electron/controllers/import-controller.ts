@@ -1,6 +1,7 @@
 import { ipcMain, dialog } from 'electron'
 import fs from 'node:fs'
 import path from 'node:path'
+import { assertPathAccess, grantPathAccess } from '../path-guard'
 
 /**
  * 导入小说控制器 — 处理文件选择与章节拆分
@@ -169,12 +170,18 @@ export function registerImportController() {
       properties: ['openFile', 'multiSelections'],
     })
     if (result.canceled || result.filePaths.length === 0) return null
+    // 用户选中的文件：本次运行内允许读取（随后经 import:split-chapters 拆章）
+    for (const filePath of result.filePaths) grantPathAccess(filePath, 'read')
     return result.filePaths
   })
 
   // ===== 读取并拆分章节 =====
-  ipcMain.handle('import:split-chapters', async (_event, filePaths: string[]) => {
+  ipcMain.handle('import:split-chapters', async (_event, requestedPaths: string[]) => {
     try {
+      if (!Array.isArray(requestedPaths) || requestedPaths.length === 0) {
+        return { success: false, chapters: [], totalWords: 0, error: '未选择文件' }
+      }
+      const filePaths = requestedPaths.map((p) => assertPathAccess(p, 'read'))
       const allChapters: ParsedChapter[] = []
 
       if (filePaths.length === 1) {

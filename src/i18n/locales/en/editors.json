@@ -261,6 +261,14 @@
     }
   },
   "worldBuilding": {
+    "premise": "Premise",
+    "premiseDesc": "Logline, core conflict, golden finger positioning",
+    "characterMap": "Character Map",
+    "characterMapDesc": "Character arcs, relationship web, conflict threads",
+    "worldbuilding": "Worldbuilding",
+    "worldbuildingDesc": "Core rules, class fractures, deep threats",
+    "synopsis": "Synopsis",
+    "synopsisDesc": "Three-act plot skeleton",
     "storyArchitecture": "Story Architecture",
     "openProjectFirst": "Please open a project first",
     "generated": "Generated",

@@ -24,6 +24,9 @@ import { useLayoutStore } from '../../stores/layout-store'
 
 
 import { ipc } from '../../services/ipc-client'
+import { persistEditorContent } from '../../services/editor-persistence'
+import { registerEditorFlusher } from '../../services/editor-autosave'
+import { globalEventBus } from '../../shared/event-bus'
 import { toast } from '../ui/Toast'
 
 import { clearChapterTitleCache } from './Sidebar'
@@ -32,10 +35,11 @@ import '../editor/novel-editor.css'
 // ─── 正文章节编辑器包装层（含字数信息栏） ─────────────────────────────────────────────
 function ProseEditorWrapper({
   tab,
-  onSave,
+  onSaved,
 }: {
   tab: EditorTab
-  onSave: (text: string) => Promise<void>
+  /** 落盘成功后的附加处理（如刷新章节名缓存） */
+  onSaved?: (filePath: string) => void
 }) {
   const { t } = useTranslation('panels')
   const [wordCount, setWordCount] = useState(0)
@@ -55,14 +59,43 @@ function ProseEditorWrapper({
     }
   }, [tab.id])
 
-  const handleSave = async (text: string) => {
+  /**
+   * 保存（终稿 vela://manuscript/ 走 DB，物理文件走 FS，见 persistEditorContent）。
+   * silent=true（自动保存 / 关窗刷盘）时不弹提示，失败直接抛出，由调用方统一处理。
+   */
+  const handleSave = async (text: string, silent = false) => {
+    if (!tab.filePath) return
     setSaving(true)
     try {
-      await onSave(text)
+      const res = await persistEditorContent(tab.filePath, text)
+      if (!res.success) {
+        if (silent) throw new Error(res.error)
+        toast.error(t('saveFailed', { ns: 'common', error: res.error ?? '' }))
+        return
+      }
+      // 保存期间用户还在输入：只落盘，不清未保存标记、也不回写 store。
+      // 回写的旧内容会经 content prop 把编辑器重置回保存时的版本，吞掉新输入
+      if (currentContentRef.current === text) {
+        useEditorStore.getState().markTabSaved(tab.id)
+        useEditorStore.getState().syncTabContent(tab.id, text)
+      }
+      onSaved?.(tab.filePath)
     } finally {
       setSaving(false)
     }
   }
+
+  // 自动保存 / 关窗刷盘入口：handleSave 每次渲染都会重建，经 ref 取最新的
+  const handleSaveRef = useRef(handleSave)
+  useEffect(() => { handleSaveRef.current = handleSave })
+  useEffect(() => {
+    if (!tab.filePath) return
+    return registerEditorFlusher(tab.filePath, async () => {
+      const latest = useEditorStore.getState().tabs.find(x => x.id === tab.id)
+      if (!latest?.dirty) return
+      await handleSaveRef.current(currentContentRef.current, true)
+    })
+  }, [tab.id, tab.filePath])
 
   return (
     <div className="h-full flex flex-col overflow-hidden">
@@ -312,7 +345,7 @@ export default function EditorArea({ onNewProject }: EditorAreaProps) {
         },
       ]
     },
-    [tabs, tryCloseTab, tryBatchClose]
+    [tabs, tryCloseTab, tryBatchClose, t]
   )
 
   /** 构建三个点菜单项（Tab 操作 + 已打开 Tab 列表） */
@@ -377,7 +410,7 @@ export default function EditorArea({ onNewProject }: EditorAreaProps) {
         })),
       ] : []),
     ]
-  }, [tabs, activeTabId, tryCloseTab, tryBatchClose, setActiveTab])
+  }, [tabs, activeTabId, tryCloseTab, tryBatchClose, setActiveTab, t])
 
   // ===== 条件渲染 =====
 
@@ -606,14 +639,7 @@ export default function EditorArea({ onNewProject }: EditorAreaProps) {
           <ProseEditorWrapper
             key={activeTab.id}
             tab={activeTab}
-            onSave={async (text) => {
-              if (!activeTab.filePath) return
-              await ipc.invoke('fs:write-file', activeTab.filePath, text)
-              // 清除 dirty 标记 + 同步内容 + 刷新章节名缓存
-              useEditorStore.getState().markTabSaved(activeTab.id)
-              useEditorStore.getState().syncTabContent(activeTab.id, text)
-              clearChapterTitleCache(activeTab.filePath)
-            }}
+            onSaved={(savedPath) => clearChapterTitleCache(savedPath)}
           />
         )}
         {activeTab?.type === 'config' && (
@@ -688,6 +714,8 @@ export default function EditorArea({ onNewProject }: EditorAreaProps) {
                   originalContent={activeTab.originalContent}
                   modifiedContent={activeTab.content}
                   onComplete={async (mergedText) => {
+                    // 只有真正写入成功才关闭合并界面；失败时保留，避免用户挑好的合并结果丢失
+                    let done = false
                     try {
                       const chapterDir = activeTab.chapterDir
                       const filePath = activeTab.filePath
@@ -695,6 +723,7 @@ export default function EditorArea({ onNewProject }: EditorAreaProps) {
                       const chapterNum = activeTab.chapterNumber
 
                       if (chapterDir && filePath && revPath) {
+                        // 修稿合并：把合并结果写回原草稿并标记修稿已合并
                         const { useDraftStore } = await import('../../stores/draft-store')
                         const result = await useDraftStore.getState().applyMergedRevision(
                           chapterDir,
@@ -703,19 +732,30 @@ export default function EditorArea({ onNewProject }: EditorAreaProps) {
                           revPath,
                           mergedText
                         )
-
-
                         if (result.success) {
                           toast.success(t('editorArea.mergeComplete'))
+                          done = true
                         } else {
                           toast.error(t('editorArea.mergeFailed', { error: result.error }))
                         }
+                      } else if (typeof chapterNum === 'number') {
+                        // 版本历史对比没有关联修稿：合并结果另存为该章的新草稿版本，不覆盖任何已有版本
+                        const { createVersionFromContent } = await import('../../services/version-service')
+                        const result = await createVersionFromContent(chapterNum, mergedText)
+                        if (result.success) {
+                          toast.success(t('editorArea.mergeSavedAsVersion', { chapter: chapterNum, version: result.version }))
+                          globalEventBus.emit('REFRESH_RESOURCE', { resources: ['drafts'] })
+                          done = true
+                        } else {
+                          toast.error(t('editorArea.mergeFailed', { error: result.error }))
+                        }
+                      } else {
+                        toast.error(t('editorArea.mergeNoTarget'))
                       }
                     } catch (e) {
-
                       toast.error(t('editorArea.mergeError', { error: String(e) }))
                     } finally {
-                      useEditorStore.getState().closeTab(activeTab.id)
+                      if (done) useEditorStore.getState().closeTab(activeTab.id)
                     }
                   }}
                   onCancel={() => useEditorStore.getState().closeTab(activeTab.id)}

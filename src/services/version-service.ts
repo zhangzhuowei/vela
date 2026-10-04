@@ -62,23 +62,40 @@ export async function getVersionContent(versionId: number): Promise<string | nul
   return draft?.content || null
 }
 
-/** 获取章节最新内容（取代之前的文件读取） */
+/**
+ * 获取章节最新草稿正文；没有草稿或正文为空时返回空字符串。
+ * （此前返回「章节尚无内容」之类的提示文案，会被当成正文拿去对比、甚至合并入库）
+ */
 export async function getChapterLatestContent(chapterNumber: number): Promise<string> {
   const draft = (await ipc.invoke('db:draft-get-latest', chapterNumber)) as { id?: number } | null
-  if (!draft || draft.id === undefined) return t('versionService.noContent')
+  if (!draft || draft.id === undefined) return ''
   const full = (await ipc.invoke('db:draft-get-full', draft.id)) as { content?: string } | null
-  return full?.content || t('versionService.contentTruncated')
+  return full?.content ?? ''
 }
 
-/** 回退到某个历史版本，创建新草稿 */
-export async function revertToVersion(chapterNumber: number, content: string): Promise<boolean> {
-  const nextVer: number = await ipc.invoke('db:draft-next-version', chapterNumber)
+/** 章节尚无可对比内容时的提示文案 */
+export function noChapterContentMessage(): string {
+  return t('versionService.noContent')
+}
+
+/** 以给定正文为该章创建一个新草稿版本（不覆盖任何已有版本） */
+export async function createVersionFromContent(
+  chapterNumber: number,
+  content: string,
+): Promise<{ success: boolean; id?: number; version?: number; error?: string }> {
+  const version: number = await ipc.invoke('db:draft-next-version', chapterNumber)
   const res = await ipc.invoke('db:draft-create', {
     chapterNumber,
-    version: nextVer,
+    version,
     source: 'rewrite',
     content,
     wordCount: content.length,
   })
+  return res.success ? { success: true, id: res.id, version } : { success: false, error: res.error }
+}
+
+/** 回退到某个历史版本，创建新草稿 */
+export async function revertToVersion(chapterNumber: number, content: string): Promise<boolean> {
+  const res = await createVersionFromContent(chapterNumber, content)
   return res.success
 }

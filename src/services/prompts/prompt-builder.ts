@@ -1,5 +1,6 @@
 import type { PromptTemplate } from '../prompt-templates'
 import { BUILTIN_PROMPTS, getLocalizedContent, getLocalizedSystemRole, getLocalizedSystemSuffix } from '../prompt-templates'
+import { markCacheable } from '../../shared/prompt-cache'
 
 /**
  * 基础抽象 Prompt 建造者
@@ -35,7 +36,8 @@ export class BasePromptBuilder {
     for (const [key, value] of Object.entries(this.variables)) {
       // 使用 replaceAll 避免正则注入风险，安全替换所有匹配项
       const safeValue = escapeTemplateVars(value)
-      result = result.replaceAll(`{{${key}}}`, safeValue)
+      // Canon 上下文用不可见标记圈出：Anthropic 原生协议据此做提示缓存，其他协议发送前会去掉（见 shared/prompt-cache.ts）
+      result = result.replaceAll(`{{${key}}}`, key === 'canon_context' ? markCacheable(safeValue) : safeValue)
     }
 
     // 自动追加 systemSuffix（始终从内置模板获取，与 renderPrompt 行为对齐）
@@ -275,6 +277,26 @@ export class PostProcessPromptBuilder extends BasePromptBuilder {
     this.variables.open_foreshadowings = typeof json === 'string'
       ? json
       : JSON.stringify(json, null, 2);
+    return this;
+  }
+
+  /** 分层摘要：本卷起止章 */
+  withArcRange(start: number, end: number) {
+    this.variables.arc_start = String(start);
+    this.variables.arc_end = String(end);
+    return this;
+  }
+
+  /** 分层摘要：本卷各章要点（卷摘要的输入） */
+  withChapterSummaries(text: string) {
+    this.variables.chapter_summaries = text;
+    return this;
+  }
+
+  /** 分层摘要：各卷卷摘要及其覆盖到的章节（全书摘要的输入） */
+  withArcSummaries(text: string, coveredUntil: number) {
+    this.variables.arc_summaries = text;
+    this.variables.covered_until = String(coveredUntil);
     return this;
   }
 }

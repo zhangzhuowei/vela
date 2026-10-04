@@ -1,5 +1,9 @@
 import { ILLMProvider, LLMGenerateOptions, LLMResponse, LLMStreamOptions } from './provider.interface'
 import { ModelProfile } from '../../src/shared/ipc-channels'
+import {
+  createTimeoutController, withRequestTimeout, timeoutMessage, httpErrorMessage,
+  CONNECT_TIMEOUT_MS, STREAM_IDLE_TIMEOUT_MS, REQUEST_TIMEOUT_MS,
+} from './http'
 
 export class OpenAIProvider implements ILLMProvider {
   private supportsResponseFormat(model: ModelProfile): boolean {
@@ -57,23 +61,32 @@ export class OpenAIProvider implements ILLMProvider {
 
     if (opts.responseFormat && this.supportsResponseFormat(model)) body.response_format = opts.responseFormat
 
-    const res = await fetch(url, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${model.apiKey}`,
-      },
-      body: JSON.stringify(body),
-    })
-
-    if (!res.ok) {
-      const text = await res.text()
-      return { success: false, content: '', error: `API 调用失败 (${res.status}): ${text}` }
-    }
-
-    const data = await res.json() as {
+    type ChatCompletion = {
       choices: Array<{ finish_reason?: string; message: { content: string; reasoning_content?: string } }>
       usage?: { prompt_tokens: number; completion_tokens: number; total_tokens: number }
+    }
+    let data: ChatCompletion
+    try {
+      // 超时覆盖整个请求（含读完响应体），服务端挂住时不会让 invoke 永远不返回
+      const result = await withRequestTimeout(REQUEST_TIMEOUT_MS, async (signal) => {
+        const res = await fetch(url, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${model.apiKey}`,
+          },
+          body: JSON.stringify(body),
+          signal,
+        })
+        if (!res.ok) {
+          return { ok: false as const, error: httpErrorMessage('API 调用失败', res, await res.text()) }
+        }
+        return { ok: true as const, data: await res.json() as ChatCompletion }
+      })
+      if (!result.ok) return { success: false, content: '', error: result.error }
+      data = result.data
+    } catch (error) {
+      return { success: false, content: '', error: error instanceof Error ? error.message : String(error) }
     }
 
     if (data.choices?.[0]?.finish_reason === 'length') return { success: false, content: '', error: '模型输出达到长度上限，结果不完整，未提交本轮操作。请分段改写或增加模型输出上限。' }
@@ -94,6 +107,10 @@ export class OpenAIProvider implements ILLMProvider {
   }
 
   async generateStream(model: ModelProfile, messages: Array<{ role: string; content: string }>, opts: LLMStreamOptions): Promise<void> {
+    // 连接阶段用连接超时；收到响应头后切换为流空闲超时，每收到一段数据重新计时。
+    // 与用户取消信号合并：两者任一触发都会中止请求
+    const tc = createTimeoutController(CONNECT_TIMEOUT_MS, opts.signal)
+    let streaming = false
     try {
       const url = this.buildUrl(model.baseUrl)
 
@@ -123,7 +140,7 @@ export class OpenAIProvider implements ILLMProvider {
           'Authorization': `Bearer ${model.apiKey}`,
         },
         body: JSON.stringify(body),
-        signal: opts.signal,
+        signal: tc.signal,
       })
 
       let res = await send()
@@ -137,7 +154,7 @@ export class OpenAIProvider implements ILLMProvider {
 
       if (!res.ok) {
         const text = await res.text()
-        opts.onError(`API 调用失败 (${res.status}): ${text}`)
+        opts.onError(httpErrorMessage('API 调用失败', res, text))
         return
       }
 
@@ -146,6 +163,9 @@ export class OpenAIProvider implements ILLMProvider {
         opts.onError('无法读取响应流')
         return
       }
+
+      streaming = true
+      tc.reset(STREAM_IDLE_TIMEOUT_MS)
 
       const decoder = new TextDecoder()
       let fullText = ''
@@ -212,6 +232,8 @@ export class OpenAIProvider implements ILLMProvider {
       for (;;) {
         const { done, value } = await reader.read()
         if (done) break
+        // 收到数据：流空闲超时重新计时
+        tc.reset()
 
         buffer += decoder.decode(value, { stream: true })
         const lines = buffer.split('\n')
@@ -245,13 +267,19 @@ export class OpenAIProvider implements ILLMProvider {
       }
       opts.onDone(fullText.replace(/^[\s\S]*<\/think>/i, '').replace(/<think>[\s\S]*?(?:<\/think>|$)/gi, '').trim(), usage)
     } catch (error) {
-      if ((error as Error).name === 'AbortError') {
+      if (tc.timedOut) {
+        opts.onError(streaming
+          ? timeoutMessage(STREAM_IDLE_TIMEOUT_MS, '流式响应')
+          : timeoutMessage(CONNECT_TIMEOUT_MS, '连接'))
+      } else if ((error as Error).name === 'AbortError') {
         opts.onError('已取消生成')
       } else {
         const cause = (error as { cause?: { message?: string; code?: string } }).cause
         const causeText = cause && (cause.message || cause.code) ? `（底层原因: ${cause.message || cause.code}）` : ''
         opts.onError(String(error) + causeText)
       }
+    } finally {
+      tc.dispose()
     }
   }
 }

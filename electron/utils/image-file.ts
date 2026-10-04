@@ -6,18 +6,24 @@
  */
 import fs from 'node:fs'
 import path from 'node:path'
+import { getCurrentProjectPath } from '../database'
+import { canonicalizePath, isPathInside, isSamePath } from '../path-guard'
 
 /**
  * 安全删除一张配图/人设图的磁盘文件：
- * 仅当路径确实位于某个 .vela/images 目录内时才删除，
- * 避免因脏数据/异常路径误删无关文件。删除失败静默忽略（文件可能已不存在）。
+ * 仅当路径确实位于当前项目的 .vela/images 目录内时才删除——
+ * 库里的路径可能是脏数据，也可能指向项目被复制前的旧位置（那是另一份副本的文件，不能删）。
+ * 删除失败静默忽略（文件可能已不存在）。
  */
 export function safeUnlinkImage(filePath: string | undefined | null): void {
-    if (!filePath) return
-    const normalized = path.normalize(filePath)
-    const marker = path.join('.vela', 'images') + path.sep
-    if (!normalized.includes(marker)) return
+    if (!filePath || !path.isAbsolute(filePath)) return
+    const projectPath = getCurrentProjectPath()
+    if (!projectPath) return
+    const imagesDir = canonicalizePath(path.join(projectPath, '.vela', 'images'))
+    const target = canonicalizePath(filePath)
+    // 必须是图片目录里的文件，不能是目录本身
+    if (isSamePath(target, imagesDir) || !isPathInside(target, imagesDir)) return
     try {
-        fs.unlinkSync(normalized)
+        fs.unlinkSync(target)
     } catch { /* 文件不存在或已删除，忽略 */ }
 }

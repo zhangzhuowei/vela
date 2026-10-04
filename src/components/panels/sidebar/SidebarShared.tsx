@@ -1,3 +1,4 @@
+/* eslint-disable react-refresh/only-export-components -- 本文件是侧栏共享工具模块，工具函数与小组件并存是有意为之 */
 /**
  * SidebarShared — 侧边栏共享工具函数、类型定义和常量
  *
@@ -40,6 +41,14 @@ export function showSidebarMenu(items: ContextMenuEntry[], e: React.MouseEvent) 
   _sidebarMenuSetter?.({ items, position: { x: e.clientX, y: e.clientY } })
 }
 
+/** 回车 / 空格触发点击：给 role="button" 的可聚焦行（沿用 tree-item 样式的 div）用 */
+export function activateOnKey(e: React.KeyboardEvent, action: () => void) {
+  if (e.key === 'Enter' || e.key === ' ') {
+    e.preventDefault()
+    action()
+  }
+}
+
 // ===== 辅助打开文件函数 =====
 
 import { useEditorStore } from '../../../stores/editor-store'
@@ -76,6 +85,36 @@ export async function openArchFile(filePath: string, name: string) {
 /** 打开内置编辑器 */
 export function openBuiltinEditor(id: string, name: string, type: 'chapter-card' | 'character' | 'world-building') {
   useEditorStore.getState().openFile({ id, name, type })
+}
+
+/** 某份章节稿子应当使用的 Tab：已经打开过就复用，否则给出应打开的路径 */
+export interface DraftTabTarget {
+  filePath: string
+  /** 已打开的 Tab（同一份稿子可能从正文列表或草稿箱以两种路径打开过） */
+  existingTabId?: string
+}
+
+/**
+ * 解析一份章节稿子的打开方式：定稿走正文路径（vela://manuscript/），其余走草稿路径
+ * （vela://draft/，带修稿 / 审稿工具栏），与侧栏「正文章节」「草稿箱」一致；
+ * 同一份稿子已用任一路径打开时复用那个 Tab，不再重复开。
+ */
+export function resolveDraftTab(draftId: number, finalized: boolean): DraftTabTarget {
+  const manuscriptPath = `vela://manuscript/${draftId}`
+  const draftPath = `vela://draft/${draftId}`
+  const existing = useEditorStore.getState().tabs.find(tab =>
+    tab.type === 'chapter' && (tab.filePath === manuscriptPath || tab.filePath === draftPath))
+  if (existing?.filePath) return { filePath: existing.filePath, existingTabId: existing.id }
+  return { filePath: finalized ? manuscriptPath : draftPath }
+}
+
+/** 按 resolveDraftTab 的结果切换到已有 Tab 或新开 */
+export async function openDraftTab(target: DraftTabTarget, name: string) {
+  if (target.existingTabId) {
+    useEditorStore.getState().setActiveTab(target.existingTabId)
+    return
+  }
+  await openChapterFile(target.filePath, name)
 }
 
 /** 打开章节文件 */

@@ -28,7 +28,7 @@ export class GenerateFieldCommand extends BaseWorkflowCommand<string> {
     super()
   }
 
-  async execute({ callbacks }: CommandExecuteParams): Promise<string> {
+  async execute({ callbacks, context: workflowContext }: CommandExecuteParams): Promise<string> {
     const project = useProjectStore.getState().currentProject
     if (!project) throw new Error(t('common.noProject'))
 
@@ -43,7 +43,8 @@ export class GenerateFieldCommand extends BaseWorkflowCommand<string> {
     const prompt = this.buildPrompt(config, context)
     const systemPrompt = t('generateField.systemRole')
 
-    const result = await this.callLLM(prompt, systemPrompt, callbacks)
+    // 传入工作流 context：用户取消时能中断正在进行的流
+    const result = await this.callLLM(prompt, systemPrompt, callbacks, undefined, workflowContext)
     const cleanResult = this.stripThinkingTags(result).trim()
 
     if (!cleanResult) {

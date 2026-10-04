@@ -17,7 +17,6 @@ interface VelaAPI {
   invoke: (channel: string, ...args: unknown[]) => Promise<unknown>
   on: (channel: string, callback: (...args: unknown[]) => void) => () => void
   once: (channel: string, callback: (...args: unknown[]) => void) => void
-  send: (channel: string, ...args: unknown[]) => void
   setZoomLevel: (level: number) => void
   setZoomFactor: (factor: number) => void
   getZoomLevel: () => number
@@ -33,7 +32,6 @@ function getAPI(): VelaAPI {
       invoke: async () => { throw new Error('不在 Electron 环境中') },
       on: () => () => {},
       once: () => {},
-      send: () => {},
       setZoomLevel: () => {},
       setZoomFactor: () => {},
       getZoomLevel: () => 0,
@@ -54,10 +52,7 @@ export const ipc = {
     channel: C,
     ...args: AllInvokeChannels[C]['args']
   ): Promise<AllInvokeChannels[C]['return']> => {
-    console.log('[ipc-client.invoke] 调用通道:', channel, '参数数量:', args.length)
-    const result = await getAPI().invoke(channel, ...args) as Promise<AllInvokeChannels[C]['return']>
-    console.log('[ipc-client.invoke] 调用完成:', channel)
-    return result
+    return await getAPI().invoke(channel, ...args) as AllInvokeChannels[C]['return']
   },
 
   /**
@@ -81,11 +76,6 @@ export const ipc = {
     callback: (data: AllEventChannels[C]) => void,
   ) => {
     getAPI().once(channel, callback as (...args: unknown[]) => void)
-  },
-
-  /** 单向发送（无返回值） */
-  send: (channel: string, ...args: unknown[]) => {
-    getAPI().send(channel, ...args)
   },
 
   /** 是否在 Electron 环境中 */

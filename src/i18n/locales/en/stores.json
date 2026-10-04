@@ -16,7 +16,8 @@
     "createFailed": "Failed to create project",
     "createError": "Error creating project",
     "openFailed": "Failed to open project",
-    "openError": "Error opening project"
+    "openError": "Error opening project",
+    "switchSaveFailed": "Changes in these tabs could not be saved: {{names}}\n\nSwitching projects anyway will discard them."
   },
   "llm": {
     "noDefaultModel": "No default model configured",

@@ -72,5 +72,11 @@
   "openAndView": "Open & View",
   "ignore": "Ignore",
   "comingSoon": "Coming Soon",
-  "lastAttempt": "Last attempt"
+  "lastAttempt": "Last attempt",
+  "saveFailed": "Save failed: {{error}}",
+  "autoSaveFailed": "Auto-save failed: {{name}} ({{error}})",
+  "unsupportedSavePath": "This content cannot be saved directly: {{path}}",
+  "closeSaveFailedTitle": "Some changes could not be saved",
+  "closeSaveFailedMessage": "Changes in these tabs could not be saved: {{names}}\n\nClosing anyway will discard them.",
+  "closeAnyway": "Close anyway"
 }

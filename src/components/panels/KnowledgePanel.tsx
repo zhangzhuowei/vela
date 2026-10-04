@@ -3,7 +3,6 @@ import {
   Database, RefreshCw, BookOpen,
 } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
-import { ipc } from '../../services/ipc-client'
 import { Button } from '../ui/Button'
 import { EmptyState } from '../ui/EmptyState'
 import { useProjectStore } from '../../stores/project-store'
@@ -62,15 +61,10 @@ export default function KnowledgePanel() {
             title = rest ? t('knowledge.chapterTitle', { chapter: num, title: rest }) : t('knowledge.chapterOnly', { chapter: num })
           }
 
-          try {
-            const res = await ipc.invoke('fs:read-file', doc.filePath)
-            if (res.success && res.content) {
-              const firstLine = res.content.split('\n').find((l: string) => l.trim())
-              if (firstLine) {
-                title = firstLine.replace(/^#+\s*/, '').trim() || title
-              }
-            }
-          } catch { /* 忽略 */ }
+          // 标题预览由主进程从已入库的首块文本中取第一行（原文件可能已移动/删除，也不在可读范围内）
+          if (doc.preview) {
+            title = doc.preview.replace(/^#+\s*/, '').trim() || title
+          }
           newTitles[doc.id] = title
         })
       )

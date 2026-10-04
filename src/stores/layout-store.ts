@@ -1,7 +1,13 @@
 import { create } from 'zustand'
 
 /** 左侧活动栏的视图类型 */
-export type SidebarView = 'home' | 'project' | 'knowledge' | 'characters' | 'foreshadowing' | 'settings'
+export type SidebarView = 'home' | 'project' | 'knowledge' | 'characters' | 'foreshadowing' | 'timeline' | 'search' | 'settings'
+
+/** 打开全局搜索的请求：nonce 每次递增，供搜索面板聚焦输入框；text 为预填的搜索词 */
+export interface SearchRequest {
+  nonce: number
+  text?: string
+}
 
 /** 下方工具窗口 Tab */
 export type BottomTab = 'tasks' | 'log' | 'models'
@@ -17,6 +23,8 @@ interface LayoutState {
   sidebarOpen: boolean
   sidebarView: SidebarView
   sidebarWidth: number
+  /** 最近一次「打开全局搜索」请求（Ctrl+Shift+F） */
+  searchRequest: SearchRequest
 
   // ===== AI 对话面板 =====
   aiPanelOpen: boolean
@@ -49,6 +57,8 @@ interface LayoutState {
   toggleSidebar: () => void
   setSidebarView: (view: SidebarView) => void
   setSidebarWidth: (width: number) => void
+  /** 打开侧栏全局搜索（不像 setSidebarView 那样在已打开时收起），可预填搜索词 */
+  openSearch: (text?: string) => void
   toggleAIPanel: () => void
   setAIPanelOpen: (open: boolean) => void
   setAIPanelWidth: (width: number) => void
@@ -80,6 +90,7 @@ export const useLayoutStore = create<LayoutState>()((set) => ({
   sidebarOpen: true,
   sidebarView: 'project',
   sidebarWidth: 260,
+  searchRequest: { nonce: 0 },
 
   aiPanelOpen: true,
   aiPanelWidth: 320,
@@ -106,6 +117,12 @@ export const useLayoutStore = create<LayoutState>()((set) => ({
       sidebarOpen: s.sidebarView === view ? !s.sidebarOpen : true,
     })),
   setSidebarWidth: (width) => set({ sidebarWidth: Math.max(200, Math.min(500, width)) }),
+  openSearch: (text) =>
+    set((s) => ({
+      sidebarView: 'search',
+      sidebarOpen: true,
+      searchRequest: { nonce: s.searchRequest.nonce + 1, text },
+    })),
 
   toggleAIPanel: () => set((s) => ({ aiPanelOpen: !s.aiPanelOpen })),
   setAIPanelOpen: (open) => set({ aiPanelOpen: open }),

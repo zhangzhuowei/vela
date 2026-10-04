@@ -29,8 +29,8 @@ interface LLMState {
   init: () => Promise<void>
   /** 加载模型列表 */
   loadModels: () => Promise<void>
-  /** 保存模型 */
-  saveModel: (model: ModelProfile) => Promise<boolean>
+  /** 保存模型（失败时 error 为可直接展示的原因，例如改了接口地址却沿用了打码的 Key） */
+  saveModel: (model: ModelProfile) => Promise<{ success: boolean; error?: string }>
   /** 删除模型 */
   deleteModel: (modelId: string) => Promise<boolean>
   /** 设置默认生成模型（持久化到 ~/.vela/config.json） */
@@ -93,7 +93,7 @@ export const useLLMStore = create<LLMState>()((set, get) => ({
     if (result.success) {
       await get().loadModels()
     }
-    return result.success
+    return result
   },
 
   deleteModel: async (modelId) => {

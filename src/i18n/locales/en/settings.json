@@ -13,6 +13,8 @@
     "languageDesc": "Switch interface language",
     "llmDesc": "Configure language models for text generation, refinement, and summarization",
     "embeddingDesc": "Configure Embedding models for knowledge base retrieval",
+    "image": "Image Models",
+    "imageDesc": "Configure text-to-image models for covers and character portraits",
     "proxyDesc": "Configure HTTP / SOCKS5 proxy for restricted API access",
     "editorDesc": "Font size, auto-save and other editor preferences",
     "promptsDesc": "Customize prompt templates for AI writing stages",
@@ -26,7 +28,10 @@
     "writingFontDesc": "Drafts, final chapters, architecture documents and other body text areas",
     "zoomLevel": "Zoom Level",
     "fontsBuiltIn": "All fonts are built into the application, no network connection required. Changes take effect immediately.",
-    "hint": "Hint"
+    "hint": "Hint",
+    "autoSave": "Auto Save",
+    "autoSaveDesc": "Save unsaved changes in chapters and architecture documents every this many seconds. Set 0 to turn off. Changes are always saved before closing the window or switching projects.",
+    "autoSaveUnit": "sec"
   },
   "models": {
     "displayName": "Display name",
@@ -124,6 +129,7 @@
     "label": "Interface Language",
     "zhCN": "简体中文",
     "en": "English",
+    "ru": "Русский",
     "hint": "Language will change immediately after selection"
   },
   "about": {

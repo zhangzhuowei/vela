@@ -64,8 +64,9 @@ jobs:
           node-version: 22
           cache: pnpm
 
+      # 发布构建必须可复现：锁文件与 package.json 不一致时直接失败，而不是临时解析出另一套依赖
       - name: Install dependencies
-        run: pnpm install --no-frozen-lockfile
+        run: pnpm install --frozen-lockfile
 
       - name: Type check
         run: pnpm exec tsc -p tsconfig.json

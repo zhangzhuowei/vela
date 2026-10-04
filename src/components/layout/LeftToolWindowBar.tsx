@@ -1,5 +1,5 @@
 import {
-  FolderOpen, BookOpen, Users, Milestone,
+  FolderOpen, BookOpen, Users, Milestone, ChartGantt, Search,
   Home, Zap, ScrollText, Cpu,
 } from 'lucide-react'
 import { useLayoutStore, type SidebarView, type BottomTab } from '../../stores/layout-store'
@@ -30,6 +30,8 @@ export default function LeftToolWindowBar() {
     { id: 'knowledge', icon: BookOpen, label: t('activityBar.knowledge') },
     { id: 'characters', icon: Users, label: t('activityBar.characters') },
     { id: 'foreshadowing', icon: Milestone, label: t('activityBar.foreshadowing') },
+    { id: 'timeline', icon: ChartGantt, label: t('activityBar.timeline') },
+    { id: 'search', icon: Search, label: t('activityBar.search') },
   ]
 
   // Bottom panel tabs

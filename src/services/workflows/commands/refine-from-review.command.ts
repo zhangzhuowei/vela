@@ -90,7 +90,8 @@ export class RefineFromReviewCommand extends BaseWorkflowCommand<string> {
       callbacks.log(t('canon.reviewFixContextFailed', { error: String(e) }))
     }
 
-    const refined = await this.callLLMWithBuilder(promptBuilder, callbacks, undefined, undefined, this.params.modelId)
+    // 传入 context：用户取消时能中断正在进行的流
+    const refined = await this.callLLMWithBuilder(promptBuilder, callbacks, undefined, context, this.params.modelId)
     const cleanRefined = this.stripThinkingTags(refined)
 
     // ==========================================

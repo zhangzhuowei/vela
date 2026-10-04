@@ -241,6 +241,29 @@ export function validateCanonChapterSummary(v: unknown, path = 'summary') {
   }
 }
 
+/** 分层摘要（卷 / 全书） */
+export function validateCanonArcSummary(v: unknown, path = 'arcSummary') {
+  if (!isObject(v)) {
+    throw new ValidationError(path, 'expected object')
+  }
+  if (v.level !== 'arc' && v.level !== 'book') {
+    throw new ValidationError(`${path}.level`, `expected 'arc' | 'book', got ${String(v.level)}`)
+  }
+  const startChapter = checkNumberRange(v.startChapter, `${path}.startChapter`, { min: 1, max: 1e9, integer: true })
+  const endChapter = checkNumberRange(v.endChapter, `${path}.endChapter`, { min: 1, max: 1e9, integer: true })
+  if (endChapter < startChapter) {
+    throw new ValidationError(`${path}.endChapter`, `must be >= startChapter (${startChapter})`)
+  }
+  return {
+    level: v.level as 'arc' | 'book',
+    startChapter,
+    endChapter,
+    title: checkStringLength(v.title ?? '', `${path}.title`, { max: 500 }),
+    summary: checkStringLength(v.summary, `${path}.summary`, { min: 0, max: MAX_SUMMARY_LEN }),
+    createdAt: checkStringLength(v.createdAt ?? '', `${path}.createdAt`, { max: 100 }),
+  }
+}
+
 export function validateCanonWritebackPayload(v: unknown, path = 'payload') {
   if (!isObject(v)) {
     throw new ValidationError(path, 'expected object')
@@ -291,6 +314,33 @@ export function validateCanonWritebackPayload(v: unknown, path = 'payload') {
       { maxLength: MAX_OBJECTS_PER_REQUEST },
     ),
   }
+}
+
+// ============================================================
+// 全局搜索
+// ============================================================
+
+/** 搜索词上限：侧栏输入框场景足够，也挡住超长串拖慢逐章匹配 */
+export const MAX_SEARCH_QUERY_LEN = 200
+
+/** db:search-chapters 入参：{ query, options }（query 去掉首尾空白后不能为空） */
+export function validateChapterSearchArgs(v: unknown, path = 'search') {
+  if (!isObject(v)) {
+    throw new ValidationError(path, 'expected object')
+  }
+  const query = checkStringLength(v.query, `${path}.query`, { max: MAX_SEARCH_QUERY_LEN }).trim()
+  if (!query) {
+    throw new ValidationError(`${path}.query`, 'empty query')
+  }
+  const options = checkOptional(v.options, `${path}.options`, (o, p) => {
+    if (!isObject(o)) throw new ValidationError(p, 'expected object')
+    const flag = (key: string) => checkOptional(o[key], `${p}.${key}`, (b, bp) => {
+      if (!isBoolean(b)) throw new ValidationError(bp, `expected boolean, got ${typeof b}`)
+      return b
+    }) ?? false
+    return { caseSensitive: flag('caseSensitive'), finalizedOnly: flag('finalizedOnly') }
+  }) ?? { caseSensitive: false, finalizedOnly: false }
+  return { query, options }
 }
 
 /**

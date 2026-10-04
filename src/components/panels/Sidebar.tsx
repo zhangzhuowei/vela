@@ -14,6 +14,8 @@ import HomeSidebarPanel from './sidebar/HomeSidebarPanel'
 import ProjectTree from './sidebar/ProjectTree'
 import CharactersView from './sidebar/CharactersView'
 import ForeshadowingView from './sidebar/ForeshadowingView'
+import SearchView from './sidebar/SearchView'
+import TimelineView from './sidebar/TimelineView'
 import {
   registerMenuSetter, unregisterMenuSetter,
   type SidebarMenuState,
@@ -38,7 +40,12 @@ export default function Sidebar() {
     knowledge:  t('sidebar.knowledge'),
     characters: t('sidebar.characters'),
     foreshadowing: t('sidebar.foreshadowing'),
+    timeline:   t('sidebar.timeline'),
+    search:     t('sidebar.search'),
   }
+
+  // 搜索 / 时间线自己滚动结果区，顶部的输入框固定不动
+  const selfScrolling = sidebarView === 'search' || sidebarView === 'timeline'
 
   return (
     <div
@@ -51,12 +58,14 @@ export default function Sidebar() {
       <div className="panel-header">
         <span>{viewTitles[sidebarView]}</span>
       </div>
-      <div className="flex-1 overflow-y-auto py-1">
+      <div className={`flex-1 py-1 ${selfScrolling ? 'overflow-hidden' : 'overflow-y-auto'}`}>
         {sidebarView === 'home'       && <HomeSidebarPanel />}
         {sidebarView === 'project'    && <ProjectTree />}
         {sidebarView === 'knowledge'  && <KnowledgePanel />}
         {sidebarView === 'characters' && <CharactersView />}
         {sidebarView === 'foreshadowing' && <ForeshadowingView />}
+        {sidebarView === 'timeline'   && <TimelineView />}
+        {sidebarView === 'search'     && <SearchView />}
       </div>
 
       {/* 动态右键菜单 */}
@@ -72,4 +81,5 @@ export default function Sidebar() {
 }
 
 // 保持向后兼容的 re-export（外部引用了 chapterTitleCache）
+// eslint-disable-next-line react-refresh/only-export-components -- 兼容旧引用路径的再导出
 export { chapterTitleCache, clearChapterTitleCache } from './sidebar/ManuscriptGroup'

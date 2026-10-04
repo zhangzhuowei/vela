@@ -3,6 +3,7 @@ import { useProjectStore } from '../../../stores/project-store'
 import { getPromptTemplate } from '../../prompt-templates'
 import { ArchitecturePromptBuilder } from '../../prompts/prompt-builder'
 import { ipc } from '../../ipc-client'
+import { throwIfCancelled } from '../workflow-errors'
 import i18n from '../../../i18n'
 
 import type { NovelConfig } from '../../../shared/ipc-channels'
@@ -134,7 +135,7 @@ export class GenerateCoreSeedCommand extends BaseWorkflowCommand<string> {
 
     const result = await this.callLLMWithBuilder(promptBuilder, callbacks, undefined, context)
     if (!result.trim()) throw new Error(i18n.t('architecture.premiseGenerationFailed', { ns: 'commands' }))
-    if (context.cancelled) throw new Error(i18n.t('base.workflowCancelled', { ns: 'commands' }))
+    throwIfCancelled(context)
 
     const content = `# 故事前提\n\n${result}\n`
     await writeArchToDb('premise', content)
@@ -177,7 +178,7 @@ export class GenerateCharactersCommand extends BaseWorkflowCommand<string> {
 
     const result = await this.callLLMWithBuilder(promptBuilder, callbacks, undefined, context)
     if (!result.trim()) throw new Error(i18n.t('architecture.charactersGenerationFailed', { ns: 'commands' }))
-    if (context.cancelled) throw new Error(i18n.t('base.workflowCancelled', { ns: 'commands' }))
+    throwIfCancelled(context)
 
     await writeArchToDb('charactersArch', `# 角色图谱\n\n${result}\n`)
 
@@ -220,7 +221,7 @@ export class GenerateWorldBuildingCommand extends BaseWorkflowCommand<string> {
       .withStepGuidance(((context.data.stepGuidance as Record<string, string>) || {}).worldbuilding || '')
 
     const result = await this.callLLMWithBuilder(promptBuilder, callbacks, undefined, context)
-    if (context.cancelled) throw new Error(i18n.t('base.workflowCancelled', { ns: 'commands' }))
+    throwIfCancelled(context)
 
     await writeArchToDb('worldbuilding', `# 世界观\n\n${result}\n`)
 
@@ -272,7 +273,7 @@ export class GeneratePlotArchitectureCommand extends BaseWorkflowCommand<string>
       .withStepGuidance(((context.data.stepGuidance as Record<string, string>) || {}).synopsis || '')
 
     const result = await this.callLLMWithBuilder(promptBuilder, callbacks, undefined, context)
-    if (context.cancelled) throw new Error(i18n.t('base.workflowCancelled', { ns: 'commands' }))
+    throwIfCancelled(context)
 
     await writeArchToDb('synopsis', `# 情节大纲\n\n${result}\n`)
 

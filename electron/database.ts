@@ -8,12 +8,16 @@ import { createRequire } from 'node:module'
 import path from 'node:path'
 import fs from 'node:fs'
 import { closeAllConnections as closeAllLanceConnections } from './vector-store'
+import { snapshotDatabaseSync, pruneBackups } from './db-backup'
+import { startAutoBackup, stopAutoBackup } from './db-auto-backup'
 
 const require = createRequire(import.meta.url)
 const Database = require('better-sqlite3') as typeof import('better-sqlite3')
 import type BetterSqlite3 from 'better-sqlite3'
 
 let projectDb: BetterSqlite3.Database | null = null
+/** 与 projectDb 对应的项目根目录 */
+let currentProjectPath: string | null = null
 
 /** 初始化项目数据库（打开项目时调用） */
 export function initProjectDatabase(projectPath: string): void {
@@ -32,8 +36,17 @@ export function initProjectDatabase(projectPath: string): void {
   createTables(projectDb)
   // 增量列迁移（对旧项目库补齐新列）
   migrateSchema(projectDb)
-  // 对老库执行 schema 迁移（加 UNIQUE 约束等）
-  migrateProjectDatabase(projectDb)
+  // 对老库执行 schema 迁移（加 UNIQUE 约束等）；库版本比应用新时抛错，拒绝打开
+  try {
+    migrateProjectDatabase(projectDb, projectPath)
+  } catch (e) {
+    projectDb.close()
+    projectDb = null
+    throw e
+  }
+  currentProjectPath = projectPath
+  // 后台滚动备份（间隔与保留份数见 db-auto-backup.ts）
+  startAutoBackup(projectDb, projectPath)
   console.log(`[Vela DB] 项目数据库已打开: ${dbPath}`)
 }
 
@@ -43,82 +56,114 @@ export function initProjectDatabase(projectPath: string): void {
  * LanceDB 连接残留在池中不释放句柄。
  */
 export function closeProjectDatabase(): void {
+  stopAutoBackup()
   if (projectDb) {
     projectDb.close()
     projectDb = null
   }
+  currentProjectPath = null
   closeAllLanceConnections()
 }
 
-/** 已执行的 schema 迁移版本号（用于幂等迁移） */
-const SCHEMA_VERSION = 1
+/** 当前打开的项目根目录（数据库未打开时为 null） */
+export function getCurrentProjectPath(): string | null {
+  return currentProjectPath
+}
 
-/** 对老库执行 schema 迁移（加 UNIQUE/CHECK 约束等） */
-function migrateProjectDatabase(db: BetterSqlite3.Database): void {
-  const currentVersionRow = db.prepare(
-    `PRAGMA user_version`
-  ).get() as { user_version: number } | undefined
-  const currentVersion = currentVersionRow?.user_version ?? 0
-  if (currentVersion >= SCHEMA_VERSION) return
+function indexExists(db: BetterSqlite3.Database, name: string): boolean {
+  return !!db.prepare(`SELECT 1 FROM sqlite_master WHERE type='index' AND name=?`).get(name)
+}
 
-  // v0 → v1: 给 canon 表加约束（仅当索引不存在时）
-  if (currentVersion < 1) {
-    const timelineUnique = db.prepare(
-      `SELECT 1 FROM sqlite_master WHERE type='index' AND name='idx_canon_timeline_unique'`
-    ).get()
-    if (!timelineUnique) {
-      // 注意：先尝试 CREATE UNIQUE INDEX；若有重复数据会失败，需要清理
-      try {
-        // 清理重复 sequence，保留 id 最小的那条
-        db.exec(`
-          DELETE FROM canon_timeline_events
-          WHERE id NOT IN (
-            SELECT MIN(id) FROM canon_timeline_events
-            GROUP BY chapter_number, sequence
-          )
-        `)
-        db.exec(`CREATE UNIQUE INDEX idx_canon_timeline_unique ON canon_timeline_events(chapter_number, sequence)`)
-      } catch (e) {
-        console.warn('[Vela DB] 添加 canon_timeline unique 约束失败（可能存在冲突数据）:', e)
-      }
+/** v0 → v1：给 canon 表加唯一约束（先按约束口径去重，保留 id 最小的那条） */
+function migrateV0ToV1(db: BetterSqlite3.Database): void {
+  if (!indexExists(db, 'idx_canon_timeline_unique')) {
+    db.exec(`
+      DELETE FROM canon_timeline_events
+      WHERE id NOT IN (
+        SELECT MIN(id) FROM canon_timeline_events
+        GROUP BY chapter_number, sequence
+      )
+    `)
+    db.exec(`CREATE UNIQUE INDEX idx_canon_timeline_unique ON canon_timeline_events(chapter_number, sequence)`)
+  }
+  if (!indexExists(db, 'idx_canon_facts_unique')) {
+    db.exec(`
+      DELETE FROM canon_facts
+      WHERE id NOT IN (
+        SELECT MIN(id) FROM canon_facts
+        WHERE statement IS NOT NULL AND statement != ''
+        GROUP BY LOWER(TRIM(statement))
+      )
+    `)
+    db.exec(`CREATE UNIQUE INDEX idx_canon_facts_unique ON canon_facts(statement COLLATE NOCASE)`)
+  }
+  if (!indexExists(db, 'idx_canon_plot_unique')) {
+    db.exec(`
+      DELETE FROM canon_plot_lines
+      WHERE id NOT IN (
+        SELECT MIN(id) FROM canon_plot_lines
+        GROUP BY LOWER(TRIM(name))
+      )
+    `)
+    db.exec(`CREATE UNIQUE INDEX idx_canon_plot_unique ON canon_plot_lines(name COLLATE NOCASE)`)
+  }
+}
+
+/**
+ * 有序迁移列表：第 i 项把 user_version 从 i 升到 i + 1。
+ * 新增迁移只能追加到末尾，已发布的迁移不要修改。
+ */
+const MIGRATIONS: Array<(db: BetterSqlite3.Database) => void> = [
+  migrateV0ToV1,
+]
+
+/** 当前应用支持的 schema 版本号 */
+export const SCHEMA_VERSION = MIGRATIONS.length
+
+/** 迁移前备份保留份数 */
+const PRE_MIGRATION_BACKUP_KEEP = 3
+
+/**
+ * 对老库执行 schema 迁移。
+ * - 库版本比应用新（被新版 Vela 升级过）：拒绝打开，避免旧版本按旧结构写坏数据
+ * - 迁移会改写数据（如去重删除）：执行前先整库备份到 .vela/backups
+ * - 每一步在事务里执行，成功才升版本号；失败整体回滚、保持原版本，下次打开项目时重试
+ *   （此前失败只打日志、照样把版本号升上去，之后再也不会重试）
+ */
+function migrateProjectDatabase(db: BetterSqlite3.Database, projectPath: string): void {
+  const currentVersion = Number(db.pragma('user_version', { simple: true })) || 0
+  if (currentVersion > SCHEMA_VERSION) {
+    throw new Error(`项目数据库版本（v${currentVersion}）高于当前 Vela 支持的版本（v${SCHEMA_VERSION}），请升级 Vela 后再打开此项目`)
+  }
+  if (currentVersion === SCHEMA_VERSION) return
+
+  try {
+    // 新建项目（canon 表还是空的）没有可丢的数据，不必备份
+    const hasCanonData = ['canon_timeline_events', 'canon_facts', 'canon_plot_lines'].some((table) =>
+      !!db.prepare(`SELECT 1 FROM ${table} LIMIT 1`).get())
+    if (hasCanonData) {
+      const file = snapshotDatabaseSync(db, projectPath, 'pre-migration')
+      pruneBackups(projectPath, 'pre-migration', PRE_MIGRATION_BACKUP_KEEP)
+      console.log(`[Vela DB] 迁移前备份: ${file}`)
     }
-    const factsUnique = db.prepare(
-      `SELECT 1 FROM sqlite_master WHERE type='index' AND name='idx_canon_facts_unique'`
-    ).get()
-    if (!factsUnique) {
-      try {
-        db.exec(`
-          DELETE FROM canon_facts
-          WHERE id NOT IN (
-            SELECT MIN(id) FROM canon_facts
-            WHERE statement IS NOT NULL AND statement != ''
-            GROUP BY LOWER(TRIM(statement))
-          )
-        `)
-        db.exec(`CREATE UNIQUE INDEX idx_canon_facts_unique ON canon_facts(statement COLLATE NOCASE)`)
-      } catch (e) {
-        console.warn('[Vela DB] 添加 canon_facts unique 约束失败:', e)
-      }
-    }
-    const plotUnique = db.prepare(
-      `SELECT 1 FROM sqlite_master WHERE type='index' AND name='idx_canon_plot_unique'`
-    ).get()
-    if (!plotUnique) {
-      try {
-        db.exec(`
-          DELETE FROM canon_plot_lines
-          WHERE id NOT IN (
-            SELECT MIN(id) FROM canon_plot_lines
-            GROUP BY LOWER(TRIM(name))
-          )
-        `)
-        db.exec(`CREATE UNIQUE INDEX idx_canon_plot_unique ON canon_plot_lines(name COLLATE NOCASE)`)
-      } catch (e) {
-        console.warn('[Vela DB] 添加 canon_plot unique 约束失败:', e)
-      }
+  } catch (e) {
+    // 备份失败（磁盘满等）时不冒险改写数据，保持原版本，下次再试
+    console.warn('[Vela DB] 迁移前备份失败，本次跳过 schema 迁移:', e)
+    return
+  }
+
+  for (let version = currentVersion; version < SCHEMA_VERSION; version++) {
+    try {
+      db.transaction(() => {
+        MIGRATIONS[version](db)
+        db.pragma(`user_version = ${version + 1}`)
+      })()
+      console.log(`[Vela DB] schema 迁移完成: v${version} → v${version + 1}`)
+    } catch (e) {
+      console.warn(`[Vela DB] schema 迁移 v${version} → v${version + 1} 失败，已回滚，下次打开项目时重试:`, e)
+      return
     }
   }
-  db.pragma(`user_version = ${SCHEMA_VERSION}`)
 }
 
 /** 获取当前数据库实例 */
@@ -460,6 +505,18 @@ function createTables(db: BetterSqlite3.Database) {
       title TEXT DEFAULT '',
       summary TEXT DEFAULT '',
       created_at TEXT DEFAULT (datetime('now'))
+    );
+
+    -- 分层摘要：卷摘要（level='arc'，每卷固定若干章）与全书摘要（level='book'，只有一条）
+    -- 新表用 IF NOT EXISTS 创建即可，不需要升 schema 版本（旧版 Vela 打开时忽略这张表）
+    CREATE TABLE IF NOT EXISTS canon_arc_summaries (
+      level TEXT NOT NULL,
+      start_chapter INTEGER NOT NULL,
+      end_chapter INTEGER NOT NULL,
+      title TEXT DEFAULT '',
+      summary TEXT DEFAULT '',
+      created_at TEXT DEFAULT (datetime('now')),
+      PRIMARY KEY (level, start_chapter)
     );
 
     -- 索引

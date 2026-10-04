@@ -1,3 +1,4 @@
+/* eslint-disable react-refresh/only-export-components -- 章节标题缓存需与组件同文件导出，供保存后清缓存 */
 /**
  * ManuscriptGroup — 正文章节折叠组（已定稿章节列表）
  */

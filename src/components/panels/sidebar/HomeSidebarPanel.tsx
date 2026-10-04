@@ -2,18 +2,32 @@
  * HomeSidebarPanel — 主页侧边栏：项目管理入口 + 最近项目列表
  */
 
-import { FolderOpen, Download } from 'lucide-react'
+import { FolderOpen, Download, DatabaseBackup, FolderArchive } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { useProjectStore } from '../../../stores/project-store'
 import { useLayoutStore } from '../../../stores/layout-store'
 import { ipc } from '../../../services/ipc-client'
 import { Button } from '../../ui/Button'
+import { toast } from '../../ui/Toast'
 
 export default function HomeSidebarPanel() {
   const { t } = useTranslation('pages')
   const currentProject = useProjectStore(s => s.currentProject)
   const recentProjects = useProjectStore(s => s.recentProjects)
   const openProject = useProjectStore(s => s.openProject)
+
+  /** 立即备份项目数据库（自动备份之外的手动快照，另行计数保留） */
+  const handleBackupNow = async () => {
+    const res = await ipc.invoke('db:backup-now').catch((e) => ({ success: false, error: String(e) }))
+    if (res.success) toast.success(t('activityBar.backupDone', { ns: 'layout' }))
+    else toast.error(t('activityBar.backupFailed', { ns: 'layout', error: res.error ?? '' }))
+  }
+
+  /** 在系统文件管理器中打开备份目录 */
+  const handleOpenBackupDir = async () => {
+    const res = await ipc.invoke('db:backup-open-dir').catch((e) => ({ success: false, error: String(e) }))
+    if (!res.success) toast.error(t('activityBar.openBackupDirFailed', { ns: 'layout', error: res.error ?? '' }))
+  }
 
   return (
     <div className="px-3 py-2 text-sm">
@@ -68,6 +82,16 @@ export default function HomeSidebarPanel() {
             onClick={() => useLayoutStore.getState().openExport()}
           >
             <Download size={13} /> 导出项目（MD / TXT / EPUB）
+          </Button>
+        )}
+        {currentProject && (
+          <Button variant="outline" className="w-full" onClick={handleBackupNow}>
+            <DatabaseBackup size={13} /> {t('activityBar.backupNow', { ns: 'layout' })}
+          </Button>
+        )}
+        {currentProject && (
+          <Button variant="ghost" className="w-full" onClick={handleOpenBackupDir}>
+            <FolderArchive size={13} /> {t('activityBar.openBackupDir', { ns: 'layout' })}
           </Button>
         )}
       </div>

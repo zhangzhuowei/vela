@@ -93,7 +93,8 @@ export class RefineDraftCommand extends BaseWorkflowCommand<string> {
       callbacks.log(t('canon.refineContextFailed', { error: String(e) }))
     }
 
-    const refined = await this.callLLMWithBuilder(promptBuilder, callbacks)
+    // 传入 context：用户取消时能中断正在进行的流
+    const refined = await this.callLLMWithBuilder(promptBuilder, callbacks, undefined, context)
     const cleanRefined = this.stripThinkingTags(refined)
 
     // ==========================================

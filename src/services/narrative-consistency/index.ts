@@ -42,3 +42,13 @@ export {
 
 
 export { extractCanonWriteback, extractAndWriteback, type ExtractParams } from './fact-extractor'
+
+// 分层摘要（卷 / 全书）
+export {
+  ARC_SIZE,
+  arcRangeOf,
+  isArcEnd,
+  formatChapterSummariesForArc,
+  formatArcSummariesForBook,
+  selectLongTermSummary,
+} from './arc-summary'

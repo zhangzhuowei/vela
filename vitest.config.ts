@@ -3,18 +3,17 @@ import path from 'node:path'
 
 export default defineConfig({
   test: {
-    // 叙事一致性测试是纯算法 + 正则，不需要 DOM/Electron 环境
+    // 单测都是纯逻辑 / Node 侧代码，不需要 DOM 或 Electron 环境
     environment: 'node',
-    // 跑 narrative-consistency 单测 + IPC validation 单测（覆盖 PR #13 审计发现的所有 bug）
-    // standalone.test.ts 是预存在 setup bug（不是我引入），跳过
+    // 就近放在 __tests__/ 下的 *.test.ts 自动纳入（此前用显式白名单，新增测试忘了登记就永远不会执行）
     include: [
-      'src/services/narrative-consistency/__tests__/narrative-consistency.test.ts',
-      'src/services/narrative-consistency/__tests__/perf-regression.test.ts',
-      'electron/__tests__/ipc-validation.test.ts',
-      'src/i18n/__tests__/i18n.test.ts',
-      'src/services/workflows/__tests__/json-repair.test.ts',
-      'src/services/__tests__/*.test.ts',
-      'electron/__tests__/{ollama-models,rehearsal-*,story-revision}.test.ts',
+      'src/**/__tests__/**/*.test.ts',
+      'electron/**/__tests__/**/*.test.ts',
+    ],
+    exclude: [
+      '**/node_modules/**',
+      // 基于 node:assert 的独立脚本式测试，setup 与 vitest 不兼容（历史遗留），不纳入
+      'src/services/narrative-consistency/__tests__/standalone.test.ts',
     ],
     globals: false,
   },

@@ -170,7 +170,8 @@ export class InferGlobalSettingsCommand extends BaseWorkflowCommand<void> {
       prompt,
       template.systemRole || '你是一位顶级网文主编和资深阅读分析师。',
       callbacks,
-      { responseFormat: { type: 'json_object' } }
+      { responseFormat: { type: 'json_object' } },
+      context,
     )
 
     callbacks.setProgress(70)
@@ -322,7 +323,8 @@ export class InferBlueprintsPerChapterCommand extends BaseWorkflowCommand<void> 
           prompt,
           template.systemRole || '你是一位专业的网文结构分析师。',
           callbacks,
-          { responseFormat: { type: 'json_object' } }
+          { responseFormat: { type: 'json_object' } },
+          context,
         )
 
         const blueprint = this.parseJSON<Record<string, unknown>>(rawResult)

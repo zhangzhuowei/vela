@@ -18,6 +18,7 @@
 import type { CanonContext, TimelineEvent, CharacterStateSnapshot, PlotLine, Fact, ChapterSummary } from './types'
 import { canonStore } from './canon-store'
 import { isActualDeathMention } from './validator'
+import { selectLongTermSummary } from './arc-summary'
 
 /** 构建入参 */
 export interface BuildCanonContextParams {
@@ -195,12 +196,14 @@ export async function buildCanonContext(params: BuildCanonContextParams): Promis
   // 并行读取所有 Canon Store 数据 + 角色卡（角色卡从参数传入，避免重复 IPC）。
   // 时间线与事实取全量：校验器需要完整历史（如"第 20 章已死的角色不得在
   // 第 150 章复活"）；prompt 膨胀在渲染侧用窗口控制，不在取数侧截断
-  const [timeline, summaries, plotLines, facts, canonCharStates] = await Promise.all([
+  const [timeline, summaries, plotLines, facts, canonCharStates, arcSummaries] = await Promise.all([
     canonStore.getTimeline(Math.max(0, params.chapterNumber - 1)),
     canonStore.getRecentSummaries(recentSummaryCount),
     canonStore.getActivePlotLines(),
     canonStore.getFacts(),
     canonStore.getAllCharacterStates(),
+    // 分层摘要（远期记忆）：旧版 canonStore / mock 可能没有这个方法，缺失时按空处理
+    typeof canonStore.getArcSummaries === 'function' ? canonStore.getArcSummaries() : Promise.resolve([]),
   ])
 
   // 角色当前状态：合并 canon 表与角色卡 currentState，canon 表优先
@@ -223,6 +226,7 @@ export async function buildCanonContext(params: BuildCanonContextParams): Promis
     characterStates: mergedStates,
     timeline,
     recentChapterSummaries: formatRecentSummaries(summaries),
+    longTermSummary: selectLongTermSummary(arcSummaries || [], params.chapterNumber),
     openPlotLines: plotLines,
     chapterGoal: params.chapterGoal || '（无本章目标）',
     knownFacts: facts,
@@ -298,7 +302,7 @@ function countRagSources(ragContext: string): number {
 /**
  * 把 CanonContext 渲染为单段 prompt 文本（按指定顺序）
  *
- * 顺序固定：正史设定 → 人物状态 → 时间线 → 章节摘要 → 未结剧情 → 事实条目 → 硬性约束
+ * 顺序固定：正史设定 → 人物状态 → 时间线 → 前情提要（全书/分卷摘要）→ 最近章节摘要 → 未结剧情 → 事实条目 → 硬性约束
  *
  * 只渲染 Canon 专属的「事实基线」。上一章结尾、本章目标、RAG、文风、全局指导
  * 这五项是调用方传入的任务上下文，各命令的模板均有专属槽位承载，此处不再重复
@@ -314,6 +318,7 @@ export function renderCanonContext(ctx: CanonContext): string {
       title: '【已发生事件时间线（严格单向 · 按章节+顺序排列）】',
       content: formatTimeline(ctx.timeline, ctx.meta.chapterNumber, ctx.meta.renderTimelineWindow ?? DEFAULT_RENDER_TIMELINE_WINDOW),
     },
+    { title: '【前情提要（全书 / 分卷摘要 · 远期记忆）】', content: ctx.longTermSummary ?? '' },
     { title: '【最近章节摘要】', content: ctx.recentChapterSummaries },
     { title: '【未结剧情线（必须在写作时考虑推进或避免冲突）】', content: formatOpenPlotLines(ctx.openPlotLines) },
     { title: '【关键事实条目（不可推翻）】', content: formatFacts(ctx.knownFacts) },

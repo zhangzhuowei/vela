@@ -12,6 +12,7 @@ import {
   buildOpenForeshadowingText,
   buildFutureBlueprintsText,
 } from '../workflow-utils'
+import { isWorkflowCancelled } from '../workflow-errors'
 import type { ChapterInfo } from '../chapter-workflow'
 
 /** 蓝图刷新结果 */
@@ -151,7 +152,7 @@ export class RefreshBlueprintCommand extends BaseWorkflowCommand<RefreshBlueprin
     } catch (e) {
       const msg = e instanceof Error ? e.message : String(e)
       // 用户取消要向上传播，其余一律降级沿用原蓝图，绝不阻断写稿
-      if (msg.includes('取消')) throw e
+      if (isWorkflowCancelled(e)) throw e
       callbacks.log(`⚠️ 蓝图刷新失败，沿用原蓝图：${msg}`)
       return this.finish(fallback, false, `刷新失败，沿用原蓝图：${msg}`)
     }

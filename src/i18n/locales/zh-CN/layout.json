@@ -32,6 +32,8 @@
     "knowledge": "知识库",
     "characters": "角色",
     "foreshadowing": "伏笔台账",
+    "timeline": "故事时间线",
+    "search": "全局搜索（Ctrl+Shift+F）",
     "settings": "设置",
     "agent": "AI 助手",
     "projectManagement": "项目管理",
@@ -44,7 +46,12 @@
     "closeProjectTitle": "关闭项目",
     "discardAndClose": "放弃并关闭",
     "unsavedConfirm": "以下文件有未保存的修改：\n{{names}}\n\n确定要关闭项目吗？未保存的内容将丢失。",
-    "closeProjectConfirm": "以下文件有未保存的修改：\n{{names}}\n\n确定要关闭项目吗？未保存的内容将丢失。"
+    "closeProjectConfirm": "以下文件有未保存的修改：\n{{names}}\n\n确定要关闭项目吗？未保存的内容将丢失。",
+    "backupNow": "立即备份项目数据",
+    "backupDone": "已备份。项目打开期间还会每 6 小时自动备份一次",
+    "backupFailed": "备份失败：{{error}}",
+    "openBackupDir": "打开备份目录",
+    "openBackupDirFailed": "无法打开备份目录：{{error}}"
   },
   "featureTour": {
     "entry": "功能导览",

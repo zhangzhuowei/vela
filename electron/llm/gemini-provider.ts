@@ -1,5 +1,9 @@
 import { ILLMProvider, LLMGenerateOptions, LLMResponse, LLMStreamOptions } from './provider.interface'
 import { ModelProfile } from '../../src/shared/ipc-channels'
+import {
+  createTimeoutController, withRequestTimeout, timeoutMessage, httpErrorMessage,
+  CONNECT_TIMEOUT_MS, STREAM_IDLE_TIMEOUT_MS, REQUEST_TIMEOUT_MS,
+} from './http'
 
 export class GeminiProvider implements ILLMProvider {
   private toGeminiContents(messages: Array<{ role: string; content: string }>) {
@@ -35,23 +39,32 @@ export class GeminiProvider implements ILLMProvider {
       body.systemInstruction = { parts: [{ text: systemInstruction }] }
     }
 
-    const res = await fetch(url, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'x-goog-api-key': model.apiKey,
-      },
-      body: JSON.stringify(body),
-    })
-
-    if (!res.ok) {
-      const text = await res.text()
-      return { success: false, content: '', error: `Gemini API 调用失败 (${res.status}): ${text}` }
-    }
-
-    const data = await res.json() as {
+    type GenerateContentResponse = {
       candidates?: Array<{ content?: { parts?: Array<{ text?: string }> } }>
       usageMetadata?: { promptTokenCount?: number; candidatesTokenCount?: number; totalTokenCount?: number }
+    }
+    let data: GenerateContentResponse
+    try {
+      // 超时覆盖整个请求（含读完响应体），服务端挂住时不会让 invoke 永远不返回
+      const result = await withRequestTimeout(REQUEST_TIMEOUT_MS, async (signal) => {
+        const res = await fetch(url, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'x-goog-api-key': model.apiKey,
+          },
+          body: JSON.stringify(body),
+          signal,
+        })
+        if (!res.ok) {
+          return { ok: false as const, error: httpErrorMessage('Gemini API 调用失败', res, await res.text()) }
+        }
+        return { ok: true as const, data: await res.json() as GenerateContentResponse }
+      })
+      if (!result.ok) return { success: false, content: '', error: result.error }
+      data = result.data
+    } catch (error) {
+      return { success: false, content: '', error: error instanceof Error ? error.message : String(error) }
     }
 
     const text = data.candidates?.[0]?.content?.parts?.[0]?.text ?? ''
@@ -65,6 +78,9 @@ export class GeminiProvider implements ILLMProvider {
   }
 
   async generateStream(model: ModelProfile, messages: Array<{ role: string; content: string }>, opts: LLMStreamOptions): Promise<void> {
+    // 连接阶段用连接超时；收到响应头后切换为流空闲超时，每收到一段数据重新计时
+    const tc = createTimeoutController(CONNECT_TIMEOUT_MS, opts.signal)
+    let streaming = false
     try {
       const baseUrl = model.baseUrl.replace(/\/$/, '')
       const url = `${baseUrl}/v1beta/models/${model.modelName}:streamGenerateContent?alt=sse`
@@ -89,12 +105,12 @@ export class GeminiProvider implements ILLMProvider {
           'x-goog-api-key': model.apiKey,
         },
         body: JSON.stringify(body),
-        signal: opts.signal,
+        signal: tc.signal,
       })
 
       if (!res.ok) {
         const text = await res.text()
-        opts.onError(`Gemini API 调用失败 (${res.status}): ${text}`)
+        opts.onError(httpErrorMessage('Gemini API 调用失败', res, text))
         return
       }
 
@@ -103,6 +119,9 @@ export class GeminiProvider implements ILLMProvider {
         opts.onError('无法读取 Gemini 响应流')
         return
       }
+
+      streaming = true
+      tc.reset(STREAM_IDLE_TIMEOUT_MS)
 
       const decoder = new TextDecoder()
       let fullText = ''
@@ -134,9 +153,11 @@ export class GeminiProvider implements ILLMProvider {
 
       // SSE 事件可能跨越网络分片边界，跨块保留未完整行，避免事件被丢弃
       let buffer = ''
-      while (true) {
+      for (;;) {
         const { done, value } = await reader.read()
         if (done) break
+        // 收到数据：流空闲超时重新计时
+        tc.reset()
 
         buffer += decoder.decode(value, { stream: true })
         const lines = buffer.split('\n')
@@ -160,13 +181,19 @@ export class GeminiProvider implements ILLMProvider {
 
       opts.onDone(fullText, usage)
     } catch (error) {
-      if ((error as Error).name === 'AbortError') {
+      if (tc.timedOut) {
+        opts.onError(streaming
+          ? timeoutMessage(STREAM_IDLE_TIMEOUT_MS, '流式响应')
+          : timeoutMessage(CONNECT_TIMEOUT_MS, '连接'))
+      } else if ((error as Error).name === 'AbortError') {
         opts.onError('已取消生成')
       } else {
         const cause = (error as { cause?: { message?: string; code?: string } }).cause
         const causeText = cause && (cause.message || cause.code) ? `（底层原因: ${cause.message || cause.code}）` : ''
         opts.onError(String(error) + causeText)
       }
+    } finally {
+      tc.dispose()
     }
   }
 }

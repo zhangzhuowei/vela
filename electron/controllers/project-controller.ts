@@ -5,8 +5,11 @@ import path from 'node:path'
 import { readJsonFile, writeJsonFile, RECENT_PROJECTS_PATH } from '../utils/config-utils'
 import { ProjectData } from '../../src/shared/ipc-channels'
 import { DIR_VELA_INTERNAL, DIR_PROMPTS } from '../../src/shared/project-paths'
-import { initProjectDatabase } from '../database'
+import { initProjectDatabase, getCurrentProjectPath } from '../database'
 import { ProjectCoreRepository } from '../repositories/project-core-repository'
+import {
+  checkProjectCreateAccess, checkProjectOpenAccess, grantPathAccess, toSafeFolderName,
+} from '../path-guard'
 
 interface RecentProject {
   name: string
@@ -33,7 +36,16 @@ export function registerProjectController() {
   }) => {
     try {
       const projectId = randomUUID()
-      const projectDir = path.join(config.path, config.name)
+      // 项目名只作为单段文件夹名使用：去掉路径分隔符等字符，避免 "../x" 之类的名称把项目建到别处
+      const folderName = toSafeFolderName(config?.name)
+      if (!folderName) return { success: false, projectId: '', error: '项目名称无效' }
+      const location = typeof config.path === 'string' ? config.path.trim() : ''
+      if (!location || !path.isAbsolute(location)) {
+        return { success: false, projectId: '', error: '请填写或选择项目保存位置（需为完整路径）' }
+      }
+      const access = checkProjectCreateAccess(path.join(location, folderName))
+      if (!access.ok) return { success: false, projectId: '', error: access.error }
+      const projectDir = access.path
 
       // 仅创建必要的系统目录
       fs.mkdirSync(path.join(projectDir, DIR_VELA_INTERNAL), { recursive: true })
@@ -85,6 +97,9 @@ export function registerProjectController() {
   // 打开现有项目
   ipcMain.handle('project:open', async (_event, projectPath: string) => {
     try {
+      // 打开后整个目录对渲染进程可读写，所以只接受最近项目或用户刚经对话框选中的目录
+      const access = checkProjectOpenAccess(projectPath)
+      if (!access.ok) return { success: false, project: null, error: access.error }
       if (!fs.existsSync(projectPath)) {
         return { success: false, project: null, error: '目录不存在' }
       }
@@ -175,11 +190,16 @@ export function registerProjectController() {
         ProjectCoreRepository.update({ characterStates: data.characterStates })
       }
 
-      addRecentProject({
-        name: data.name ?? 'Unknown',
-        path: data.path,
-        updatedAt: new Date().toISOString(),
-      })
+      // 以上写的都是当前项目的库；最近项目列表也只记当前项目的真实路径，
+      // 不采信渲染进程传来的 path（最近列表中的目录之后可免对话框直接打开）
+      const currentPath = getCurrentProjectPath()
+      if (currentPath) {
+        addRecentProject({
+          name: data.name ?? 'Unknown',
+          path: currentPath,
+          updatedAt: new Date().toISOString(),
+        })
+      }
 
       return { success: true }
     } catch (error) {
@@ -227,6 +247,8 @@ export function registerProjectController() {
       title: '选择项目保存位置',
     })
     if (result.canceled || result.filePaths.length === 0) return null
+    // 用户亲手选中的文件夹（新建项目位置 / 打开项目 / 导出目录）：本次运行内允许读写
+    grantPathAccess(result.filePaths[0], 'write')
     return result.filePaths[0]
   })
 }

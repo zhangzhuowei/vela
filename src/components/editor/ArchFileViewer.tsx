@@ -6,8 +6,11 @@ import { renderIcon } from '../panels/sidebar/SidebarShared'
 import { useEditorStore } from '../../stores/editor-store'
 import ArchitectureConfirmDialog from '../dialogs/ArchitectureConfirmDialog'
 import { Button } from '../ui/Button'
+import { toast } from '../ui/Toast'
 import { ipc } from '../../services/ipc-client'
-import { readCoreContent, writeCoreContent } from '../../services/vela-protocol'
+import { readCoreContent } from '../../services/vela-protocol'
+import { persistEditorContent } from '../../services/editor-persistence'
+import { registerEditorFlusher } from '../../services/editor-autosave'
 import CodeMirrorEditor from './CodeMirrorEditor'
 import { useProjectStore } from '../../stores/project-store'
 import { useCharacterStore } from '../../stores/character-store'
@@ -108,21 +111,26 @@ export default function ArchFileViewer({ filePath, content: initialContent }: Pr
     }
   }, [filePath])
 
-  /** 保存（统一走 vela://core/ DB 路径） */
-  const handleSave = useCallback(async (md: string) => {
+  /**
+   * 保存（统一走 vela://core/ DB 路径，见 persistEditorContent）。
+   * silent=true（自动保存 / 关窗刷盘）时不弹提示，失败直接抛出，由调用方统一处理。
+   */
+  const handleSave = useCallback(async (md: string, silent = false) => {
     setSaving(true)
     try {
-      let success = true
-      if (filePath.startsWith('vela://core/')) {
-        success = await writeCoreContent(filePath, md)
-      } else {
-        // DB 化后架构文件不应有物理路径；如果意外触发，尝试 FS 写入兜底
+      if (!filePath.startsWith('vela://core/')) {
+        // DB 化后架构文件不应有物理路径；如果意外触发，按物理路径兜底写入
         console.warn('[ArchFileViewer] 非预期的物理路径保存:', filePath)
-        const res = await ipc.invoke('fs:write-file', filePath, md)
-        success = res.success !== false
       }
-      if (success) {
-        savedContentRef.current = md
+      const res = await persistEditorContent(filePath, md)
+      if (!res.success) {
+        if (silent) throw new Error(res.error)
+        toast.error(t('saveFailed', { ns: 'common', error: res.error ?? '' }))
+        return
+      }
+      savedContentRef.current = md
+      // 保存期间用户还在输入：保留未保存状态，也不回写 store
+      if (currentContentRef.current === md) {
         setIsDirty(false)
         useEditorStore.getState().markTabSaved(filePath)
         // 键入路径不再逐键写 store，保存时把最终内容刷回，保证重开 Tab 看到的是新内容
@@ -131,7 +139,13 @@ export default function ArchFileViewer({ filePath, content: initialContent }: Pr
     } finally {
       setSaving(false)
     }
-  }, [filePath])
+  }, [filePath, t])
+
+  // 自动保存 / 关窗刷盘入口
+  useEffect(() => registerEditorFlusher(filePath, async () => {
+    if (currentContentRef.current === savedContentRef.current) return
+    await handleSave(currentContentRef.current, true)
+  }), [filePath, handleSave])
 
   /** 从 DB 重新加载（AI 生成后刷新用） */
   const handleReload = useCallback(async () => {

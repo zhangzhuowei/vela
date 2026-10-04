@@ -106,6 +106,8 @@ export interface CanonContext {
   timeline: TimelineEvent[]
   /** 最近 N 章摘要 */
   recentChapterSummaries: string
+  /** 远期记忆：全书摘要 + 较近几卷的卷摘要（只含本章之前已完结的卷；没有则为空） */
+  longTermSummary?: string
   /** 未解决剧情线 */
   openPlotLines: PlotLine[]
   /** 当前章节目标 */
@@ -196,6 +198,19 @@ export interface CanonWriteback {
 /** 章节摘要（用于 recentChapterSummaries） */
 export interface ChapterSummary {
   chapterNumber: number
+  title: string
+  summary: string
+  createdAt: string
+}
+
+/**
+ * 分层摘要：卷摘要（level='arc'，覆盖固定的若干章）与全书摘要（level='book'，只有一条，覆盖到最近一卷末）。
+ * 由定稿后处理在每卷最后一章定稿时生成，供长篇写作时提供远期记忆。
+ */
+export interface ArcSummary {
+  level: 'arc' | 'book'
+  startChapter: number
+  endChapter: number
   title: string
   summary: string
   createdAt: string

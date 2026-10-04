@@ -16,7 +16,8 @@
     "createFailed": "创建项目失败",
     "createError": "创建项目异常",
     "openFailed": "打开项目失败",
-    "openError": "打开项目异常"
+    "openError": "打开项目异常",
+    "switchSaveFailed": "以下标签页的修改没能保存：{{names}}\n\n仍然切换项目会丢失这些修改。"
   },
   "llm": {
     "noDefaultModel": "未配置默认模型",

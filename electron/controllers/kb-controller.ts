@@ -1,20 +1,22 @@
 import { ipcMain, dialog } from 'electron'
-import fs from 'node:fs'
 import {
   importDocument, importFolder, importText, searchKnowledge, searchKnowledgeFTS,
   listDocuments, removeDocument, getKnowledgeStats,
   getVectorlessCount, backfillVectors,
 } from '../knowledge-base'
-import { readJsonFile, GLOBAL_CONFIG_PATH, DEFAULT_GLOBAL_CONFIG, MODELS_CONFIG_PATH, RECENT_PROJECTS_PATH } from '../utils/config-utils'
-import { GlobalConfig, ModelProfile } from '../../src/shared/ipc-channels'
+import { readJsonFile, GLOBAL_CONFIG_PATH, DEFAULT_GLOBAL_CONFIG } from '../utils/config-utils'
+import { GlobalConfig } from '../../src/shared/ipc-channels'
+import { getCurrentProjectPath } from '../database'
+import { checkPathAccess, grantPathAccess, isKnownProjectPath } from '../path-guard'
+import { modelStore } from '../model-store'
 
 function getEmbeddingConfig(): { protocol: 'openai' | 'gemini'; model: { baseUrl: string; apiKey: string; modelName: string } } | null {
   const config = readJsonFile<GlobalConfig>(GLOBAL_CONFIG_PATH, DEFAULT_GLOBAL_CONFIG)
   const targetModelId = config.defaultEmbeddingModelId || config.defaultModelId
   if (!targetModelId) return null
 
-  const models = readJsonFile<ModelProfile[]>(MODELS_CONFIG_PATH, [])
-  const model = models.find((m) => m.id === targetModelId)
+  // 经 modelStore 取：API Key 在文件里是加密的
+  const model = modelStore.get(targetModelId)
   if (!model) return null
   return {
     protocol: model.protocol as 'openai' | 'gemini',
@@ -22,33 +24,35 @@ function getEmbeddingConfig(): { protocol: 'openai' | 'gemini'; model: { baseUrl
   }
 }
 
-function getCurrentProjectPath(): string | null {
-  try {
-    const recent = JSON.parse(fs.readFileSync(RECENT_PROJECTS_PATH, 'utf-8')) as Array<{ path: string }>
-    return recent[0]?.path ?? null
-  } catch { return null }
-}
-
 export function registerKBController() {
   ipcMain.handle('kb:import-document', async (_event, filePath: string) => {
     const embConfig = getEmbeddingConfig()
     const projectPath = getCurrentProjectPath()
     if (!projectPath) return { success: false, error: '未打开项目' }
+    const access = checkPathAccess(filePath, 'read')
+    if (!access.ok) return { success: false, error: access.error }
     const protocol = embConfig?.protocol ?? 'openai'
     const model = embConfig?.model ?? { baseUrl: '', apiKey: '' }
-    return importDocument(filePath, projectPath, protocol, model)
+    return importDocument(access.path, projectPath, protocol, model)
   })
 
   ipcMain.handle('kb:import-folder', async (_event, folderPath: string) => {
     const embConfig = getEmbeddingConfig()
     const projectPath = getCurrentProjectPath()
-    if (!projectPath) return { success: false, error: '未打开项目' }
+    if (!projectPath) return { success: false, importedCount: 0, failedFiles: [], error: '未打开项目' }
+    const access = checkPathAccess(folderPath, 'read')
+    if (!access.ok) return { success: false, importedCount: 0, failedFiles: [], error: access.error }
     const protocol = embConfig?.protocol ?? 'openai'
     const model = embConfig?.model ?? { baseUrl: '', apiKey: '' }
-    return importFolder(folderPath, projectPath, protocol, model)
+    return importFolder(access.path, projectPath, protocol, model)
   })
 
   ipcMain.handle('kb:import-text', async (_event, text: string, fileName: string, projectPath: string) => {
+    // 只能写进当前项目或最近项目的知识库（定稿等后台流程可能在切换项目前发起，仍按其所属项目写入）
+    if (typeof projectPath !== 'string' || !isKnownProjectPath(projectPath)) {
+      return { success: false, error: '目标项目不是当前或最近打开的项目' }
+    }
+    // fileName 只用作知识库里的文档名，不参与路径拼接
     const embConfig = getEmbeddingConfig()
     const protocol = embConfig?.protocol ?? 'openai'
     const model = embConfig?.model ?? { baseUrl: '', apiKey: '' }
@@ -87,7 +91,7 @@ export function registerKBController() {
   ipcMain.handle('kb:remove-document', async (_event, docId: string) => {
     const projectPath = getCurrentProjectPath()
     if (!projectPath) return { success: false }
-    return { success: removeDocument(docId, projectPath) }
+    return { success: await removeDocument(docId, projectPath) }
   })
 
   ipcMain.handle('kb:stats', async () => {
@@ -117,6 +121,8 @@ export function registerKBController() {
       filters: [{ name: '文本文件', extensions: ['txt', 'md', 'markdown'] }],
     })
     if (result.canceled || result.filePaths.length === 0) return null
+    // 用户选中的文件：本次运行内允许读取（随后经 kb:import-document 导入）
+    for (const filePath of result.filePaths) grantPathAccess(filePath, 'read')
     return result.filePaths
   })
 
@@ -126,6 +132,7 @@ export function registerKBController() {
       title: '选择要批量导入的文件夹',
     })
     if (result.canceled || result.filePaths.length === 0) return null
+    grantPathAccess(result.filePaths[0], 'read')
     return result.filePaths[0]
   })
 }
