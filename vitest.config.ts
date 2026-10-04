@@ -1,4 +1,3 @@
-/// <reference types="vitest/config" />
 import { defineConfig } from 'vitest/config'
 import path from 'node:path'
 
@@ -14,6 +13,8 @@ export default defineConfig({
       'electron/__tests__/ipc-validation.test.ts',
       'src/i18n/__tests__/i18n.test.ts',
       'src/services/workflows/__tests__/json-repair.test.ts',
+      'src/services/__tests__/*.test.ts',
+      'electron/__tests__/{ollama-models,rehearsal-*,story-revision}.test.ts',
     ],
     globals: false,
   },

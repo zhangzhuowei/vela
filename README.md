@@ -11,9 +11,11 @@
 [![TypeScript](https://img.shields.io/badge/TypeScript-5-3178C6.svg)](https://www.typescriptlang.org/)
 [![License: GPL-3.0](https://img.shields.io/badge/License-GPLv3-yellow.svg)](https://opensource.org/licenses/GPL-3.0)
 
-[🚀 下载客户端 / Download](#-安装与使用--installation) • [☕ 赞助原作者 / Sponsor](#-赞助与支持原作者--sponsor-the-original-author)
+[🚀 下载客户端 / Download](#-安装与使用--installation) • [🌟 API 渠道推荐 / Fluxion AI](#fluxion-ai) • [☕ 赞助原作者 / Sponsor](#-赞助与支持原作者--sponsor-the-original-author)
 
 </div>
+
+> 💡 **写小说不想折腾 Key？** 试试 [Fluxion AI](https://fluxionai.space/register?source=github&campaign=vela&promo=VELA) —— 一个入口接入并管理全球主流 AI 模型，OpenAI 兼容、开箱即用，**注册即送 $3 API 额度**。👉 [立即领取](https://fluxionai.space/register?source=github&campaign=vela&promo=VELA)
 
 ---
 
@@ -170,7 +172,30 @@ Vela 支持接入多种主流 LLM 服务商，以下是快速配置步骤：
 
 **支持的 LLM 服务商 / Supported LLM Providers:**
 
-`OpenAI` · `DeepSeek` · `Google Gemini` · `Anthropic Claude` · `Ollama (Local)` · `智谱 GLM (Zhipu)` · `MiniMax` · `SiliconFlow` · `Any OpenAI-compatible API`
+`OpenAI` · `DeepSeek` · `Google Gemini` · `Anthropic Claude` · `Ollama (Local)` · `智谱 GLM (Zhipu)` · `MiniMax` · `SiliconFlow` · `Fluxion AI (推荐渠道)` · `Any OpenAI-compatible API`
+
+> 💡 **推荐渠道**：如果没有官方 Key 或想降低成本，可使用 [Fluxion AI](https://fluxionai.space/register?source=github&campaign=vela&promo=VELA)（OpenAI 兼容），在上方第 3 步中选择「自定义 / OpenAI 兼容」，填入 Fluxion AI 的 `Base URL` + `API Key` 即可。注册即送 **$3** 额度。
+
+---
+
+<span id="fluxion-ai"></span>
+
+## 🌟 推荐渠道：Fluxion AI — 一个入口，接入并管理全球主流 AI 模型
+
+Fluxion AI 面向个人开发者、技术团队与企业，通过统一 API 接入并管理全球主流 AI 模型；通过多线路动态调度提升可用性，模型表现、响应时间与费用透明可查。使用 Fable 5.1 时，相较 Claude 官方 API 费用，Fluxion AI 最高可节省约 90%。
+
+- ✅ **统一 OpenAI-Compatible API**，完美适配 Vela，开箱即用
+- 🔀 **多线路动态调度**，可用性更高
+- 📊 **模型表现、响应时间与费用透明可查**
+- 🎁 **立即访问并注册，即可获得 $3 API 额度**
+
+👉 **专属链接：[立即注册领取 $3 额度](https://fluxionai.space/register?source=github&campaign=vela&promo=VELA)**
+
+<a href="https://fluxionai.space/register?source=github&campaign=vela&promo=VELA" target="_blank">
+  <img src="https://drive.google.com/thumbnail?id=1nABI15ra_qGKoccMZbJpeMyl6iEFijKe&sz=w1000" width="800" alt="Fluxion AI — 一个入口，接入并管理全球主流 AI 模型"/>
+</a>
+
+> 封面原图：[Google Drive 查看](https://drive.google.com/file/d/1nABI15ra_qGKoccMZbJpeMyl6iEFijKe/view?usp=sharing)
 
 ---
 

@@ -22,6 +22,7 @@ import {
 import { getPendingRevisions, getReviewsForVersion, type RevisionEntry } from '../../services/draft-index'
 import { readDraftBody } from '../../stores/draft-store'
 import { ipc } from '../../services/ipc-client'
+import { globalEventBus } from '../../shared/event-bus'
 
 import { DRAFT_STATUS_LABEL, DRAFT_STATUS_COLOR } from '../../shared/draft-status'
 import { PostProcessStatusPanel } from '../ui/PostProcessStatusPanel'
@@ -45,6 +46,10 @@ export default function DraftEditor({ filePath, content }: Props) {
   const [meta, setMeta] = useState<(DraftMeta & { chapterTitle?: string; filePath?: string }) | null>(null)
   const [pendingRevisions, setPendingRevisions] = useState<RevisionEntry[]>([])
   const [reviewCount, setReviewCount] = useState(0)
+  const [storyRefresh, setStoryRefresh] = useState(0)
+  useEffect(() => globalEventBus.on('STORY_REVISED', ({ projectPath, revision }) => {
+    if (projectPath === useProjectStore.getState().currentProject?.path && revision.changes.some(c => c.kind === 'draft' && filePath === `vela://draft/${c.id}`)) setStoryRefresh(n => n + 1)
+  }), [filePath])
 
   // 【BUG1&2 修复】合并视图弹窗数据（不再占用 Tab）
   const [mergeData, setMergeData] = useState<{
@@ -84,7 +89,7 @@ export default function DraftEditor({ filePath, content }: Props) {
     return () => {
       cancelled = true
     }
-  }, [filePath])
+  }, [filePath, storyRefresh])
 
   const status: DraftStatus = meta?.status ?? 'draft'
   const isReadonly = status === 'finalized' || status === 'archived'
@@ -129,6 +134,7 @@ export default function DraftEditor({ filePath, content }: Props) {
   const [showImages, setShowImages] = useState(false)
   const isDirty = useEditorStore(s => s.tabs.find(t => t.filePath === filePath)?.dirty ?? false)
   const currentBodyRef = useRef(content)
+  useEffect(() => { currentBodyRef.current = content }, [content])
 
   // 键入热路径不再逐键把全文写入 store（那会让 EditorArea 整树按键级重渲染），
   // 内容由 currentBodyRef 自持；卸载（如切换 Tab）时刷回 store，
@@ -728,7 +734,7 @@ export default function DraftEditor({ filePath, content }: Props) {
             currentBodyRef.current = text
             // 只翻 dirty 标志（已 dirty 时零 store 写入），内容在保存/卸载时刷回。
             // 按 filePath 解析 tab id：个别入口（Agent 打开的章节）id 与 filePath 不同
-            const tab = useEditorStore.getState().tabs.find(t => t.filePath === filePath)
+            const tab = useEditorStore.getState().tabs.find(t => t.filePath === filePath && t.type === 'chapter')
             if (tab) useEditorStore.getState().markTabDirty(tab.id)
           }}
           onSave={(text) => doSave(text)}
