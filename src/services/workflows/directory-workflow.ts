@@ -126,11 +126,18 @@ function extractBlueprintList(jsonStr: string): unknown[] {
   const firstArr = jsonStr.indexOf('[')
   if (firstObj === -1 && firstArr === -1) return []
 
-  const arrayFirst = firstArr !== -1 && (firstObj === -1 || firstArr < firstObj)
-  if (arrayFirst) {
-    const { data } = parseJSONLenient(jsonStr.slice(firstArr))
-    return unwrapBlueprintList(data) ?? []
+  const salvageArray = (from: number): unknown[] => {
+    try {
+      const { data } = parseJSONLenient(jsonStr.slice(from))
+      return unwrapBlueprintList(data) ?? []
+    } catch {
+      // 目录解析要空数组，不能把角色提取的截断文案抛给调用方
+      return []
+    }
   }
+
+  const arrayFirst = firstArr !== -1 && (firstObj === -1 || firstArr < firstObj)
+  if (arrayFirst) return salvageArray(firstArr)
 
   const endIndex = jsonStr.lastIndexOf('}')
   if (endIndex > firstObj) {
@@ -143,10 +150,7 @@ function extractBlueprintList(jsonStr: string): unknown[] {
     }
   }
 
-  if (firstArr !== -1) {
-    const { data } = parseJSONLenient(jsonStr.slice(firstArr))
-    return unwrapBlueprintList(data) ?? []
-  }
+  if (firstArr !== -1) return salvageArray(firstArr)
   return []
 }
 
