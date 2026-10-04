@@ -1,5 +1,19 @@
 # CHANGELOG
 
+## 0.2.7 — 2026-10-04
+
+工坊版：文生图可测连接并按协议走 Gemini；合入上游写作排练、Ollama 发现与功能引导。
+
+### 新增
+
+- 设置 → 文生图：「测试连接」走同一条生成路径，不写项目文件。Gemini 协议打 `{base}/v1beta/models/{id}:generateContent`（`x-goog-api-key` + Bearer），不再误走 OpenAI `/v1/images/generations`。
+- 合入上游 `heider-x/vela` master：故事修订 / 蓝图恢复 / 排练、设置里拉取 Ollama 本地模型、写作工具功能引导气泡、流式 completion 与 provider 选项校验。
+
+### 修正
+
+- 导入包列表不再下发整段 `book_json`，详情再懒加载，长列表不再卡。
+- 目录解析：推理段后的完整 JSON 能取到；截断且救不出完整章节时返回空数组，不再抛角色提取的截断文案。
+
 ## 0.2.6 — 2026-09-16
 
 工坊版：参考作品拆书补齐人物线、两轴 L1、L2 / L3 与作用域微调，可按要求生成新书导入包；篇幅闸门重构。
